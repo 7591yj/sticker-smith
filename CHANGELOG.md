@@ -2,6 +2,15 @@
 
 All notable project releases are documented here.
 
+## 0.1.1-beta.1 - 2026-03-11
+
+- Support larger `.webm` previews in the desktop app by serving media previews
+  with byte-range responses.
+- Unify the assets and outputs browsers with shared gallery/list layouts and a
+  synced view toggle.
+- Render a fallback pack icon in the sidebar when a pack has no generated
+  thumbnail yet.
+
 ## 0.1.0-beta.3 - 2026-03-11
 
 - Fix the packaged Electron renderer path so the AppImage loads `dist/index.html`
