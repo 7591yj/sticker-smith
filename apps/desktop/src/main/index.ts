@@ -53,7 +53,7 @@ function createWindow() {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
-    void window.loadFile(path.join(__dirname, "../../dist/index.html"));
+    void window.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 }
 

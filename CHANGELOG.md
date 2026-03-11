@@ -2,6 +2,11 @@
 
 All notable project releases are documented here.
 
+## 0.1.0-beta.3 - 2026-03-11
+
+- Fix the packaged Electron renderer path so the AppImage loads `dist/index.html`
+  from `app.asar`.
+
 ## 0.1.0-beta.2 - 2026-03-11
 
 - Fix backend packaging in CI by tracking the PyInstaller spec file.
