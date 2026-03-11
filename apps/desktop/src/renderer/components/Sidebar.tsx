@@ -5,6 +5,7 @@ import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import EditIcon from "@mui/icons-material/Edit";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import LayersIcon from "@mui/icons-material/Layers";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
@@ -31,31 +32,54 @@ function PackThumbnail({
   thumbnailPath,
 }: {
   name: string;
-  thumbnailPath: string;
+  thumbnailPath: string | null;
 }) {
-  const isVideo = isVideoThumbnail(thumbnailPath);
+  const isVideo = thumbnailPath ? isVideoThumbnail(thumbnailPath) : false;
 
   return (
     <ListItemAvatar sx={{ minWidth: 32 }}>
       <Box
-        component={isVideo ? "video" : "img"}
-        src={toFileUrl(thumbnailPath)}
-        alt={isVideo ? undefined : name}
-        aria-label={isVideo ? `${name} icon preview` : undefined}
-        muted={isVideo ? true : undefined}
-        autoPlay={isVideo ? true : undefined}
-        loop={isVideo ? true : undefined}
-        playsInline={isVideo ? true : undefined}
-        preload={isVideo ? "metadata" : undefined}
         sx={{
           width: appTokens.sizes.thumbnail,
           height: appTokens.sizes.thumbnail,
           borderRadius: appTokens.radii.thumbnail / 8,
-          objectFit: "cover",
-          display: "block",
           bgcolor: "action.hover",
+          border: "1px solid",
+          borderColor: "divider",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
-      />
+      >
+        {thumbnailPath ? (
+          <Box
+            component={isVideo ? "video" : "img"}
+            src={toFileUrl(thumbnailPath)}
+            alt={isVideo ? undefined : name}
+            aria-label={isVideo ? `${name} icon preview` : undefined}
+            muted={isVideo ? true : undefined}
+            autoPlay={isVideo ? true : undefined}
+            loop={isVideo ? true : undefined}
+            playsInline={isVideo ? true : undefined}
+            preload={isVideo ? "metadata" : undefined}
+            sx={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <Inventory2OutlinedIcon
+            aria-label={`${name} fallback pack icon`}
+            sx={{
+              fontSize: appTokens.sizes.thumbnail - 4,
+              color: "text.secondary",
+            }}
+          />
+        )}
+      </Box>
     </ListItemAvatar>
   );
 }
@@ -216,12 +240,10 @@ export function Sidebar({
               dense
               sx={{ borderRadius: appTokens.radii.panel / 8 }}
             >
-              {pack.thumbnailPath ? (
-                <PackThumbnail
-                  name={pack.name}
-                  thumbnailPath={pack.thumbnailPath}
-                />
-              ) : null}
+              <PackThumbnail
+                name={pack.name}
+                thumbnailPath={pack.thumbnailPath}
+              />
               <ListItemText
                 primary={pack.name}
                 primaryTypographyProps={{

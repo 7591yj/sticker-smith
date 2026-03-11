@@ -22,6 +22,20 @@ function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
 }
 
 describe("Sidebar", () => {
+  it("renders a fallback pack icon when no thumbnail exists", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[createPack()]}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("fallback pack icon");
+  });
+
   it("renders webm pack thumbnails as video previews", () => {
     const markup = renderToStaticMarkup(
       <Sidebar
