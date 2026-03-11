@@ -1,6 +1,6 @@
 {
   "name": "sticker-smith-desktop",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Desktop sticker pack manager for Telegram WebM assets.",
   "author": {
     "name": "Yeongjin Kim",
@@ -46,6 +46,9 @@
   "build": {
     "appId": "dev.stickersmith.desktop",
     "productName": "Sticker Smith",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
