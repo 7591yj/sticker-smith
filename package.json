@@ -1,0 +1,23 @@
+{
+  "name": "sticker-smith",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/desktop dev",
+    "build": "bun run build:shared && bun run --cwd apps/desktop build",
+    "build:shared": "bun run --cwd packages/shared build",
+    "format": "prettier --write . --ignore-path .gitignore && cd tg-webm-converter && poetry run black .",
+    "test": "bun run test:shared && bun run --cwd apps/desktop test && cd tg-webm-converter && poetry run pytest",
+    "test:shared": "bun run --cwd packages/shared test",
+    "lint": "bun run lint:shared && bun run --cwd apps/desktop lint && cd tg-webm-converter && poetry run pytest tests/test_gui_api.py -q",
+    "lint:shared": "bun run --cwd packages/shared lint",
+    "package:linux": "bun run --cwd apps/desktop package:linux",
+    "package:backend": "bash ./tg-webm-converter/scripts/package_backend.sh"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3"
+  }
+}
