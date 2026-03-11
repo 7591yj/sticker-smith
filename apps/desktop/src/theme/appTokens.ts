@@ -78,8 +78,7 @@ export const appTokens = {
     sidebarWidth: 240,
     panelHeaderMinHeight: 48,
     tabsMinHeight: 40,
-    assetGridMinWidth: 96,
-    outputGridMinWidth: 136,
+    fileGridMinWidth: 96,
     squareAspectRatio: "1 / 1",
     window: {
       width: 1600,
@@ -132,6 +131,7 @@ export const appTokens = {
       noSelection: "Select a pack or create a new one.",
     },
     labels: {
+      assets: "Assets",
       exportDialogTitle: "Export",
       galleryView: "Gallery view",
       importFolderAsNewPack: "Import folder as new pack",

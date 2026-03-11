@@ -17,6 +17,7 @@ import Typography from "@mui/material/Typography";
 import type { StickerPack, StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 import { AssetGrid } from "./AssetGrid";
+import { BrowserViewToggle, type BrowserView } from "./fileBrowser";
 import { OutputsList } from "./OutputsList";
 import { RenameDialog } from "./RenameDialog";
 
@@ -39,6 +40,7 @@ export function PackPanel({
 }: Props) {
   const [renaming, setRenaming] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
+  const [view, setView] = useState<BrowserView>("gallery");
 
   const handleConvert = useCallback(async () => {
     if (!details) return;
@@ -301,7 +303,18 @@ export function PackPanel({
         </Box>
       </Box>
 
-      <Box sx={{ borderBottom: 1, borderColor: "divider", px: 1.5 }}>
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          px: 1.5,
+          py: 0.5,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+        }}
+      >
         <Tabs
           value={activeTab}
           onChange={(_event, value: "assets" | "outputs") =>
@@ -324,6 +337,16 @@ export function PackPanel({
             disabled={outputs.length === 0}
           />
         </Tabs>
+        <BrowserViewToggle
+          compact
+          ariaLabel={`${
+            activeTab === "assets"
+              ? appTokens.copy.labels.assets
+              : appTokens.copy.labels.outputs
+          } view`}
+          view={view}
+          onChange={setView}
+        />
       </Box>
 
       <Box sx={{ flex: 1, overflowY: "auto" }}>
@@ -331,10 +354,11 @@ export function PackPanel({
           <AssetGrid
             assets={assets}
             pack={pack}
+            view={view}
             refreshDetails={() => refreshDetails(pack.id)}
           />
         ) : (
-          <OutputsList outputs={outputs} packId={pack.id} />
+          <OutputsList outputs={outputs} view={view} />
         )}
       </Box>
 
