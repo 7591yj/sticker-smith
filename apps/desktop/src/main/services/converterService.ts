@@ -35,6 +35,32 @@ async function pathExists(targetPath: string) {
   }
 }
 
+async function commandIsHealthy(command: string, cwd?: string) {
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn(command, ["-version"], {
+      cwd,
+      stdio: "ignore",
+    });
+
+    const timeout = setTimeout(() => {
+      if (!child.killed) {
+        child.kill();
+      }
+      resolve(false);
+    }, 5_000);
+
+    child.once("error", () => {
+      clearTimeout(timeout);
+      resolve(false);
+    });
+
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve(code === 0);
+    });
+  });
+}
+
 async function findWorkspaceRoot() {
   const explicitRoot = process.env.STICKER_SMITH_ROOT;
   if (
@@ -74,12 +100,20 @@ async function resolveBundledBackend(backendDirectory: string) {
   const ffmpeg = path.join(backendDirectory, FFMPEG_BINARY);
   const ffprobe = path.join(backendDirectory, FFPROBE_BINARY);
 
-  if (
-    !(await pathExists(command)) ||
-    !(await pathExists(ffmpeg)) ||
-    !(await pathExists(ffprobe))
-  ) {
+  if (!(await pathExists(command))) {
     return null;
+  }
+
+  const bundledFfmpegAvailable =
+    (await pathExists(ffmpeg)) && (await commandIsHealthy(ffmpeg, backendDirectory));
+  const bundledFfprobeAvailable =
+    (await pathExists(ffprobe)) &&
+    (await commandIsHealthy(ffprobe, backendDirectory));
+
+  if (!bundledFfmpegAvailable || !bundledFfprobeAvailable) {
+    console.warn(
+      "Bundled ffmpeg/ffprobe are unavailable; falling back to system commands.",
+    );
   }
 
   return {
@@ -88,8 +122,14 @@ async function resolveBundledBackend(backendDirectory: string) {
     cwd: backendDirectory,
     env: {
       ...process.env,
-      STICKER_SMITH_FFMPEG: ffmpeg,
-      STICKER_SMITH_FFPROBE: ffprobe,
+      STICKER_SMITH_FFMPEG:
+        bundledFfmpegAvailable
+          ? ffmpeg
+          : process.env.STICKER_SMITH_FFMPEG ?? FFMPEG_BINARY,
+      STICKER_SMITH_FFPROBE:
+        bundledFfprobeAvailable
+          ? ffprobe
+          : process.env.STICKER_SMITH_FFPROBE ?? FFPROBE_BINARY,
     },
   };
 }

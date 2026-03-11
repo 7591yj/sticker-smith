@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,15 +10,16 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 
-const { spawnMock } = vi.hoisted(() => ({
+const { appMock, spawnMock } = vi.hoisted(() => ({
+  appMock: {
+    isPackaged: false,
+    getAppPath: () => "/tmp/sticker-smith",
+  },
   spawnMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
-  app: {
-    isPackaged: false,
-    getAppPath: () => "/tmp/sticker-smith",
-  },
+  app: appMock,
 }));
 
 vi.mock("node:child_process", () => ({
@@ -27,6 +31,8 @@ vi.mock("node:child_process", () => ({
 
 import { ConverterService } from "../src/main/services/converterService";
 
+const originalResourcesPath = process.resourcesPath;
+
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
@@ -37,6 +43,55 @@ class FakeChildProcess extends EventEmitter {
     this.killed = true;
     return true;
   });
+}
+
+class FakeCommandProcess extends EventEmitter {
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  stdin = { end: vi.fn() };
+  killed = false;
+
+  constructor(private readonly exitCode: number) {
+    super();
+    queueMicrotask(() => {
+      this.emit("close", this.exitCode);
+    });
+  }
+
+  kill = vi.fn(() => {
+    this.killed = true;
+    this.emit("close", null);
+    return true;
+  });
+}
+
+async function createBundledBackend() {
+  const resourcesPath = await fs.mkdtemp(
+    path.join(os.tmpdir(), "sticker-smith-backend-"),
+  );
+  const backendDirectory = path.join(resourcesPath, "backend");
+
+  await fs.mkdir(backendDirectory, { recursive: true });
+  await Promise.all([
+    fs.writeFile(path.join(backendDirectory, "gui-api"), ""),
+    fs.writeFile(path.join(backendDirectory, "ffmpeg"), ""),
+    fs.writeFile(path.join(backendDirectory, "ffprobe"), ""),
+  ]);
+
+  return { resourcesPath, backendDirectory };
+}
+
+function getResolveBackendCommand(service: ConverterService) {
+  return (
+    service as unknown as {
+      resolveBackendCommand: () => Promise<{
+        command: string;
+        args: string[];
+        cwd: string;
+        env: NodeJS.ProcessEnv;
+      }>;
+    }
+  ).resolveBackendCommand();
 }
 
 async function waitForSpawn() {
@@ -110,6 +165,11 @@ function createEvent(assetId: string, outputPath: string): ConversionJobEvent {
 
 afterEach(() => {
   spawnMock.mockReset();
+  appMock.isPackaged = false;
+  Object.defineProperty(process, "resourcesPath", {
+    configurable: true,
+    value: originalResourcesPath,
+  });
   vi.restoreAllMocks();
 });
 
@@ -241,5 +301,58 @@ describe("ConverterService", () => {
       "start:asset-2",
       "end:asset-2",
     ]);
+  });
+
+  it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {
+    appMock.isPackaged = true;
+    const { resourcesPath, backendDirectory } = await createBundledBackend();
+    Object.defineProperty(process, "resourcesPath", {
+      configurable: true,
+      value: resourcesPath,
+    });
+
+    spawnMock.mockImplementation((command: string, args?: string[]) => {
+      if (args?.[0] === "-version") {
+        return new FakeCommandProcess(127) as never;
+      }
+
+      throw new Error(`Unexpected spawn call: ${command} ${args?.join(" ")}`);
+    });
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.command).toBe(path.join(backendDirectory, "gui-api"));
+    expect(backend.cwd).toBe(backendDirectory);
+    expect(backend.env.STICKER_SMITH_FFMPEG).toBe("ffmpeg");
+    expect(backend.env.STICKER_SMITH_FFPROBE).toBe("ffprobe");
+  });
+
+  it("uses bundled ffmpeg and ffprobe for packaged builds when both binaries are healthy", async () => {
+    appMock.isPackaged = true;
+    const { resourcesPath, backendDirectory } = await createBundledBackend();
+    Object.defineProperty(process, "resourcesPath", {
+      configurable: true,
+      value: resourcesPath,
+    });
+
+    spawnMock.mockImplementation((command: string, args?: string[]) => {
+      if (args?.[0] === "-version") {
+        return new FakeCommandProcess(0) as never;
+      }
+
+      throw new Error(`Unexpected spawn call: ${command} ${args?.join(" ")}`);
+    });
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.command).toBe(path.join(backendDirectory, "gui-api"));
+    expect(backend.env.STICKER_SMITH_FFMPEG).toBe(
+      path.join(backendDirectory, "ffmpeg"),
+    );
+    expect(backend.env.STICKER_SMITH_FFPROBE).toBe(
+      path.join(backendDirectory, "ffprobe"),
+    );
   });
 });
