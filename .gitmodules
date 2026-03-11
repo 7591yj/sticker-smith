@@ -1,0 +1,3 @@
+[submodule "tg-webm-converter"]
+	path = tg-webm-converter
+	url = https://github.com/7591yj/tg-webm-converter.git

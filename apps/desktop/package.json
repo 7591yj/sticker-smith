@@ -1,0 +1,82 @@
+{
+  "name": "sticker-smith-desktop",
+  "version": "0.1.0",
+  "description": "Desktop sticker pack manager for Telegram WebM assets.",
+  "author": {
+    "name": "Yeongjin Kim",
+    "email": "77034308+7591yj@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/7591yj/sticker-smith",
+  "private": true,
+  "main": "dist-electron/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.node.json && vite build",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "package:linux": "bun run package:backend && bun run build && electron-builder --linux AppImage deb",
+    "package:backend": "bash ../../tg-webm-converter/scripts/package_backend.sh"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.9",
+    "@mui/material": "^7.3.9",
+    "@sticker-smith/shared": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.14",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.4.1",
+    "electron": "38.8.4",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "^4.0.14",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^3.0.8"
+  },
+  "build": {
+    "appId": "dev.stickersmith.desktop",
+    "productName": "Sticker Smith",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../tg-webm-converter/dist/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Graphics",
+      "maintainer": "Yeongjin Kim <77034308+7591yj@users.noreply.github.com>"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "src/theme/**/*.ts",
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
+    "vite.config.ts"
+  ]
+}

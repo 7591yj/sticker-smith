@@ -1,0 +1,133 @@
+import { shell } from "electron";
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
+
+import type { LibraryService } from "./libraryService";
+
+const execFileAsync = promisify(execFile);
+
+async function commandExists(command: string) {
+  try {
+    await execFileAsync("sh", ["-c", `command -v ${command}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function revealWithLinuxFileManager(
+  targetPath: string,
+  highlight: boolean,
+) {
+  const uri = pathToFileURL(targetPath).toString();
+  const method = highlight ? "ShowItems" : "ShowFolders";
+
+  if (await commandExists("dbus-send")) {
+    await execFileAsync("dbus-send", [
+      "--session",
+      "--dest=org.freedesktop.FileManager1",
+      "--type=method_call",
+      "/org/freedesktop/FileManager1",
+      `org.freedesktop.FileManager1.${method}`,
+      `array:string:${uri}`,
+      "string:",
+    ]);
+    return true;
+  }
+
+  if (await commandExists("gdbus")) {
+    await execFileAsync("gdbus", [
+      "call",
+      "--session",
+      "--dest",
+      "org.freedesktop.FileManager1",
+      "--object-path",
+      "/org/freedesktop/FileManager1",
+      "--method",
+      `org.freedesktop.FileManager1.${method}`,
+      `['${uri}']`,
+      "",
+    ]);
+    return true;
+  }
+
+  return false;
+}
+
+export class ShellService {
+  constructor(private readonly libraryService: LibraryService) {}
+
+  async revealOutput(input: { packId: string; relativePath?: string }) {
+    const details = await this.libraryService.getPack(input.packId);
+    if (input.relativePath) {
+      const targetPath = path.join(details.pack.outputRoot, input.relativePath);
+      await fs.access(targetPath);
+
+      if (
+        process.platform === "linux" &&
+        (await revealWithLinuxFileManager(targetPath, true).catch(() => false))
+      ) {
+        return;
+      }
+
+      await shell.showItemInFolder(targetPath);
+      return;
+    }
+
+    await fs.mkdir(details.pack.outputRoot, { recursive: true });
+
+    if (
+      process.platform === "linux" &&
+      (await revealWithLinuxFileManager(details.pack.outputRoot, false).catch(
+        () => false,
+      ))
+    ) {
+      return;
+    }
+
+    const openError = await shell.openPath(details.pack.outputRoot);
+    if (openError) {
+      throw new Error(openError);
+    }
+  }
+
+  async exportOutputFolder(input: {
+    packId: string;
+    destinationRoot: string;
+  }) {
+    const details = await this.libraryService.getPack(input.packId);
+    const sourceRoot = path.resolve(details.pack.outputRoot);
+    const destinationRoot = path.resolve(input.destinationRoot);
+    const exportFolderName = `${details.pack.slug}-webm`;
+    const targetRoot = path.resolve(
+      path.join(destinationRoot, exportFolderName),
+    );
+
+    await fs.mkdir(sourceRoot, { recursive: true });
+
+    if (targetRoot === sourceRoot) {
+      throw new Error("Destination matches the outputs folder.");
+    }
+
+    const relativeTarget = path.relative(sourceRoot, targetRoot);
+    const targetInsideSource =
+      relativeTarget !== "" &&
+      !relativeTarget.startsWith("..") &&
+      !path.isAbsolute(relativeTarget);
+
+    if (targetInsideSource) {
+      throw new Error("Destination cannot be inside the outputs folder.");
+    }
+
+    await fs.cp(sourceRoot, targetRoot, {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+
+    return targetRoot;
+  }
+}
