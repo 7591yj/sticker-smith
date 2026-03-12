@@ -45,6 +45,14 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     getLabel: (asset) => asset.relativePath,
     isPinned: (asset) => pack.iconAssetId === asset.id,
   });
+  const standaloneTelegramIconPath =
+    pack.source === "telegram" &&
+    pack.thumbnailPath &&
+    !assets.some((asset) => asset.absolutePath === pack.thumbnailPath)
+      ? pack.thumbnailPath
+      : null;
+  const standaloneTelegramIconRelativePath =
+    standaloneTelegramIconPath?.split("/").pop() ?? "telegram-pack-icon";
 
   const handleContextMenu = useCallback(
     (e: MouseEvent, asset: SourceAsset) => {
@@ -125,7 +133,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     [emojiAsset, pack.id, refreshDetails],
   );
 
-  if (assets.length === 0) {
+  if (assets.length === 0 && !standaloneTelegramIconPath) {
     return (
       <Box sx={{ px: 3, py: 6, color: "text.secondary", textAlign: "center" }}>
         <Typography
@@ -143,6 +151,26 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       <Box sx={{ pb: 2.5 }}>
         {view === "list" ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, px: 2.5 }}>
+            {standaloneTelegramIconPath ? (
+              <BrowserListRow
+                key="telegram-pack-icon"
+                title={standaloneTelegramIconRelativePath}
+                filename={standaloneTelegramIconRelativePath}
+                isPinned
+                preview={
+                  <FilePreview
+                    absolutePath={standaloneTelegramIconPath}
+                    relativePath={standaloneTelegramIconRelativePath}
+                  />
+                }
+                metadata={
+                  <Box sx={fileMetadataRowSx}>
+                    <Chip label="icon" size="small" sx={fileMetaChipSx} />
+                    <Chip label="ready" size="small" sx={fileMetaChipSx} />
+                  </Box>
+                }
+              />
+            ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
               const filename =
@@ -193,6 +221,26 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
               px: 2.5,
             }}
           >
+            {standaloneTelegramIconPath ? (
+              <BrowserGalleryCard
+                key="telegram-pack-icon"
+                title={standaloneTelegramIconRelativePath}
+                filename={standaloneTelegramIconRelativePath}
+                isPinned
+                preview={
+                  <FilePreview
+                    absolutePath={standaloneTelegramIconPath}
+                    relativePath={standaloneTelegramIconRelativePath}
+                  />
+                }
+                metadata={
+                  <Box sx={fileMetadataRowSx}>
+                    <Chip label="icon" size="small" sx={fileMetaChipSx} />
+                    <Chip label="ready" size="small" sx={fileMetaChipSx} />
+                  </Box>
+                }
+              />
+            ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
               const filename =

@@ -42,6 +42,7 @@ const stickerSmith: StickerSmithApi = {
     ): Promise<TelegramState> =>
       ipcRenderer.invoke("telegram.submitPassword", input),
     logout: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.logout"),
+    reset: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.reset"),
     syncOwnedPacks: (): Promise<void> => ipcRenderer.invoke("telegram.syncOwnedPacks"),
     downloadPackMedia: (input: { packId: string }): Promise<void> =>
       ipcRenderer.invoke("telegram.downloadPackMedia", input),

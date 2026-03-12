@@ -42,6 +42,11 @@ The desktop app persists data under:
 - macOS: `~/Library/Application Support/StickerSmith`
 - Windows: `%APPDATA%/StickerSmith`
 
+Telegram secrets prefer the OS keychain. If the keychain and Electron `safeStorage`
+are both unavailable, Sticker Smith falls back to plaintext storage in
+`telegram/secrets.json` under the library root. This is a common Linux/Nix
+development-shell case when no desktop secret service is available.
+
 Pack data layout:
 
 - Source assets live under `packs/<slug>-<uuid>/source`

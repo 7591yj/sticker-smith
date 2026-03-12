@@ -25,6 +25,7 @@ import { appTokens } from "../../theme/appTokens";
 import { RenameDialog } from "./RenameDialog";
 import { TelegramAuthDialog } from "./TelegramAuthDialog";
 import { toFileUrl } from "../utils/fileUrl";
+import { formatTelegramSyncStateLabel } from "../utils/telegramSyncState";
 
 function isVideoThumbnail(filePath: string) {
   return filePath.toLowerCase().endsWith(".webm");
@@ -90,6 +91,7 @@ function PackThumbnail({
 interface Props {
   packs: StickerPack[];
   telegramState: TelegramState | null;
+  telegramSyncInProgress: boolean;
   selectedPackId: string | null;
   onSelect: (id: string) => void;
   onSubmitTelegramTdlibParameters: (input: {
@@ -102,6 +104,7 @@ interface Props {
   onSubmitTelegramCode: (input: { code: string }) => Promise<unknown>;
   onSubmitTelegramPassword: (input: { password: string }) => Promise<unknown>;
   onLogoutTelegram: () => Promise<unknown>;
+  onResetTelegram: () => Promise<unknown>;
   onSyncTelegramPacks: () => Promise<unknown>;
   refreshPacks: () => Promise<StickerPack[]>;
   setSelectedPackId: (id: string | null) => void;
@@ -134,6 +137,7 @@ function statusLabelForTelegram(state: TelegramState | null) {
 export function Sidebar({
   packs,
   telegramState,
+  telegramSyncInProgress,
   selectedPackId,
   onSelect,
   onSubmitTelegramTdlibParameters,
@@ -141,12 +145,23 @@ export function Sidebar({
   onSubmitTelegramCode,
   onSubmitTelegramPassword,
   onLogoutTelegram,
+  onResetTelegram,
   onSyncTelegramPacks,
   refreshPacks,
   setSelectedPackId,
 }: Props) {
   const localPacks = packs.filter((pack) => pack.source === "local");
-  const telegramPacks = packs.filter((pack) => pack.source === "telegram");
+  const telegramPacks = packs.filter(
+    (pack) =>
+      pack.source === "telegram" && pack.telegram?.syncState !== "unsupported",
+  );
+  const unsupportedTelegramPacks = packs.filter(
+    (pack) =>
+      pack.source === "telegram" && pack.telegram?.syncState === "unsupported",
+  );
+  const telegramSyncBusy = telegramSyncInProgress || telegramPacks.some(
+    (pack) => pack.telegram?.syncState === "syncing",
+  );
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -259,7 +274,7 @@ export function Sidebar({
           primary={pack.name}
           secondary={
             pack.telegram?.syncState && pack.source === "telegram"
-              ? pack.telegram.syncState
+              ? formatTelegramSyncStateLabel(pack.telegram.syncState)
               : undefined
           }
           primaryTypographyProps={{
@@ -396,13 +411,15 @@ export function Sidebar({
               variant="outlined"
               startIcon={<SyncIcon sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }} />}
               onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
-              disabled={telegramState?.status !== "connected"}
+              disabled={telegramState?.status !== "connected" || telegramSyncBusy}
               sx={{
                 textTransform: "none",
                 fontSize: appTokens.typography.fontSizes.bodyCompact,
               }}
             >
-              {telegramPacks.length > 0
+              {telegramSyncBusy
+                ? appTokens.copy.labels.telegramSyncInProgress
+                : telegramPacks.length > 0
                 ? appTokens.copy.actions.resync
                 : appTokens.copy.actions.sync}
             </Button>
@@ -418,7 +435,19 @@ export function Sidebar({
               >
                 {appTokens.copy.actions.logout}
               </Button>
-            ) : null}
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => void onResetTelegram().catch(() => undefined)}
+                sx={{
+                  textTransform: "none",
+                  fontSize: appTokens.typography.fontSizes.bodyCompact,
+                }}
+              >
+                {appTokens.copy.actions.resetTelegram}
+              </Button>
+            )}
           </Box>
           <Typography
             variant="caption"
@@ -429,6 +458,27 @@ export function Sidebar({
           </Typography>
         </Box>
         {renderPackList(telegramPacks, appTokens.copy.emptyStates.noTelegramPacks)}
+
+        {unsupportedTelegramPacks.length > 0 ? (
+          <>
+            <Divider sx={{ my: 0.75 }} />
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{
+                display: "block",
+                px: 1.5,
+                pt: 0.5,
+                pb: 0.25,
+                letterSpacing: appTokens.typography.letterSpacing.overline,
+                fontSize: appTokens.typography.fontSizes.overline,
+              }}
+            >
+              {appTokens.copy.labels.telegramUnsupportedPacks}
+            </Typography>
+            {renderPackList(unsupportedTelegramPacks, "")}
+          </>
+        ) : null}
       </List>
 
       <Menu

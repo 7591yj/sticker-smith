@@ -11,6 +11,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import UpdateIcon from "@mui/icons-material/Update";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tab from "@mui/material/Tab";
@@ -19,6 +20,10 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerPack, StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
+import {
+  formatTelegramSyncStateLabel,
+  telegramSyncStateChipSx,
+} from "../utils/telegramSyncState";
 import { AssetGrid } from "./AssetGrid";
 import { BrowserViewToggle, type BrowserView } from "./fileBrowser";
 import { OutputsList } from "./OutputsList";
@@ -29,6 +34,8 @@ interface Props {
   details: StickerPackDetails | null;
   converting: boolean;
   telegramConnected: boolean;
+  telegramPublishing: boolean;
+  telegramUpdating: boolean;
   setDetails: (d: StickerPackDetails | null) => void;
   refreshDetails: (packId: string) => Promise<StickerPackDetails>;
   refreshPacks: () => Promise<StickerPack[]>;
@@ -50,6 +57,8 @@ export function PackPanel({
   details,
   converting,
   telegramConnected,
+  telegramPublishing,
+  telegramUpdating,
   setDetails,
   refreshDetails,
   refreshPacks,
@@ -145,21 +154,38 @@ export function PackPanel({
   }
 
   const { pack, assets, outputs } = details;
+  const telegramUnsupported =
+    pack.source === "telegram" && pack.telegram?.syncState === "unsupported";
+  const unsupportedTelegramTooltip =
+    pack.source === "telegram" && pack.telegram
+      ? `This Telegram pack uses ${pack.telegram.format} stickers. Only video sticker packs are supported currently.`
+      : null;
   const primaryActionLabel =
     pack.source === "telegram"
-      ? appTokens.copy.actions.update
-      : appTokens.copy.actions.upload;
+      ? telegramUpdating
+        ? appTokens.copy.actions.updating
+        : appTokens.copy.actions.update
+      : telegramPublishing
+        ? appTokens.copy.actions.uploading
+        : appTokens.copy.actions.upload;
+  const telegramMirrorBusy =
+    telegramUpdating || pack.telegram?.syncState === "syncing";
   const hasPendingTelegramMedia =
     pack.source === "telegram" &&
+    !telegramUnsupported &&
     assets.some(
       (asset) =>
         asset.downloadState === "missing" || asset.downloadState === "failed",
     );
-  const telegramMediaActionLabel = assets.some(
-    (asset) => asset.downloadState === "failed",
-  )
-    ? appTokens.copy.actions.retryMedia
-    : appTokens.copy.actions.downloadMedia;
+  const telegramMediaBusy = assets.some(
+    (asset) =>
+      asset.downloadState === "queued" || asset.downloadState === "downloading",
+  );
+  const telegramMediaActionLabel = telegramMediaBusy
+    ? appTokens.copy.actions.downloadingMedia
+    : assets.some((asset) => asset.downloadState === "failed")
+      ? appTokens.copy.actions.retryMedia
+      : appTokens.copy.actions.downloadMedia;
 
   return (
     <Box
@@ -192,13 +218,32 @@ export function PackPanel({
             {pack.name}
           </Typography>
           {pack.telegram ? (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                flexWrap: "wrap",
+                mt: 0.375,
+              }}
             >
-              {`${pack.telegram.syncState} · ${pack.telegram.shortName}`}
-            </Typography>
+              <Chip
+                size="small"
+                label={formatTelegramSyncStateLabel(pack.telegram.syncState)}
+                sx={{
+                  height: 20,
+                  fontSize: appTokens.typography.fontSizes.caption,
+                  ...telegramSyncStateChipSx(pack.telegram.syncState),
+                }}
+              />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+              >
+                {pack.telegram.shortName}
+              </Typography>
+            </Box>
           ) : null}
         </Box>
 
@@ -256,7 +301,7 @@ export function PackPanel({
                     sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
                   />
                 }
-                disabled={!telegramConnected}
+                disabled={!telegramConnected || telegramPublishing}
                 onClick={() => setPublishDialogOpen(true)}
                 sx={{
                   textTransform: "none",
@@ -270,7 +315,15 @@ export function PackPanel({
             </span>
           </Tooltip>
         ) : (
-          <Tooltip title="Push local mirror changes to Telegram">
+          <Tooltip
+            title={
+              telegramUnsupported
+                ? unsupportedTelegramTooltip
+                : telegramMirrorBusy
+                ? "Telegram is already syncing this mirror"
+                : "Push local mirror changes to Telegram"
+            }
+          >
             <span>
               <Button
                 size="small"
@@ -280,7 +333,7 @@ export function PackPanel({
                     sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
                   />
                 }
-                disabled={!telegramConnected}
+                disabled={!telegramConnected || telegramMirrorBusy || telegramUnsupported}
                 onClick={() =>
                   void onUpdateTelegramPack({ packId: pack.id }).catch(
                     () => undefined,
@@ -332,7 +385,15 @@ export function PackPanel({
           </span>
         </Tooltip>
         {pack.source === "telegram" && hasPendingTelegramMedia ? (
-          <Tooltip title="Download missing Telegram sticker media for this mirror">
+          <Tooltip
+            title={
+              telegramUnsupported
+                ? unsupportedTelegramTooltip
+                : telegramMirrorBusy || telegramMediaBusy
+                ? "Telegram media download is already in progress for this mirror"
+                : "Download missing Telegram sticker media for this mirror"
+            }
+          >
             <span>
               <Button
                 size="small"
@@ -342,6 +403,7 @@ export function PackPanel({
                     sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
                   />
                 }
+                disabled={telegramMirrorBusy || telegramMediaBusy}
                 onClick={() =>
                   void onDownloadTelegramPackMedia({
                     packId: details.pack.id,

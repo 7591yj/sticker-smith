@@ -37,6 +37,7 @@ export interface StickerSmithApi {
       input: SubmitTelegramPasswordInput,
     ) => Promise<TelegramState>;
     logout: () => Promise<TelegramState>;
+    reset: () => Promise<TelegramState>;
     syncOwnedPacks: () => Promise<void>;
     downloadPackMedia: (input: { packId: string }) => Promise<void>;
     publishLocalPack: (input: PublishLocalPackInput) => Promise<void>;

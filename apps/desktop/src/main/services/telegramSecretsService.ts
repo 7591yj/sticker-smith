@@ -19,9 +19,14 @@ interface SafeStorageModule {
   decryptString(value: Buffer): string;
 }
 
+interface StoredSecretRecord {
+  storage: "safe_storage" | "plain_text";
+  value: string;
+}
+
 interface StoredFallbackSecrets {
-  schemaVersion: 1;
-  secrets: Record<string, string>;
+  schemaVersion: 2;
+  secrets: Record<string, StoredSecretRecord>;
 }
 
 export interface TelegramSecretsServiceOptions {
@@ -41,7 +46,7 @@ async function loadSafeStorage() {
 
 function createEmptyFallbackSecrets(): StoredFallbackSecrets {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     secrets: {},
   };
 }
@@ -110,10 +115,48 @@ export class TelegramSecretsService {
 
     try {
       const raw = await fs.readFile(this.secretsPath, "utf8");
-      const parsed = JSON.parse(raw) as Partial<StoredFallbackSecrets>;
+      const parsed = JSON.parse(raw) as
+        | Partial<StoredFallbackSecrets>
+        | {
+            schemaVersion?: 1;
+            secrets?: Record<string, string>;
+          };
+
+      if (parsed.schemaVersion === 2 && parsed.secrets) {
+        const secrets = Object.fromEntries(
+          Object.entries(parsed.secrets).flatMap(([accountName, record]) =>
+            record &&
+            typeof record === "object" &&
+            "storage" in record &&
+            "value" in record &&
+            (record.storage === "safe_storage" ||
+              record.storage === "plain_text") &&
+            typeof record.value === "string"
+              ? [[accountName, record]]
+              : [],
+          ),
+        );
+
+        return {
+          schemaVersion: 2,
+          secrets,
+        } satisfies StoredFallbackSecrets;
+      }
+
       return {
-        schemaVersion: 1,
-        secrets: parsed.secrets ?? {},
+        schemaVersion: 2,
+        secrets: Object.fromEntries(
+          Object.entries(parsed.secrets ?? {}).filter(
+            (_entry): _entry is [string, string] =>
+              typeof _entry[0] === "string" && typeof _entry[1] === "string",
+          ).map(([accountName, value]) => [
+            accountName,
+            {
+              storage: "safe_storage" as const,
+              value,
+            },
+          ]),
+        ),
       } satisfies StoredFallbackSecrets;
     } catch {
       return createEmptyFallbackSecrets();
@@ -126,20 +169,24 @@ export class TelegramSecretsService {
   }
 
   private async getFallbackSecret(accountKey: string, key: SecretKey) {
-    const safeStorage = await this.getSafeStorage();
-    if (!safeStorage?.isEncryptionAvailable()) {
-      throw new Error(
-        "Telegram secret storage is unavailable because the OS keychain and Electron safeStorage are both unavailable.",
-      );
-    }
-
     const secrets = await this.readFallbackSecrets();
-    const encoded = secrets.secrets[this.accountName(accountKey, key)];
-    if (!encoded) {
+    const stored = secrets.secrets[this.accountName(accountKey, key)];
+    if (!stored) {
       return null;
     }
 
-    return safeStorage.decryptString(Buffer.from(encoded, "base64"));
+    if (stored.storage === "plain_text") {
+      return stored.value;
+    }
+
+    const safeStorage = await this.getSafeStorage();
+    if (!safeStorage?.isEncryptionAvailable()) {
+      throw new Error(
+        "Telegram secret storage is unavailable because this environment cannot unlock previously encrypted Telegram credentials.",
+      );
+    }
+
+    return safeStorage.decryptString(Buffer.from(stored.value, "base64"));
   }
 
   private async setFallbackSecret(
@@ -148,16 +195,17 @@ export class TelegramSecretsService {
     value: string,
   ) {
     const safeStorage = await this.getSafeStorage();
-    if (!safeStorage?.isEncryptionAvailable()) {
-      throw new Error(
-        "Telegram secret storage is unavailable because the OS keychain and Electron safeStorage are both unavailable.",
-      );
-    }
-
     const secrets = await this.readFallbackSecrets();
-    secrets.secrets[this.accountName(accountKey, key)] = safeStorage
-      .encryptString(value)
-      .toString("base64");
+    secrets.secrets[this.accountName(accountKey, key)] =
+      safeStorage?.isEncryptionAvailable()
+        ? {
+            storage: "safe_storage",
+            value: safeStorage.encryptString(value).toString("base64"),
+          }
+        : {
+            storage: "plain_text",
+            value,
+          };
     await this.writeFallbackSecrets(secrets);
   }
 
@@ -171,7 +219,13 @@ export class TelegramSecretsService {
     const keytar = await this.getKeytar();
 
     if (keytar) {
-      return keytar.getPassword(SERVICE_NAME, this.accountName(accountKey, key));
+      const secret = await keytar.getPassword(
+        SERVICE_NAME,
+        this.accountName(accountKey, key),
+      );
+      if (secret !== null) {
+        return secret;
+      }
     }
 
     return this.getFallbackSecret(accountKey, key);
@@ -186,6 +240,7 @@ export class TelegramSecretsService {
         this.accountName(accountKey, key),
         value,
       );
+      await this.deleteFallbackSecret(accountKey, key);
       return;
     }
 
@@ -200,7 +255,6 @@ export class TelegramSecretsService {
         SERVICE_NAME,
         this.accountName(accountKey, key),
       );
-      return;
     }
 
     await this.deleteFallbackSecret(accountKey, key);
@@ -215,10 +269,11 @@ export class TelegramSecretsService {
   }
 
   async getAvailability() {
+    const safeStorage = await this.getSafeStorage();
     return {
       keychain: await this.isKeychainAvailable(),
-      fallbackEncryption:
-        (await this.getSafeStorage())?.isEncryptionAvailable() ?? false,
+      fallbackEncryption: safeStorage?.isEncryptionAvailable() ?? false,
+      plaintextFallback: true,
     };
   }
 }

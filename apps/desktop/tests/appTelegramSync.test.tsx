@@ -280,4 +280,265 @@ describe("app telegram pack refresh", () => {
       root.unmount();
     });
   });
+
+  it("refreshes telegram mirror state when pack sync starts", async () => {
+    let listener: ((event: TelegramEvent) => void) | null = null;
+    const syncOwnedPacks = vi.fn(async () => undefined);
+    let packs = [
+      {
+        id: "telegram-pack",
+        source: "telegram" as const,
+        name: "Telegram Pack",
+        slug: "telegram-pack",
+        rootPath: "/tmp/telegram-pack",
+        sourceRoot: "/tmp/telegram-pack/source",
+        outputRoot: "/tmp/telegram-pack/webm",
+        iconAssetId: null,
+        thumbnailPath: null,
+        telegram: {
+          stickerSetId: "100",
+          shortName: "telegram_pack",
+          title: "Telegram Pack",
+          format: "video" as const,
+          syncState: "idle" as const,
+          lastSyncedAt: "2026-03-12T00:00:00.000Z",
+          lastSyncError: null,
+          publishedFromLocalPackId: null,
+        },
+        createdAt: "2026-03-12T00:00:00.000Z",
+        updatedAt: "2026-03-12T00:00:00.000Z",
+      },
+    ];
+
+    Object.assign(window, {
+      stickerSmith: {
+        telegram: {
+          getState: vi.fn(async () => createConnectedTelegramState()),
+          subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
+            listener = nextListener;
+            return () => undefined;
+          }),
+          syncOwnedPacks,
+        },
+        packs: {
+          list: vi.fn(async () => packs),
+          get: vi.fn(async (packId: string) => ({
+            pack: packs.find((pack) => pack.id === packId) ?? packs[0],
+            assets: [],
+            outputs: [],
+          })),
+        },
+        assets: {},
+        conversion: {
+          subscribe: vi.fn(() => () => undefined),
+        },
+        outputs: {},
+        settings: {},
+      },
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Up to date");
+
+    packs = [
+      {
+        ...packs[0]!,
+        telegram: {
+          ...packs[0]!.telegram!,
+          syncState: "syncing",
+        },
+      },
+    ];
+
+    await act(async () => {
+      listener?.({
+        type: "pack_sync_started",
+        packId: "telegram-pack",
+        stickerSetId: "100",
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Syncing");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows uploading and updating action labels from telegram events", async () => {
+    let listener: ((event: TelegramEvent) => void) | null = null;
+    const syncOwnedPacks = vi.fn(async () => undefined);
+    let packs = [
+      {
+        id: "local-pack",
+        source: "local" as const,
+        name: "Local Pack",
+        slug: "local-pack",
+        rootPath: "/tmp/local-pack",
+        sourceRoot: "/tmp/local-pack/source",
+        outputRoot: "/tmp/local-pack/webm",
+        iconAssetId: null,
+        thumbnailPath: null,
+        createdAt: "2026-03-12T00:00:00.000Z",
+        updatedAt: "2026-03-12T00:00:00.000Z",
+      },
+      {
+        id: "telegram-pack",
+        source: "telegram" as const,
+        name: "Telegram Pack",
+        slug: "telegram-pack",
+        rootPath: "/tmp/telegram-pack",
+        sourceRoot: "/tmp/telegram-pack/source",
+        outputRoot: "/tmp/telegram-pack/webm",
+        iconAssetId: null,
+        thumbnailPath: null,
+        telegram: {
+          stickerSetId: "100",
+          shortName: "telegram_pack",
+          title: "Telegram Pack",
+          format: "video" as const,
+          syncState: "stale" as const,
+          lastSyncedAt: "2026-03-12T00:00:00.000Z",
+          lastSyncError: null,
+          publishedFromLocalPackId: null,
+        },
+        createdAt: "2026-03-12T00:00:00.000Z",
+        updatedAt: "2026-03-12T00:00:00.000Z",
+      },
+    ];
+
+    Object.assign(window, {
+      stickerSmith: {
+        telegram: {
+          getState: vi.fn(async () => createConnectedTelegramState()),
+          subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
+            listener = nextListener;
+            return () => undefined;
+          }),
+          syncOwnedPacks,
+        },
+        packs: {
+          list: vi.fn(async () => packs),
+          get: vi.fn(async (packId: string) => ({
+            pack: packs.find((pack) => pack.id === packId) ?? packs[0],
+            assets: [],
+            outputs: [],
+          })),
+        },
+        assets: {},
+        conversion: {
+          subscribe: vi.fn(() => () => undefined),
+        },
+        outputs: {},
+        settings: {},
+      },
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Upload");
+
+    await act(async () => {
+      listener?.({
+        type: "publish_started",
+        localPackId: "local-pack",
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Uploading…");
+
+    await act(async () => {
+      listener?.({
+        type: "publish_finished",
+        localPackId: "local-pack",
+        packId: "telegram-pack",
+        stickerSetId: "100",
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Update");
+
+    await act(async () => {
+      listener?.({
+        type: "update_started",
+        packId: "telegram-pack",
+        stickerSetId: "100",
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Updating…");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows sync-in-progress during first telegram sync before mirrors exist", async () => {
+    let listener: ((event: TelegramEvent) => void) | null = null;
+    const syncOwnedPacks = vi.fn(async () => undefined);
+
+    Object.assign(window, {
+      stickerSmith: {
+        telegram: {
+          getState: vi.fn(async () => createConnectedTelegramState()),
+          subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
+            listener = nextListener;
+            return () => undefined;
+          }),
+          syncOwnedPacks,
+        },
+        packs: {
+          list: vi.fn(async () => []),
+          get: vi.fn(),
+        },
+        assets: {},
+        conversion: {
+          subscribe: vi.fn(() => () => undefined),
+        },
+        outputs: {},
+        settings: {},
+      },
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      listener?.({
+        type: "sync_started",
+      });
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Sync in progress");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

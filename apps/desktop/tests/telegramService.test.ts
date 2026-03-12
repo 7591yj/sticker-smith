@@ -13,6 +13,9 @@ import type {
   TelegramTdlibStateListener,
 } from "../src/main/services/telegramTdlibService";
 
+const VALID_API_HASH = "0123456789abcdef0123456789abcdef";
+const LEGACY_API_HASH = "fedcba9876543210fedcba9876543210";
+
 class FakeSettingsService {
   constructor(private readonly root: string) {}
 
@@ -63,34 +66,70 @@ class FakeSecretsService {
 class FakeTdlibService {
   private readonly listeners = new Set<TelegramTdlibStateListener>();
   private readonly downloadFilePath: string;
+  private lastEnsureStartedCredentials: TelegramTdlibCredentials | null = null;
+  private submitPhoneNumberCalls: string[] = [];
   private setStickerSetTitleError: Error | null = null;
   private setStickerSetThumbnailError: Error | null = null;
   private ownedStickerSetRequestCount = 0;
   private clearedStickerSetThumbnails: string[] = [];
   private stickerEmojiUpdates: Array<{ fileId: string; emojis: string[] }> = [];
-  private ownedStickerSets = [
-    {
-      stickerSetId: "100",
-      shortName: "sample_pack",
-      title: "Sample Pack",
-      format: "video" as const,
-      thumbnailStickerId: "sticker-1",
-      stickers: [
-        {
-          stickerId: "sticker-1",
-          fileId: "remote-1",
-          fileUniqueId: "unique-1",
-          numericFileId: 101,
-          position: 0,
-          emojiList: ["🙂"],
-          format: "video" as const,
-        },
-      ],
-    },
-  ];
+  private ownedStickerSets: Array<{
+    stickerSetId: string;
+    shortName: string;
+    title: string;
+    format: "video" | "static" | "animated" | "mixed" | "unknown";
+    thumbnailStickerId: string | null;
+    thumbnailFile?: {
+      numericFileId: number;
+      fileId: string | null;
+      fileUniqueId: string | null;
+      localPath: string | null;
+      size: number;
+      downloadedSize: number;
+      isDownloaded: boolean;
+    } | null;
+    stickers: Array<{
+      stickerId: string;
+      fileId: string | null;
+      fileUniqueId: string | null;
+      numericFileId: number;
+      position: number;
+      emojiList: string[];
+      format: "video" | "static" | "animated" | "unknown";
+    }>;
+  }>;
 
   constructor(downloadFilePath: string) {
     this.downloadFilePath = downloadFilePath;
+    this.ownedStickerSets = [
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: "sticker-1",
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: this.downloadFilePath,
+          size: 128,
+          downloadedSize: 128,
+          isDownloaded: true,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ];
   }
 
   setSetStickerSetTitleError(error: Error | null) {
@@ -113,24 +152,7 @@ class FakeTdlibService {
     return this.ownedStickerSetRequestCount;
   }
 
-  setOwnedStickerSets(
-    ownedStickerSets: Array<{
-      stickerSetId: string;
-      shortName: string;
-      title: string;
-      format: "video";
-      thumbnailStickerId: string | null;
-      stickers: Array<{
-        stickerId: string;
-        fileId: string | null;
-        fileUniqueId: string | null;
-        numericFileId: number;
-        position: number;
-        emojiList: string[];
-        format: "video";
-      }>;
-    }>,
-  ) {
+  setOwnedStickerSets(ownedStickerSets: typeof this.ownedStickerSets) {
     this.ownedStickerSets = ownedStickerSets;
   }
 
@@ -139,7 +161,16 @@ class FakeTdlibService {
     return () => this.listeners.delete(listener);
   }
 
-  async ensureStarted(_credentials: TelegramTdlibCredentials) {
+  getLastEnsureStartedCredentials() {
+    return this.lastEnsureStartedCredentials;
+  }
+
+  getSubmitPhoneNumberCalls() {
+    return [...this.submitPhoneNumberCalls];
+  }
+
+  async ensureStarted(credentials: TelegramTdlibCredentials) {
+    this.lastEnsureStartedCredentials = credentials;
     return;
   }
 
@@ -147,7 +178,10 @@ class FakeTdlibService {
     return;
   }
 
-  async submitPhoneNumber() {
+  async submitPhoneNumber(phoneNumber?: string) {
+    if (phoneNumber) {
+      this.submitPhoneNumberCalls.push(phoneNumber);
+    }
     for (const listener of this.listeners) {
       listener.onAuthStateChanged({
         authStep: "wait_code",
@@ -325,6 +359,10 @@ async function addIconOutput(
     outputRoot: string;
   },
 ) {
+  await libraryService.setPackIcon({
+    packId: input.packId,
+    assetId: input.assetId,
+  });
   await libraryService.recordConversionResult(input.packId, {
     assetId: input.assetId,
     mode: "icon",
@@ -332,10 +370,16 @@ async function addIconOutput(
     sizeBytes: 64,
   });
   await fs.writeFile(path.join(input.outputRoot, "icon.webm"), "icon-data");
-  await libraryService.setPackIcon({
-    packId: input.packId,
-    assetId: input.assetId,
-  });
+}
+
+async function waitForCount(getCount: () => number, expected: number) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (getCount() === expected) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
 }
 
 describe("TelegramService", () => {
@@ -363,6 +407,106 @@ describe("TelegramService", () => {
     expect(state.tdlib.apiHashConfigured).toBe(false);
   });
 
+  it("resets malformed stored tdlib credentials instead of throwing on startup", async () => {
+    const { root, downloadRoot, telegramService, secretsService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    const telegramRoot = path.join(root, "telegram");
+    await fs.mkdir(telegramRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(telegramRoot, "state.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          backend: "tdlib",
+          status: "awaiting_credentials",
+          authStep: "wait_phone_number",
+          selectedMode: "user",
+          recommendedMode: "user",
+          message: "Saved state.",
+          tdlib: {
+            apiId: "12345",
+            apiHashConfigured: true,
+          },
+          user: {
+            phoneNumber: null,
+          },
+          sessionUser: null,
+          lastError: null,
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        },
+        null,
+        2,
+      ),
+    );
+    await secretsService.setSecret("default", "api_hash", "bad-hash");
+
+    const state = await telegramService.getState();
+
+    expect(state.authStep).toBe("wait_tdlib_parameters");
+    expect(state.tdlib.apiId).toBe("12345");
+    expect(state.tdlib.apiHashConfigured).toBe(false);
+    expect(state.lastError).toContain("Stored Telegram TDLib credentials are invalid.");
+    expect(await secretsService.getSecret("default", "api_hash")).toBeNull();
+  });
+
+  it("resets tdlib setup instead of throwing when tdlib rejects startup parameters", async () => {
+    const { root, downloadRoot, telegramService, secretsService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+
+    tdlibService.ensureStarted = async () => {
+      throw new Error(
+        "TDLibError: Failed to parse JSON object as TDLib request: Wrong character in the string",
+      );
+    };
+
+    const state = await telegramService.getState();
+
+    expect(state.authStep).toBe("wait_tdlib_parameters");
+    expect(state.status).toBe("awaiting_credentials");
+    expect(state.tdlib.apiId).toBeNull();
+    expect(state.tdlib.apiHashConfigured).toBe(false);
+    expect(state.user.phoneNumber).toBeNull();
+    expect(state.lastError).toContain("Telegram rejected the saved TDLib parameters.");
+    expect(state.lastError).toContain("Wrong character in the string");
+    expect(await secretsService.getSecret("default", "api_hash")).toBeNull();
+  });
+
+  it("replaces legacy uuid database encryption keys with base64 before tdlib startup", async () => {
+    const { root, downloadRoot, telegramService, secretsService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await secretsService.setSecret(
+      "default",
+      "database_encryption_key",
+      "e654aa91-a37d-4e55-b6fe-ff57ccc342b3",
+    );
+
+    const state = await telegramService.getState();
+    const savedKey = await secretsService.getSecret(
+      "default",
+      "database_encryption_key",
+    );
+    const startedWith = tdlibService.getLastEnsureStartedCredentials();
+
+    expect(state.authStep).toBe("wait_phone_number");
+    expect(savedKey).toMatch(/^[A-Za-z0-9+/]*={0,2}$/);
+    expect(savedKey?.length).toBeGreaterThan(36);
+    expect(startedWith?.databaseEncryptionKey).toBe(savedKey);
+  });
+
   it("migrates plaintext telegram secrets out of state.json", async () => {
     const { root, downloadRoot, telegramService, secretsService } =
       await createTelegramService();
@@ -383,7 +527,7 @@ describe("TelegramService", () => {
           message: "Old scaffold state.",
           credentials: {
             apiId: "54321",
-            apiHash: "plaintext-api-hash",
+            apiHash: LEGACY_API_HASH,
             phoneNumber: "+12025550123",
             botToken: "12345:test-bot-token",
           },
@@ -405,9 +549,7 @@ describe("TelegramService", () => {
     expect(state.status).toBe("awaiting_credentials");
     expect(state.authStep).toBe("wait_code");
     expect(state.selectedMode).toBe("user");
-    expect(await secretsService.getSecret("default", "api_hash")).toBe(
-      "plaintext-api-hash",
-    );
+    expect(await secretsService.getSecret("default", "api_hash")).toBe(LEGACY_API_HASH);
     expect(await secretsService.getSecret("default", "bot_token")).toBe(
       "12345:test-bot-token",
     );
@@ -459,7 +601,7 @@ describe("TelegramService", () => {
 
     const withParameters = await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     const withPhoneNumber = await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -478,6 +620,68 @@ describe("TelegramService", () => {
     expect(ready.sessionUser?.username).toBe("stickersmith");
   });
 
+  it("normalizes phone number formatting before submitting it to tdlib", async () => {
+    const { root, downloadRoot, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+81 70-1234-5678",
+    });
+
+    expect(tdlibService.getSubmitPhoneNumberCalls()).toContain("+817012345678");
+  });
+
+  it("does not submit the phone number twice when tdlib already sent it during startup", async () => {
+    const { root, downloadRoot, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+817012345678",
+    });
+
+    expect(tdlibService.getSubmitPhoneNumberCalls()).toEqual(["+817012345678"]);
+  });
+
+  it("normalizes pasted tdlib credentials before saving them", async () => {
+    const { root, downloadRoot, telegramService, secretsService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    const state = await telegramService.submitTdlibParameters({
+      apiId: ' "12345"\n',
+      apiHash: " \u200b0123456789abcdef0123456789abcdef\r\n",
+    });
+
+    expect(state.tdlib.apiId).toBe("12345");
+    expect(await secretsService.getSecret("default", "api_hash")).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
+  });
+
+  it("rejects malformed tdlib credentials before starting tdlib", async () => {
+    const { root, downloadRoot, telegramService } = await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await expect(
+      telegramService.submitTdlibParameters({
+        apiId: "12 345",
+        apiHash: "not-a-real-hash",
+      }),
+    ).rejects.toThrow(
+      "Telegram api_hash should be the 32-character hash from my.telegram.org.",
+    );
+  });
+
   it("deduplicates concurrent owned telegram pack sync requests", async () => {
     const { root, downloadRoot, telegramService, tdlibService } =
       await createTelegramService();
@@ -485,7 +689,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -508,6 +712,7 @@ describe("TelegramService", () => {
     const firstSync = telegramService.syncOwnedPacks();
     const secondSync = telegramService.syncOwnedPacks();
 
+    await waitForCount(() => requestCount, 1);
     expect(requestCount).toBe(1);
 
     resolveOwnedStickerSets?.();
@@ -523,7 +728,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -533,6 +738,12 @@ describe("TelegramService", () => {
 
     const mirrorPack = await libraryService.findPackByTelegramStickerSetId("100");
     expect(mirrorPack).toBeTruthy();
+    const mirrorDetails = await libraryService.getPack(mirrorPack!.record.id);
+    await libraryService.setTelegramAssetDownloadState({
+      packId: mirrorPack!.record.id,
+      assetId: mirrorDetails.assets[0]!.id,
+      downloadState: "missing",
+    });
 
     const originalDownloadFile = tdlibService.downloadFile.bind(tdlibService);
     let resolveDownload: (() => void) | null = null;
@@ -547,12 +758,13 @@ describe("TelegramService", () => {
     };
 
     const firstDownload = telegramService.downloadPackMedia({
-      packId: mirrorPack!.id,
+      packId: mirrorPack!.record.id,
     });
     const secondDownload = telegramService.downloadPackMedia({
-      packId: mirrorPack!.id,
+      packId: mirrorPack!.record.id,
     });
 
+    await waitForCount(() => downloadCount, 1);
     expect(downloadCount).toBe(1);
 
     resolveDownload?.();
@@ -568,7 +780,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -596,7 +808,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -617,6 +829,41 @@ describe("TelegramService", () => {
     ).rejects.toThrow("Sticker output for sticker.png is missing");
   });
 
+  it("publishes a local pack when its only sticker asset is also the icon", async () => {
+    const { root, downloadRoot, libraryService, telegramService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
+    cleanup.push(fileRoot);
+    const details = await libraryService.getPack(pack.id);
+    await addIconOutput(libraryService, {
+      packId: pack.id,
+      assetId: details.assets[0]!.id,
+      outputRoot: pack.outputRoot,
+    });
+
+    await telegramService.publishLocalPack({
+      packId: pack.id,
+      title: "Upload Pack",
+      shortName: "upload_pack",
+    });
+
+    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
+    expect(mirror).not.toBeNull();
+    expect(mirror?.record.telegram?.publishedFromLocalPackId).toBe(pack.id);
+    expect(mirror?.record.iconAssetId).not.toBeNull();
+  });
+
   it("recovers a published telegram mirror when a later publish step fails", async () => {
     const { root, downloadRoot, libraryService, telegramService, tdlibService } =
       await createTelegramService();
@@ -624,7 +871,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -662,7 +909,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -675,10 +922,302 @@ describe("TelegramService", () => {
     expect(packs).toHaveLength(1);
     expect(packs[0]?.source).toBe("telegram");
     expect(packs[0]?.telegram?.stickerSetId).toBe("100");
+    expect(packs[0]?.thumbnailPath).toContain("/source/telegram-pack-icon");
 
     const details = await libraryService.getPack(packs[0]!.id);
     expect(details.assets[0]?.emojiList).toEqual(["🙂"]);
-    expect(details.assets[0]?.absolutePath).toContain("stickers/001.webm");
+    expect(details.assets[0]?.absolutePath).toBeNull();
+    expect(details.assets[0]?.downloadState).toBe("missing");
+  });
+
+  it("keeps non-video owned packs as unsupported telegram mirrors", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "200",
+        shortName: "static_pack",
+        title: "Static Pack",
+        format: "static",
+        thumbnailStickerId: "sticker-1",
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "static",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+
+    const packs = await libraryService.listPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.telegram?.stickerSetId).toBe("200");
+    expect(packs[0]?.telegram?.format).toBe("static");
+    expect(packs[0]?.telegram?.syncState).toBe("unsupported");
+    expect(packs[0]?.telegram?.lastSyncError).toContain(
+      "only video sticker packs are supported currently",
+    );
+
+    const details = await libraryService.getPack(packs[0]!.id);
+    expect(details.assets).toHaveLength(0);
+  });
+
+  it("fetches the real telegram thumbnail sticker for supported packs", async () => {
+    const { root, downloadRoot, telegramService, libraryService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: "sticker-1",
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+
+    const [pack] = await libraryService.listPacks();
+    expect(pack?.thumbnailPath).toContain("/source/telegram-pack-icon");
+  });
+
+  it("clears a telegram mirror icon when the remote set has no thumbnail", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    let [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.iconAssetId).not.toBeNull();
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+
+    [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.iconAssetId).toBeNull();
+  });
+
+  it("does not download sticker media during owned-pack sync", async () => {
+    const { root, downloadRoot, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    const originalDownloadFile = tdlibService.downloadFile.bind(tdlibService);
+    let downloadCount = 0;
+    tdlibService.downloadFile = async (...args: []) => {
+      downloadCount += 1;
+      return originalDownloadFile(...args);
+    };
+
+    await telegramService.syncOwnedPacks();
+
+    expect(downloadCount).toBe(0);
+  });
+
+  it("does not fetch thumbnails for unsupported packs during sync", async () => {
+    const { root, downloadRoot, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "200",
+        shortName: "static_pack",
+        title: "Static Pack",
+        format: "static",
+        thumbnailStickerId: "sticker-1",
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "static",
+          },
+        ],
+      },
+    ]);
+
+    const originalDownloadFile = tdlibService.downloadFile.bind(tdlibService);
+    let downloadCount = 0;
+    tdlibService.downloadFile = async (...args: []) => {
+      downloadCount += 1;
+      return originalDownloadFile(...args);
+    };
+
+    await telegramService.syncOwnedPacks();
+
+    expect(downloadCount).toBe(0);
+  });
+
+  it("preserves downloaded telegram media across resyncs", async () => {
+    const { root, downloadRoot, telegramService, libraryService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
+    expect(mirror).not.toBeNull();
+
+    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
+    let details = await libraryService.getPack(mirror!.record.id);
+    expect(details.assets[0]?.downloadState).toBe("ready");
+    expect(details.assets[0]?.absolutePath).not.toBeNull();
+
+    await telegramService.syncOwnedPacks();
+
+    details = await libraryService.getPack(mirror!.record.id);
+    expect(details.assets[0]?.downloadState).toBe("ready");
+    expect(details.assets[0]?.absolutePath).not.toBeNull();
+    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
+  });
+
+  it("migrates downloaded telegram media from nested sticker paths to flat source paths", async () => {
+    const { root, downloadRoot, telegramService, libraryService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
+    expect(mirror).not.toBeNull();
+
+    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
+    const nestedPath = path.join(mirror!.rootPath, "source", "stickers/001.webm");
+    const flatPath = path.join(mirror!.rootPath, "source", "sticker-001.webm");
+    await fs.mkdir(path.dirname(nestedPath), { recursive: true });
+    await fs.rename(flatPath, nestedPath);
+    const packRecordPath = path.join(mirror!.rootPath, "pack.json");
+    const packRecord = JSON.parse(
+      await fs.readFile(packRecordPath, "utf8"),
+    ) as {
+      assets: Array<{ relativePath: string }>;
+    };
+    packRecord.assets[0]!.relativePath = "stickers/001.webm";
+    await fs.writeFile(packRecordPath, JSON.stringify(packRecord, null, 2));
+
+    await telegramService.syncOwnedPacks();
+
+    const details = await libraryService.getPack(mirror!.record.id);
+    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.assets[0]?.absolutePath).toBe(flatPath);
   });
 
   it("removes telegram mirrors that are no longer owned after resync", async () => {
@@ -688,7 +1227,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -711,7 +1250,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -749,7 +1288,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -769,13 +1308,13 @@ describe("TelegramService", () => {
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
     ).rejects.toThrow(
-      "Every non-icon asset must have at least one emoji before update.",
+      "Every sticker asset must have at least one emoji before update.",
     );
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Every non-icon asset must have at least one emoji before update.",
+      "Every sticker asset must have at least one emoji before update.",
     );
   });
 
@@ -786,7 +1325,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -804,13 +1343,13 @@ describe("TelegramService", () => {
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
     ).rejects.toThrow(
-      "Telegram mirrors must keep at least one non-icon sticker.",
+      "Telegram mirrors must keep at least one sticker.",
     );
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Telegram mirrors must keep at least one non-icon sticker.",
+      "Telegram mirrors must keep at least one sticker.",
     );
   });
 
@@ -821,7 +1360,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -842,13 +1381,49 @@ describe("TelegramService", () => {
 
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
-    ).rejects.toThrow("Sticker output for stickers/001.webm is missing");
+    ).rejects.toThrow("Sticker output for sticker-001.webm is missing");
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Sticker output for stickers/001.webm is missing",
+      "Sticker output for sticker-001.webm is missing",
     );
+  });
+
+  it("updates a telegram mirror when its only sticker asset is also the icon", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.iconAssetId).not.toBeNull();
+
+    const details = await libraryService.getPack(mirrorPack!.id);
+    expect(details.assets).toHaveLength(1);
+    expect(details.assets[0]?.id).toBe(mirrorPack?.iconAssetId);
+
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: details.assets[0]!.id,
+      emojis: ["🔥"],
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    expect(tdlibService.getStickerEmojiUpdates()).toContainEqual({
+      fileId: "remote-1",
+      emojis: ["🔥"],
+    });
   });
 
   it("uses the remote sticker file id when a legacy mirror asset is missing one", async () => {
@@ -858,7 +1433,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -902,7 +1477,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",
@@ -931,7 +1506,7 @@ describe("TelegramService", () => {
 
     await telegramService.submitTdlibParameters({
       apiId: "12345",
-      apiHash: "secret-hash",
+      apiHash: VALID_API_HASH,
     });
     await telegramService.submitPhoneNumber({
       phoneNumber: "+12025550123",

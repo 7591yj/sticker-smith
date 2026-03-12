@@ -40,13 +40,19 @@ export function App() {
     ConversionJobEvent[]
   >([]);
   const [converting, setConverting] = useState(false);
+  const [telegramSyncInProgress, setTelegramSyncInProgress] = useState(false);
+  const [telegramPublishingPackIds, setTelegramPublishingPackIds] = useState<
+    string[]
+  >([]);
+  const [telegramUpdatingPackIds, setTelegramUpdatingPackIds] = useState<
+    string[]
+  >([]);
   const [failureDialog, setFailureDialog] =
     useState<ConversionFailureDialogState | null>(null);
   const [telegramErrorDialog, setTelegramErrorDialog] =
     useState<TelegramErrorDialogState | null>(null);
   const latestDetailsRef = useRef<StickerPackDetails | null>(null);
   const autoSyncedTelegramAccountRef = useRef<string | null>(null);
-  const requestedTelegramDownloadsRef = useRef<Set<string>>(new Set());
   const jobFailuresRef = useRef<
     Record<string, ConversionFailureDialogState["failures"]>
   >({});
@@ -189,7 +195,25 @@ export function App() {
     const unsubTelegram = window.stickerSmith.telegram.subscribe((event) => {
       if (event.type === "auth_state_changed") {
         setTelegramState(event.state);
+        if (event.state.status !== "connected") {
+          setTelegramSyncInProgress(false);
+          setTelegramPublishingPackIds([]);
+          setTelegramUpdatingPackIds([]);
+        }
         void refreshPacks();
+        return;
+      }
+
+      if (event.type === "sync_started") {
+        setTelegramSyncInProgress(true);
+      }
+
+      if (event.type === "publish_started") {
+        setTelegramPublishingPackIds((current) =>
+          current.includes(event.localPackId)
+            ? current
+            : [...current, event.localPackId],
+        );
         return;
       }
 
@@ -198,15 +222,30 @@ export function App() {
       }
 
       if (event.type === "publish_failed") {
+        setTelegramPublishingPackIds((current) =>
+          current.filter((packId) => packId !== event.localPackId),
+        );
         showTelegramError("Telegram upload failed", event.error);
         return;
       }
 
+      if (event.type === "update_started") {
+        setTelegramUpdatingPackIds((current) =>
+          current.includes(event.packId) ? current : [...current, event.packId],
+        );
+      }
+
       if (event.type === "update_failed") {
+        setTelegramUpdatingPackIds((current) =>
+          current.filter((packId) => packId !== event.packId),
+        );
         showTelegramError("Telegram update failed", event.error);
       }
 
       if (event.type === "publish_finished") {
+        setTelegramPublishingPackIds((current) =>
+          current.filter((packId) => packId !== event.localPackId),
+        );
         void refreshPacks().then((nextPacks) => {
           setSelectedPackId(
             nextPacks.find((pack) => pack.id === event.packId)?.id ?? event.packId,
@@ -217,18 +256,30 @@ export function App() {
 
       if (
         event.type === "sync_finished" ||
+        event.type === "pack_sync_started" ||
         event.type === "pack_sync_completed" ||
         event.type === "pack_sync_failed" ||
+        event.type === "update_started" ||
         event.type === "update_finished" ||
         event.type === "update_failed"
       ) {
+        if (event.type === "sync_finished") {
+          setTelegramSyncInProgress(false);
+        }
+        if (event.type === "update_finished") {
+          setTelegramUpdatingPackIds((current) =>
+            current.filter((packId) => packId !== event.packId),
+          );
+        }
         void refreshPacks();
       }
 
       if (
-        (event.type === "pack_sync_completed" ||
+        (event.type === "pack_sync_started" ||
+          event.type === "pack_sync_completed" ||
           event.type === "pack_sync_failed" ||
           event.type === "file_download_progress" ||
+          event.type === "update_started" ||
           event.type === "update_finished" ||
           event.type === "update_failed") &&
         event.packId &&
@@ -275,44 +326,6 @@ export function App() {
       active = false;
     };
   }, [refreshPacks, selectedPackId]);
-
-  useEffect(() => {
-    let active = true;
-
-    if (
-      !details ||
-      details.pack.source !== "telegram" ||
-      !details.assets.some((asset) => asset.downloadState === "missing") ||
-      requestedTelegramDownloadsRef.current.has(details.pack.id)
-    ) {
-      return;
-    }
-
-    requestedTelegramDownloadsRef.current.add(details.pack.id);
-    void (async () => {
-      try {
-        await window.stickerSmith.telegram.downloadPackMedia({
-          packId: details.pack.id,
-        });
-      } catch (error) {
-        showTelegramError(
-          "Telegram media download failed",
-          (error as Error)?.message ?? "Telegram media download failed.",
-        );
-      } finally {
-        requestedTelegramDownloadsRef.current.delete(details.pack.id);
-        if (!active) {
-          return;
-        }
-
-        await refreshDetailsSafely(details.pack.id);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [details, refreshDetailsSafely, showTelegramError]);
 
   const submitTelegramTdlibParameters = useCallback(
     async (input: { apiId: string; apiHash: string }) => {
@@ -395,7 +408,26 @@ export function App() {
     }
   }, [showTelegramError]);
 
+  const resetTelegram = useCallback(async () => {
+    try {
+      const next = await window.stickerSmith.telegram.reset();
+      setTelegramState(next);
+      setTelegramSyncInProgress(false);
+      setTelegramPublishingPackIds([]);
+      setTelegramUpdatingPackIds([]);
+      await refreshPacks();
+      return next;
+    } catch (error) {
+      showTelegramError(
+        "Telegram reset failed",
+        (error as Error)?.message ?? "Telegram reset failed.",
+      );
+      return null;
+    }
+  }, [refreshPacks, showTelegramError]);
+
   const syncTelegramPacks = useCallback(async () => {
+    setTelegramSyncInProgress(true);
     try {
       await window.stickerSmith.telegram.syncOwnedPacks();
       await refreshPacks();
@@ -405,6 +437,8 @@ export function App() {
         (error as Error)?.message ?? "Telegram sync failed.",
       );
       throw error;
+    } finally {
+      setTelegramSyncInProgress(false);
     }
   }, [refreshPacks, showTelegramError]);
 
@@ -442,7 +476,6 @@ export function App() {
 
   const downloadTelegramPackMedia = useCallback(
     async (input: { packId: string }) => {
-      requestedTelegramDownloadsRef.current.delete(input.packId);
       try {
         await window.stickerSmith.telegram.downloadPackMedia(input);
         await refreshDetailsSafely(input.packId);
@@ -489,17 +522,19 @@ export function App() {
         <Sidebar
           packs={packs}
           telegramState={telegramState}
+          telegramSyncInProgress={telegramSyncInProgress}
           selectedPackId={selectedPackId}
           onSelect={setSelectedPackId}
           onSubmitTelegramTdlibParameters={submitTelegramTdlibParameters}
           onSubmitTelegramPhoneNumber={submitTelegramPhoneNumber}
-          onSubmitTelegramCode={submitTelegramCode}
-          onSubmitTelegramPassword={submitTelegramPassword}
-          onLogoutTelegram={logoutTelegram}
-          onSyncTelegramPacks={syncTelegramPacks}
-          refreshPacks={refreshPacks}
-          setSelectedPackId={setSelectedPackId}
-        />
+        onSubmitTelegramCode={submitTelegramCode}
+        onSubmitTelegramPassword={submitTelegramPassword}
+        onLogoutTelegram={logoutTelegram}
+        onResetTelegram={resetTelegram}
+        onSyncTelegramPacks={syncTelegramPacks}
+        refreshPacks={refreshPacks}
+        setSelectedPackId={setSelectedPackId}
+      />
         <Box
           sx={{
             flex: 1,
@@ -512,6 +547,16 @@ export function App() {
             details={details}
             converting={converting}
             telegramConnected={telegramState?.status === "connected"}
+            telegramPublishing={
+              details?.pack.source === "local"
+                ? telegramPublishingPackIds.includes(details.pack.id)
+                : false
+            }
+            telegramUpdating={
+              details?.pack.source === "telegram"
+                ? telegramUpdatingPackIds.includes(details.pack.id)
+                : false
+            }
             setDetails={setDetails}
             refreshDetails={refreshDetails}
             refreshPacks={refreshPacks}

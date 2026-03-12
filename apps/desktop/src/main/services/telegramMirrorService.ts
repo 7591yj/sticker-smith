@@ -8,10 +8,7 @@ import type {
 } from "./telegramTdlibService";
 
 function relativeStickerPath(position: number) {
-  return path.posix.join(
-    "stickers",
-    `${String(position + 1).padStart(3, "0")}.webm`,
-  );
+  return `sticker-${String(position + 1).padStart(3, "0")}.webm`;
 }
 
 export class TelegramMirrorService {
@@ -19,41 +16,47 @@ export class TelegramMirrorService {
 
   async upsertStickerSet(input: {
     stickerSet: TelegramRemoteStickerSet;
+    thumbnailPath: string | null;
     publishedFromLocalPackId?: string | null;
-    syncState?: "idle" | "syncing" | "stale" | "error";
+    syncState?: "idle" | "syncing" | "stale" | "error" | "unsupported";
     lastSyncError?: string | null;
+    includeAssets?: boolean;
   }) {
     const { stickerSet } = input;
+    const includeAssets = input.includeAssets ?? true;
 
     return this.libraryService.upsertTelegramMirror({
       stickerSetId: stickerSet.stickerSetId,
       title: stickerSet.title,
       shortName: stickerSet.shortName,
+      format: stickerSet.format,
+      thumbnailPath: input.thumbnailPath,
       syncState: input.syncState ?? "idle",
       lastSyncedAt: new Date().toISOString(),
       lastSyncError: input.lastSyncError ?? null,
       publishedFromLocalPackId: input.publishedFromLocalPackId ?? null,
-      iconStickerId:
-        stickerSet.thumbnailStickerId ?? stickerSet.stickers[0]?.stickerId ?? null,
-      assets: stickerSet.stickers.map((sticker) => ({
-        relativePath: relativeStickerPath(sticker.position),
-        emojiList: sticker.emojiList,
-        kind: "webm",
-        downloadState: "missing",
-        telegram: {
-          stickerId: sticker.stickerId,
-          fileId: sticker.fileId,
-          fileUniqueId: sticker.fileUniqueId,
-          position: sticker.position,
-          baselineOutputHash: null,
-        },
-      })),
+      iconStickerId: includeAssets ? stickerSet.thumbnailStickerId : null,
+      assets: includeAssets
+        ? stickerSet.stickers.map((sticker) => ({
+            relativePath: relativeStickerPath(sticker.position),
+            emojiList: sticker.emojiList,
+            kind: "webm",
+            downloadState: "missing",
+            telegram: {
+              stickerId: sticker.stickerId,
+              fileId: sticker.fileId,
+              fileUniqueId: sticker.fileUniqueId,
+              position: sticker.position,
+              baselineOutputHash: null,
+            },
+          }))
+        : [],
     });
   }
 
   async markPackSyncState(
     packId: string,
-    syncState: "idle" | "syncing" | "stale" | "error",
+    syncState: "idle" | "syncing" | "stale" | "error" | "unsupported",
     lastSyncError: string | null = null,
   ) {
     await this.libraryService.updateTelegramMirrorMetadata({

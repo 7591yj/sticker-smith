@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -45,7 +45,10 @@ interface LegacyTelegramCredentialsState {
 }
 
 interface PersistedTelegramState
-  extends Partial<StoredTelegramState> {
+  extends Omit<
+    Partial<StoredTelegramState>,
+    "tdlib" | "user" | "sessionUser" | "lastError"
+  > {
   credentials?: LegacyTelegramCredentialsState;
   tdlib?: Partial<StoredTelegramState["tdlib"]> & {
     apiHash?: string | null;
@@ -224,6 +227,72 @@ function describeTdlibError(error: unknown) {
 
   return message;
 }
+
+function supportsTelegramMirrorEditing(
+  format: TelegramPackSummary["format"],
+) {
+  return format === "video";
+}
+
+function describeUnsupportedStickerSet(
+  stickerSet: Pick<TelegramRemoteStickerSet, "title" | "format">,
+) {
+  return `Telegram pack "${stickerSet.title}" uses ${stickerSet.format} stickers, and only video sticker packs are supported currently.`;
+}
+
+function normalizeTdlibCredential(value: string) {
+  return value
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, "")
+    .replace(/[\s\u200B\u200C\u200D\u2060\uFEFF]+/gu, "");
+}
+
+function parseTdlibParameters(input: { apiId: string; apiHash: string }) {
+  const apiId = normalizeTdlibCredential(input.apiId);
+  const apiHash = normalizeTdlibCredential(input.apiHash);
+
+  if (!/^\d+$/.test(apiId)) {
+    throw new Error("Telegram api_id should contain only digits.");
+  }
+
+  if (!/^[0-9a-f]{32}$/i.test(apiHash)) {
+    throw new Error(
+      "Telegram api_hash should be the 32-character hash from my.telegram.org.",
+    );
+  }
+
+  return { apiId, apiHash };
+}
+
+function isTdlibBytesString(value: string) {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) {
+    return false;
+  }
+
+  try {
+    return Buffer.from(value, "base64").toString("base64") === value;
+  } catch {
+    return false;
+  }
+}
+
+function createTdlibDatabaseEncryptionKey() {
+  return randomBytes(32).toString("base64");
+}
+
+function normalizeTelegramPhoneNumber(value: string) {
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/[\s\u00A0\u200B\u200C\u200D\u2060\uFEFF()-]+/gu, "");
+
+  if (normalized.startsWith("00")) {
+    return `+${normalized.slice(2)}`;
+  }
+
+  return normalized;
+}
+
+const INVALID_TDLIB_CREDENTIALS_MESSAGE =
+  "Stored Telegram TDLib credentials are invalid. Enter your api_id and api_hash from my.telegram.org again.";
 
 export class TelegramService {
   private readonly telegramRoot: string;
@@ -492,7 +561,25 @@ export class TelegramService {
       return state;
     }
 
-    const apiHash = await this.secretsService.getSecret(ACCOUNT_KEY, "api_hash");
+    let apiHash: string | null;
+    try {
+      apiHash = await this.secretsService.getSecret(ACCOUNT_KEY, "api_hash");
+    } catch (error) {
+      const message = (error as Error)?.message ?? INVALID_TDLIB_CREDENTIALS_MESSAGE;
+      return this.updateState((current) => ({
+        ...current,
+        status: "awaiting_credentials",
+        authStep: "wait_tdlib_parameters",
+        tdlib: {
+          ...current.tdlib,
+          apiHashConfigured: false,
+        },
+        message,
+        lastError: message,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
     if (!apiHash) {
       return this.updateState((current) => ({
         ...current,
@@ -503,16 +590,61 @@ export class TelegramService {
           apiHashConfigured: false,
         },
         message: "Telegram api_hash is missing. Enter your TDLib credentials again.",
+        lastError: "Telegram api_hash is missing. Enter your TDLib credentials again.",
         updatedAt: new Date().toISOString(),
       }));
     }
 
+    let normalizedApiId: string;
+    let normalizedApiHash: string;
+    try {
+      const normalized = parseTdlibParameters({
+        apiId: state.tdlib.apiId,
+        apiHash,
+      });
+      normalizedApiId = normalized.apiId;
+      normalizedApiHash = normalized.apiHash;
+    } catch {
+      await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
+      return this.updateState((current) => ({
+        ...current,
+        status: "awaiting_credentials",
+        authStep: "wait_tdlib_parameters",
+        tdlib: {
+          apiId: /^\d+$/.test(normalizeTdlibCredential(current.tdlib.apiId ?? ""))
+            ? normalizeTdlibCredential(current.tdlib.apiId ?? "")
+            : null,
+          apiHashConfigured: false,
+        },
+        message: INVALID_TDLIB_CREDENTIALS_MESSAGE,
+        lastError: INVALID_TDLIB_CREDENTIALS_MESSAGE,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
+    if (normalizedApiId !== state.tdlib.apiId || normalizedApiHash !== apiHash) {
+      await this.secretsService.setSecret(ACCOUNT_KEY, "api_hash", normalizedApiHash);
+      await this.updateState((current) => ({
+        ...current,
+        tdlib: {
+          ...current.tdlib,
+          apiId: normalizedApiId,
+        },
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
+    const accountRoot = path.join(this.telegramRoot, "tdlib", ACCOUNT_KEY);
     let databaseEncryptionKey = await this.secretsService.getSecret(
       ACCOUNT_KEY,
       "database_encryption_key",
     );
-    if (!databaseEncryptionKey) {
-      databaseEncryptionKey = randomUUID();
+    if (!databaseEncryptionKey || !isTdlibBytesString(databaseEncryptionKey)) {
+      await fs.rm(accountRoot, {
+        recursive: true,
+        force: true,
+      });
+      databaseEncryptionKey = createTdlibDatabaseEncryptionKey();
       await this.secretsService.setSecret(
         ACCOUNT_KEY,
         "database_encryption_key",
@@ -520,15 +652,49 @@ export class TelegramService {
       );
     }
 
-    const accountRoot = path.join(this.telegramRoot, "tdlib", ACCOUNT_KEY);
-    await this.tdlibService.ensureStarted({
-      apiId: Number(state.tdlib.apiId),
-      apiHash,
-      phoneNumber: state.user.phoneNumber,
-      databaseDirectory: path.join(accountRoot, "db"),
-      filesDirectory: path.join(accountRoot, "files"),
-      databaseEncryptionKey,
-    });
+    try {
+      await this.tdlibService.ensureStarted({
+        apiId: Number(normalizedApiId),
+        apiHash: normalizedApiHash,
+        phoneNumber: state.user.phoneNumber,
+        databaseDirectory: path.join(accountRoot, "db"),
+        filesDirectory: path.join(accountRoot, "files"),
+        databaseEncryptionKey,
+      });
+    } catch (error) {
+      const message = (error as Error)?.message ?? "Telegram startup failed.";
+      const isParameterParseError =
+        /Failed to parse JSON object as TDLib request|Wrong character in the string/i.test(
+          message,
+        );
+
+      if (isParameterParseError) {
+        await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
+        const detailedMessage = [
+          "Telegram rejected the saved TDLib parameters.",
+          "TDLib reported:",
+          message,
+        ].join(" ");
+        return this.updateState((current) => ({
+          ...current,
+          status: "awaiting_credentials",
+          authStep: "wait_tdlib_parameters",
+          tdlib: {
+            apiId: null,
+            apiHashConfigured: false,
+          },
+          user: {
+            phoneNumber: null,
+          },
+          sessionUser: null,
+          message: detailedMessage,
+          lastError: detailedMessage,
+          updatedAt: new Date().toISOString(),
+        }));
+      }
+
+      throw error;
+    }
 
     return state;
   }
@@ -563,13 +729,18 @@ export class TelegramService {
     apiId: string;
     apiHash: string;
   }): Promise<TelegramState> {
-    await this.secretsService.setSecret(ACCOUNT_KEY, "api_hash", input.apiHash.trim());
+    const normalized = parseTdlibParameters(input);
+    await this.secretsService.setSecret(
+      ACCOUNT_KEY,
+      "api_hash",
+      normalized.apiHash,
+    );
     const next = await this.updateState((current) => ({
       ...current,
       status: "awaiting_credentials",
       authStep: current.user.phoneNumber ? "wait_code" : "wait_phone_number",
       tdlib: {
-        apiId: input.apiId.trim(),
+        apiId: normalized.apiId,
         apiHashConfigured: true,
       },
       message: current.user.phoneNumber
@@ -583,22 +754,27 @@ export class TelegramService {
   }
 
   async submitPhoneNumber(input: { phoneNumber: string }): Promise<TelegramState> {
+    const phoneNumber = normalizeTelegramPhoneNumber(input.phoneNumber);
     const next = await this.updateState((current) => ({
       ...current,
       status: "awaiting_credentials",
-      authStep: "wait_code",
+      authStep: "wait_phone_number",
       user: {
-        phoneNumber: input.phoneNumber.trim(),
+        phoneNumber,
       },
-      message: "Telegram is requesting a login code for the configured account.",
+      message: "Submitting your phone number to Telegram.",
       lastError: null,
       updatedAt: new Date().toISOString(),
     }));
 
     try {
       await this.ensureRuntimeStarted();
-      await this.tdlibService.submitPhoneNumber(input.phoneNumber.trim());
       await this.lastRuntimeUpdate;
+      const state = await this.readState();
+      if (state.authStep === "wait_phone_number") {
+        await this.tdlibService.submitPhoneNumber(phoneNumber);
+        await this.lastRuntimeUpdate;
+      }
     } catch (error) {
       await this.updateState((current) => ({
         ...current,
@@ -679,12 +855,81 @@ export class TelegramService {
     return toPublicState(next);
   }
 
+  async reset(): Promise<TelegramState> {
+    return this.logout();
+  }
+
+  private async resolveStickerSetThumbnailPath(
+    stickerSet: TelegramRemoteStickerSet,
+  ) {
+    const thumbnailFile = stickerSet.thumbnailFile;
+    if (thumbnailFile && thumbnailFile.numericFileId > 0) {
+      if (thumbnailFile.isDownloaded && thumbnailFile.localPath) {
+        return thumbnailFile.localPath;
+      }
+
+      try {
+        const downloaded = await this.tdlibService.downloadFile(
+          thumbnailFile.numericFileId,
+        );
+        return downloaded.localPath;
+      } catch {
+        return null;
+      }
+    }
+
+    if (!stickerSet.thumbnailStickerId) {
+      return null;
+    }
+
+    const thumbnailSticker = stickerSet.stickers.find(
+      (sticker) => sticker.stickerId === stickerSet.thumbnailStickerId,
+    );
+    if (!thumbnailSticker || thumbnailSticker.numericFileId <= 0) {
+      return null;
+    }
+
+    try {
+      const downloaded = await this.tdlibService.downloadFile(
+        thumbnailSticker.numericFileId,
+      );
+      return downloaded.localPath;
+    } catch {
+      return null;
+    }
+  }
+
   private async syncOneStickerSet(
     stickerSet: TelegramRemoteStickerSet,
     options: { publishedFromLocalPackId?: string | null } = {},
   ) {
+    if (!supportsTelegramMirrorEditing(stickerSet.format)) {
+      const details = await this.mirrorService.upsertStickerSet({
+        stickerSet,
+        thumbnailPath: null,
+        publishedFromLocalPackId: options.publishedFromLocalPackId ?? null,
+        syncState: "unsupported",
+        lastSyncError: describeUnsupportedStickerSet(stickerSet),
+        includeAssets: false,
+      });
+      await this.mirrorService.markPackSyncState(
+        details.pack.id,
+        "unsupported",
+        describeUnsupportedStickerSet(stickerSet),
+      );
+      this.emit({
+        type: "pack_sync_completed",
+        packId: details.pack.id,
+        stickerSetId: stickerSet.stickerSetId,
+      });
+      return details.pack.id;
+    }
+
+    const thumbnailPath = await this.resolveStickerSetThumbnailPath(stickerSet);
+
     const details = await this.mirrorService.upsertStickerSet({
       stickerSet,
+      thumbnailPath,
       publishedFromLocalPackId: options.publishedFromLocalPackId ?? null,
       syncState: "syncing",
       lastSyncError: null,
@@ -694,46 +939,6 @@ export class TelegramService {
       packId: details.pack.id,
       stickerSetId: stickerSet.stickerSetId,
     });
-
-    const iconAssetId =
-      details.assets.find(
-        (asset) => asset.telegram?.stickerId === stickerSet.thumbnailStickerId,
-      )?.id ?? details.pack.iconAssetId;
-
-    if (iconAssetId) {
-      const iconAsset = details.assets.find((asset) => asset.id === iconAssetId);
-      const remoteSticker = stickerSet.stickers.find(
-        (sticker) => sticker.stickerId === iconAsset?.telegram?.stickerId,
-      );
-
-      if (iconAsset && remoteSticker && remoteSticker.numericFileId > 0) {
-        try {
-          this.activeDownloads.set(remoteSticker.numericFileId, {
-            packId: details.pack.id,
-            assetId: iconAsset.id,
-            stickerSetId: stickerSet.stickerSetId,
-          });
-          await this.mirrorService.markStickerQueued(details.pack.id, iconAsset.id);
-          await this.mirrorService.markStickerDownloading(
-            details.pack.id,
-            iconAsset.id,
-          );
-          const downloaded = await this.tdlibService.downloadFile(
-            remoteSticker.numericFileId,
-          );
-          await this.mirrorService.storeDownloadedSticker({
-            packId: details.pack.id,
-            assetId: iconAsset.id,
-            sticker: remoteSticker,
-            file: downloaded,
-          });
-        } catch {
-          await this.mirrorService.markStickerFailed(details.pack.id, iconAsset.id);
-        } finally {
-          this.activeDownloads.delete(remoteSticker.numericFileId);
-        }
-      }
-    }
 
     await this.mirrorService.markPackSyncState(details.pack.id, "idle", null);
     this.emit({
@@ -754,9 +959,7 @@ export class TelegramService {
       await this.requireConnectedState();
       this.emit({ type: "sync_started" });
 
-      const stickerSets = (await this.tdlibService.getOwnedStickerSets()).filter(
-        (set) => set.format === "video",
-      );
+      const stickerSets = await this.tdlibService.getOwnedStickerSets();
       const stickerSetIds = new Set(stickerSets.map((set) => set.stickerSetId));
       const packIds: string[] = [];
 
@@ -825,6 +1028,12 @@ export class TelegramService {
       if (!stickerSetId) {
         throw new Error(`Pack ${input.packId} is not a Telegram mirror.`);
       }
+      if (
+        details.pack.telegram &&
+        !supportsTelegramMirrorEditing(details.pack.telegram.format)
+      ) {
+        throw new Error(describeUnsupportedStickerSet(details.pack.telegram));
+      }
 
       const remoteSet = await this.getRemoteStickerSetOrThrow(stickerSetId);
       const remoteByStickerId = new Map(
@@ -882,8 +1091,8 @@ export class TelegramService {
     }
   }
 
-  private getNonIconAssets(details: StickerPackDetails) {
-    return details.assets.filter((asset) => asset.id !== details.pack.iconAssetId);
+  private getStickerAssets(details: StickerPackDetails) {
+    return details.assets;
   }
 
   private getStickerOutput(details: StickerPackDetails, assetId: string) {
@@ -905,20 +1114,20 @@ export class TelegramService {
 
   private async preflightPublishPack(input: PublishLocalPackInput) {
     const details = await this.libraryService.getPack(input.packId);
-    const nonIconAssets = this.getNonIconAssets(details);
+    const stickerAssets = this.getStickerAssets(details);
 
     if (details.pack.source !== "local") {
       throw new Error("Only local packs can be uploaded to Telegram.");
     }
-    if (nonIconAssets.length === 0) {
-      throw new Error("The pack needs at least one non-icon asset before upload.");
+    if (stickerAssets.length === 0) {
+      throw new Error("The pack needs at least one sticker asset before upload.");
     }
 
-    for (const asset of nonIconAssets) {
+    for (const asset of stickerAssets) {
       const output = this.getStickerOutput(details, asset.id);
       if (!output) {
         throw new Error(
-          `Every non-icon asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
+          `Every sticker asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
         );
       }
       await this.ensureOutputFileExists(
@@ -927,7 +1136,7 @@ export class TelegramService {
       );
       if (asset.emojiList.length === 0) {
         throw new Error(
-          `Every non-icon asset must have at least one emoji before upload. Missing emoji for ${asset.relativePath}.`,
+          `Every sticker asset must have at least one emoji before upload. Missing emoji for ${asset.relativePath}.`,
         );
       }
     }
@@ -1004,7 +1213,7 @@ export class TelegramService {
       createdStickerSetId = await this.tdlibService.createNewStickerSet({
         title: input.title,
         shortName: input.shortName,
-        stickers: this.getNonIconAssets(details).map((asset) => {
+        stickers: this.getStickerAssets(details).map((asset) => {
           const output = this.getStickerOutput(details, asset.id);
           if (!output) {
             throw new Error(`Missing sticker output for ${asset.relativePath}.`);
@@ -1083,14 +1292,12 @@ export class TelegramService {
     await this.requireConnectedState();
     const details = await this.libraryService.getPack(input.packId);
     const telegram = details.pack.telegram;
-    const nonIconAssets = this.getNonIconAssets(details);
+    const stickerAssets = this.getStickerAssets(details);
     if (details.pack.source !== "telegram" || !telegram) {
       throw new Error(`Pack ${input.packId} is not a Telegram mirror.`);
     }
-    if (nonIconAssets.length === 0) {
-      throw new Error(
-        "Telegram mirrors must keep at least one non-icon sticker. Deleting the entire remote sticker set is not supported by Update.",
-      );
+    if (!supportsTelegramMirrorEditing(telegram.format)) {
+      throw new Error(describeUnsupportedStickerSet(telegram));
     }
 
     this.emit({
@@ -1101,6 +1308,12 @@ export class TelegramService {
     await this.mirrorService.markPackSyncState(input.packId, "syncing", null);
 
     try {
+      if (stickerAssets.length === 0) {
+        throw new Error(
+          "Telegram mirrors must keep at least one sticker. Deleting the entire remote sticker set is not supported by Update.",
+        );
+      }
+
       const remoteSet = await this.getRemoteStickerSetOrThrow(telegram.stickerSetId);
       const remoteByStickerId = new Map(
         remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
@@ -1118,11 +1331,11 @@ export class TelegramService {
         });
       }
 
-      for (const asset of nonIconAssets) {
+      for (const asset of stickerAssets) {
         const output = this.getStickerOutput(details, asset.id);
         if (asset.emojiList.length === 0) {
           throw new Error(
-            `Every non-icon asset must have at least one emoji before update. Missing emoji for ${asset.relativePath}.`,
+            `Every sticker asset must have at least one emoji before update. Missing emoji for ${asset.relativePath}.`,
           );
         }
 
@@ -1151,16 +1364,18 @@ export class TelegramService {
         }
         const remoteFileId = asset.telegram.fileId ?? remoteSticker.fileId;
 
-        if (
-          output &&
-          output.sha256 &&
-          output.sha256 !== asset.telegram.baselineOutputHash &&
-          remoteFileId
-        ) {
+        if (output) {
           await this.ensureOutputFileExists(
             output.absolutePath,
             `Sticker output for ${asset.relativePath}`,
           );
+        }
+
+        if (
+          output &&
+          output.sha256 !== asset.telegram.baselineOutputHash &&
+          remoteFileId
+        ) {
           await this.tdlibService.replaceStickerInSet({
             stickerSetId: telegram.stickerSetId,
             oldFileId: remoteFileId,

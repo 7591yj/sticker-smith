@@ -74,6 +74,7 @@ export function registerIpc() {
     telegramService.submitPassword(submitTelegramPasswordSchema.parse(input)),
   );
   ipcMain.handle("telegram.logout", async () => telegramService.logout());
+  ipcMain.handle("telegram.reset", async () => telegramService.reset());
   ipcMain.handle("telegram.syncOwnedPacks", async () =>
     telegramService.syncOwnedPacks(),
   );

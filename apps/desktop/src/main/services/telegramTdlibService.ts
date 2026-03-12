@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
 import type { TelegramSessionUser } from "@sticker-smith/shared";
@@ -39,6 +38,7 @@ export interface TelegramRemoteStickerSet {
   title: string;
   format: "video" | "static" | "animated" | "mixed" | "unknown";
   thumbnailStickerId: string | null;
+  thumbnailFile?: TelegramDownloadedFile | null;
   stickers: TelegramRemoteSticker[];
 }
 
@@ -73,6 +73,19 @@ type TdClient = {
 interface PendingDownload {
   resolve: (file: TelegramDownloadedFile) => void;
   reject: (error: Error) => void;
+}
+
+const FULL_FILE_DOWNLOAD_LIMIT = 1_000_000_000;
+const OWNED_STICKER_SETS_PAGE_SIZE = 100;
+
+function summarizeTdlibParameters(credentials: TelegramTdlibCredentials) {
+  return {
+    apiId: credentials.apiId,
+    apiHashLength: credentials.apiHash.length,
+    databaseDirectory: credentials.databaseDirectory,
+    filesDirectory: credentials.filesDirectory,
+    databaseEncryptionKeyLength: credentials.databaseEncryptionKey.length,
+  };
 }
 
 function mapFile(file: any): TelegramDownloadedFile {
@@ -120,9 +133,8 @@ function mapStickerSet(set: any): TelegramRemoteStickerSet {
     format,
     thumbnailStickerId: set?.thumbnail?.sticker?.id
       ? String(set.thumbnail.sticker.id)
-      : stickers[0]?.id
-        ? String(stickers[0].id)
-        : null,
+      : null,
+    thumbnailFile: set?.thumbnail?.file ? mapFile(set.thumbnail.file) : null,
     stickers: stickers.map((sticker: any, index: number) => ({
       stickerId: String(sticker?.id ?? index),
       fileId: sticker?.sticker?.remote?.id ?? null,
@@ -156,9 +168,30 @@ function describeAuthState(authState: string) {
   }
 }
 
+let tdlibConfigured = false;
+
+function configureTdlibOnce(
+  configure: (options: {
+    tdjson: string;
+    verbosityLevel: number;
+  }) => void,
+  tdjson: string,
+) {
+  if (tdlibConfigured) {
+    return;
+  }
+
+  configure({
+    tdjson,
+    verbosityLevel: 1,
+  });
+  tdlibConfigured = true;
+}
+
 export class TelegramTdlibService {
   private client: TdClient | null = null;
   private credentials: TelegramTdlibCredentials | null = null;
+  private tdlibParametersSubmitted = false;
   private currentAuthStep:
     | "wait_tdlib_parameters"
     | "wait_phone_number"
@@ -246,23 +279,35 @@ export class TelegramTdlibService {
         }
 
         this.emitAuthStateChanged("wait_tdlib_parameters");
-        await this.client.invoke({
-          _: "setTdlibParameters",
-          use_test_dc: false,
-          database_directory: this.credentials.databaseDirectory,
-          files_directory: this.credentials.filesDirectory,
-          database_encryption_key: this.credentials.databaseEncryptionKey,
-          use_file_database: true,
-          use_chat_info_database: false,
-          use_message_database: false,
-          use_secret_chats: false,
-          api_id: this.credentials.apiId,
-          api_hash: this.credentials.apiHash,
-          system_language_code: "en",
-          device_model: os.hostname(),
-          system_version: os.release(),
-          application_version: "Sticker Smith",
-        });
+        if (this.tdlibParametersSubmitted) {
+          return;
+        }
+
+        this.tdlibParametersSubmitted = true;
+        try {
+          await this.client.invoke({
+            _: "setTdlibParameters",
+            use_test_dc: false,
+            database_directory: this.credentials.databaseDirectory,
+            files_directory: this.credentials.filesDirectory,
+            database_encryption_key: this.credentials.databaseEncryptionKey,
+            use_message_database: true,
+            use_secret_chats: false,
+            system_language_code: "en",
+            application_version: "1.0",
+            device_model: "Unknown device",
+            system_version: "Unknown",
+            api_id: this.credentials.apiId,
+            api_hash: this.credentials.apiHash,
+          });
+        } catch (error) {
+          this.tdlibParametersSubmitted = false;
+          console.error("TDLib rejected setTdlibParameters", {
+            error,
+            parameters: summarizeTdlibParameters(this.credentials),
+          });
+          throw error;
+        }
         return;
       }
       case "authorizationStateWaitPhoneNumber":
@@ -363,17 +408,20 @@ export class TelegramTdlibService {
     await fs.mkdir(credentials.filesDirectory, { recursive: true });
 
     const { configure, createBareClient, tdjson } = await this.loadTdlibModules();
-    configure({
-      tdjson,
-      verbosityLevel: 1,
-    });
+    configureTdlibOnce(configure, tdjson);
 
     this.client = createBareClient() as TdClient;
-    await this.attachClient(this.client);
-    const authorizationState = await this.client.invoke({
-      _: "getAuthorizationState",
-    });
-    await this.handleAuthorizationState(authorizationState);
+    this.tdlibParametersSubmitted = false;
+    try {
+      await this.attachClient(this.client);
+      const authorizationState = await this.client.invoke({
+        _: "getAuthorizationState",
+      });
+      await this.handleAuthorizationState(authorizationState);
+    } catch (error) {
+      await this.close();
+      throw error;
+    }
   }
 
   async close() {
@@ -391,6 +439,7 @@ export class TelegramTdlibService {
       await this.client.close();
     } finally {
       this.client = null;
+      this.tdlibParametersSubmitted = false;
       this.sessionUser = null;
       this.currentAuthStep = "logged_out";
     }
@@ -455,8 +504,32 @@ export class TelegramTdlibService {
       throw new Error("TDLib client is not started.");
     }
 
-    const response = await this.client.invoke({ _: "getOwnedStickerSets" });
-    const sets = Array.isArray(response?.sets) ? response.sets : [];
+    const sets: any[] = [];
+    let offsetStickerSetId = "0";
+
+    while (true) {
+      const response = await this.client.invoke({
+        _: "getOwnedStickerSets",
+        offset_sticker_set_id: offsetStickerSetId,
+        limit: OWNED_STICKER_SETS_PAGE_SIZE,
+      });
+      const chunk = Array.isArray(response?.sets) ? response.sets : [];
+      if (chunk.length === 0) {
+        break;
+      }
+
+      sets.push(...chunk);
+      if (chunk.length < OWNED_STICKER_SETS_PAGE_SIZE) {
+        break;
+      }
+
+      const lastSetId = String(chunk.at(-1)?.id ?? "");
+      if (!/^[1-9]\d*$/.test(lastSetId)) {
+        break;
+      }
+      offsetStickerSetId = lastSetId;
+    }
+
     const fullSets: TelegramRemoteStickerSet[] = [];
 
     for (const set of sets) {
@@ -477,7 +550,7 @@ export class TelegramTdlibService {
 
     const response = await this.client.invoke({
       _: "getStickerSet",
-      set_id: Number(stickerSetId),
+      set_id: stickerSetId,
     });
     return mapStickerSet(response);
   }
@@ -489,7 +562,7 @@ export class TelegramTdlibService {
 
     return this.client.invoke({
       _: "getStickerSet",
-      set_id: Number(stickerSetId),
+      set_id: stickerSetId,
     });
   }
 
@@ -504,7 +577,8 @@ export class TelegramTdlibService {
         file_id: numericFileId,
         priority: 32,
         offset: 0,
-        limit: 0,
+        // Newer TDLib builds reject 0 here even though older docs allowed it.
+        limit: FULL_FILE_DOWNLOAD_LIMIT,
         synchronous: false,
       }),
     );
@@ -601,7 +675,7 @@ export class TelegramTdlibService {
 
     await this.client.invoke({
       _: "replaceStickerInSet",
-      sticker_set_id: Number(input.stickerSetId),
+      sticker_set_id: input.stickerSetId,
       old_sticker: { _: "inputFileRemote", id: input.oldFileId },
       sticker: this.toInputSticker({
         stickerPath: input.newStickerPath,
@@ -671,7 +745,7 @@ export class TelegramTdlibService {
 
     await this.client.invoke({
       _: "setStickerSetTitle",
-      sticker_set_id: Number(input.stickerSetId),
+      sticker_set_id: input.stickerSetId,
       title: input.title,
     });
   }

@@ -35,6 +35,8 @@ export interface TelegramMirrorUpsertInput {
   stickerSetId: string;
   title: string;
   shortName: string;
+  format: TelegramPackSummary["format"];
+  thumbnailPath: string | null;
   syncState: TelegramPackSummary["syncState"];
   lastSyncError?: string | null;
   publishedFromLocalPackId: string | null;
@@ -89,6 +91,14 @@ async function pathExists(targetPath: string) {
   }
 }
 
+function isJsonParseError(error: unknown) {
+  return error instanceof SyntaxError;
+}
+
+function isMissingPathError(error: unknown) {
+  return (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+}
+
 async function sha256ForFile(filePath: string): Promise<string | null> {
   try {
     const data = await fs.readFile(filePath);
@@ -98,6 +108,56 @@ async function sha256ForFile(filePath: string): Promise<string | null> {
   }
 }
 
+async function syncTelegramThumbnailFile(
+  rootPath: string,
+  thumbnailPath: string | null,
+) {
+  const sourceRoot = path.join(rootPath, "source");
+  await fs.mkdir(sourceRoot, { recursive: true });
+  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  await Promise.all(
+    entries
+      .filter(
+        (entry) =>
+          entry.isFile() && entry.name.startsWith("telegram-pack-icon."),
+      )
+      .map((entry) => fs.rm(path.join(sourceRoot, entry.name), { force: true })),
+  );
+
+  if (!thumbnailPath) {
+    return null;
+  }
+
+  const extension = path.extname(thumbnailPath) || ".bin";
+  const destination = path.join(sourceRoot, `telegram-pack-icon${extension}`);
+  await fs.copyFile(thumbnailPath, destination);
+  return destination;
+}
+
+async function migrateTelegramAssetFile(
+  rootPath: string,
+  currentRelativePath: string | null,
+  nextRelativePath: string,
+) {
+  if (!currentRelativePath || currentRelativePath === nextRelativePath) {
+    return;
+  }
+
+  const currentAbsolutePath = path.join(rootPath, "source", currentRelativePath);
+  const nextAbsolutePath = path.join(rootPath, "source", nextRelativePath);
+  if (!(await pathExists(currentAbsolutePath))) {
+    return;
+  }
+
+  await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+  if (await pathExists(nextAbsolutePath)) {
+    await fs.rm(currentAbsolutePath, { force: true });
+    return;
+  }
+
+  await fs.rename(currentAbsolutePath, nextAbsolutePath);
+}
+
 function createDefaultTelegramSummary(
   overrides: Partial<TelegramPackSummary> & Pick<TelegramPackSummary, "stickerSetId">,
 ): TelegramPackSummary {
@@ -105,7 +165,8 @@ function createDefaultTelegramSummary(
     stickerSetId: overrides.stickerSetId,
     shortName: overrides.shortName ?? "",
     title: overrides.title ?? "",
-    format: "video",
+    format: overrides.format ?? "video",
+    thumbnailPath: overrides.thumbnailPath ?? null,
     syncState: overrides.syncState ?? "idle",
     lastSyncedAt: overrides.lastSyncedAt ?? null,
     lastSyncError: overrides.lastSyncError ?? null,
@@ -137,9 +198,10 @@ function buildStickerPack(
       : record.assets.find((asset) => asset.id === record.iconAssetId) ?? null;
   const thumbnailPath =
     record.source === "telegram"
-      ? iconAsset && iconAsset.downloadState === "ready"
-        ? path.join(rootPath, "source", iconAsset.relativePath)
-        : null
+      ? record.telegram?.thumbnailPath ??
+        (iconAsset && iconAsset.downloadState === "ready"
+          ? path.join(rootPath, "source", iconAsset.relativePath)
+          : null)
       : iconOutput
         ? path.join(outputRoot, iconOutput.relativePath)
         : null;
@@ -237,6 +299,8 @@ function normalizePackRecord(
 }
 
 export class LibraryService {
+  private readonly packMutationQueues = new Map<string, Promise<void>>();
+
   constructor(private readonly settingsService: SettingsService) {}
 
   private async ensureReady() {
@@ -255,22 +319,104 @@ export class LibraryService {
   private async readPackRecordFromRoot(
     rootPath: string,
   ): Promise<StickerPackRecord> {
-    const raw = await fs.readFile(path.join(rootPath, "pack.json"), "utf8");
-    return normalizePackRecord(
-      JSON.parse(raw) as Partial<StickerPackRecord> & {
-        source?: PackSource;
-      },
-    );
+    const packFilePath = path.join(rootPath, "pack.json");
+    const backupFilePath = `${packFilePath}.bak`;
+    try {
+      const raw = await fs.readFile(packFilePath, "utf8");
+      return normalizePackRecord(
+        JSON.parse(raw) as Partial<StickerPackRecord> & {
+          source?: PackSource;
+        },
+      );
+    } catch (error) {
+      if (!isJsonParseError(error) || !(await pathExists(backupFilePath))) {
+        throw error;
+      }
+
+      const raw = await fs.readFile(backupFilePath, "utf8");
+      const record = normalizePackRecord(
+        JSON.parse(raw) as Partial<StickerPackRecord> & {
+          source?: PackSource;
+        },
+      );
+      await this.writePackRecord(rootPath, record);
+      return record;
+    }
   }
 
   private async writePackRecord(rootPath: string, record: StickerPackRecord) {
     record.schemaVersion = 2;
     record.updatedAt = new Date().toISOString();
     await this.ensurePackDirectories(rootPath);
-    await fs.writeFile(
-      path.join(rootPath, "pack.json"),
-      JSON.stringify(record, null, 2),
-    );
+    const packFilePath = path.join(rootPath, "pack.json");
+    const tempFilePath = `${packFilePath}.tmp`;
+    const backupFilePath = `${packFilePath}.bak`;
+    const serialized = JSON.stringify(record, null, 2);
+
+    if (await pathExists(packFilePath)) {
+      await fs.copyFile(packFilePath, backupFilePath);
+    }
+
+    try {
+      await fs.writeFile(tempFilePath, serialized);
+      await fs.rename(tempFilePath, packFilePath);
+    } finally {
+      await fs.rm(tempFilePath, { force: true });
+    }
+  }
+
+  private async withPackMutationLock<T>(
+    packKey: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.packMutationQueues.get(packKey) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.packMutationQueues.set(packKey, previous.then(() => current));
+
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.packMutationQueues.get(packKey) === current) {
+        this.packMutationQueues.delete(packKey);
+      }
+    }
+  }
+
+  private async handleUnreadablePackRoot(
+    entryName: string,
+    rootPath: string,
+    error: unknown,
+  ) {
+    if (entryName.startsWith("telegram-")) {
+      await fs.rm(rootPath, { recursive: true, force: true });
+      return;
+    }
+
+    console.warn("Skipping unreadable pack directory", {
+      rootPath,
+      error,
+    });
+  }
+
+  private async tryReadPackRecordFromEntry(
+    entryName: string,
+    rootPath: string,
+  ): Promise<StickerPackRecord | null> {
+    try {
+      return await this.readPackRecordFromRoot(rootPath);
+    } catch (error) {
+      if (!isMissingPathError(error) && !isJsonParseError(error)) {
+        throw error;
+      }
+
+      await this.handleUnreadablePackRoot(entryName, rootPath, error);
+      return null;
+    }
   }
 
   private resolveUniqueRelativePath(
@@ -310,7 +456,10 @@ export class LibraryService {
       }
 
       const rootPath = path.join(packsRoot, entry.name);
-      const record = await this.readPackRecordFromRoot(rootPath);
+      const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
+      if (!record) {
+        continue;
+      }
       if (record.id === packId) {
         return { record, rootPath };
       }
@@ -393,12 +542,14 @@ export class LibraryService {
         .filter((entry) => entry.isDirectory())
         .map(async (entry) => {
           const rootPath = path.join(packsRoot, entry.name);
-          const record = await this.readPackRecordFromRoot(rootPath);
-          return buildStickerPack(record, rootPath);
+          const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
+          return record ? buildStickerPack(record, rootPath) : null;
         }),
     );
 
-    return packs.sort((left, right) => left.name.localeCompare(right.name));
+    return packs
+      .filter((pack): pack is StickerPack => pack !== null)
+      .sort((left, right) => left.name.localeCompare(right.name));
   }
 
   async getPack(packId: string): Promise<StickerPackDetails> {
@@ -421,7 +572,10 @@ export class LibraryService {
       }
 
       const rootPath = path.join(packsRoot, entry.name);
-      const record = await this.readPackRecordFromRoot(rootPath);
+      const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
+      if (!record) {
+        continue;
+      }
       if (record.telegram?.stickerSetId === stickerSetId) {
         return { record, rootPath };
       }
@@ -435,12 +589,14 @@ export class LibraryService {
     mutate: (
       record: StickerPackRecord,
       rootPath: string,
-    ) => Promise<void> | void,
+      ) => Promise<void> | void,
   ) {
-    const { record, rootPath } = await this.readPackRecordById(packId);
-    await mutate(record, rootPath);
-    await this.writePackRecord(rootPath, record);
-    return hydratePackDetails(record, rootPath);
+    return this.withPackMutationLock(packId, async () => {
+      const { record, rootPath } = await this.readPackRecordById(packId);
+      await mutate(record, rootPath);
+      await this.writePackRecord(rootPath, record);
+      return hydratePackDetails(record, rootPath);
+    });
   }
 
   async createPack(input: { name: string }): Promise<StickerPack> {
@@ -475,84 +631,99 @@ export class LibraryService {
   ): Promise<StickerPackDetails> {
     await this.ensureReady();
 
-    const directoryName = `telegram-${input.stickerSetId}`;
-    const rootPath = this.settingsService.getPackRoot(directoryName);
-    const existing = (await pathExists(path.join(rootPath, "pack.json")))
-      ? await this.readPackRecordFromRoot(rootPath)
-      : null;
-    const existingByStickerId = new Map(
-      (existing?.assets ?? [])
-        .filter((asset) => asset.telegram)
-        .map((asset) => [asset.telegram!.stickerId, asset]),
-    );
-    const localOnlyAssets = (existing?.assets ?? []).filter(
-      (asset) => asset.telegram === undefined,
-    );
-    const remoteAssets = input.assets
-      .slice()
-      .sort((left, right) => left.telegram.position - right.telegram.position)
-      .map((assetInput, index) => {
-        const existingAsset = existingByStickerId.get(assetInput.telegram.stickerId);
-        return {
-          id: existingAsset?.id ?? assetInput.id ?? randomUUID(),
-          packId: existing?.id ?? directoryName,
-          relativePath:
-            existingAsset?.relativePath ??
-            normalizeRelativePath(assetInput.relativePath),
-          emojiList: assetInput.emojiList,
-          kind: assetInput.kind ?? "webm",
-          importedAt: existingAsset?.importedAt ?? new Date().toISOString(),
-          originalImportPath: existingAsset?.originalImportPath ?? null,
-          downloadState: assetInput.downloadState,
-          telegram: {
-            ...assetInput.telegram,
-            baselineOutputHash:
-              existingAsset?.telegram?.baselineOutputHash ??
-              assetInput.telegram.baselineOutputHash ??
-              null,
-            position: index,
-          },
-        };
-      });
+    return this.withPackMutationLock(`telegram:${input.stickerSetId}`, async () => {
+      const directoryName = `telegram-${input.stickerSetId}`;
+      const rootPath = this.settingsService.getPackRoot(directoryName);
+      const existing = (await pathExists(path.join(rootPath, "pack.json")))
+        ? await this.readPackRecordFromRoot(rootPath)
+        : null;
+      const storedThumbnailPath = await syncTelegramThumbnailFile(
+        rootPath,
+        input.thumbnailPath,
+      );
+      const existingByStickerId = new Map(
+        (existing?.assets ?? [])
+          .filter((asset) => asset.telegram)
+          .map((asset) => [asset.telegram!.stickerId, asset]),
+      );
+      const localOnlyAssets = (existing?.assets ?? []).filter(
+        (asset) => asset.telegram === undefined,
+      );
+      const remoteAssets = await Promise.all(
+        input.assets
+          .slice()
+          .sort((left, right) => left.telegram.position - right.telegram.position)
+          .map(async (assetInput, index) => {
+            const existingAsset = existingByStickerId.get(assetInput.telegram.stickerId);
+            const relativePath = normalizeRelativePath(assetInput.relativePath);
+            await migrateTelegramAssetFile(
+              rootPath,
+              existingAsset?.relativePath ?? null,
+              relativePath,
+            );
+            const localFileExists = await pathExists(
+              path.join(rootPath, "source", relativePath),
+            );
 
-    const record: StickerPackRecord = {
-      schemaVersion: 2,
-      id: existing?.id ?? directoryName,
-      source: "telegram",
-      name: input.title,
-      slug: slugify(input.shortName || input.title),
-      iconAssetId:
-        remoteAssets.find(
-          (asset) => asset.telegram?.stickerId === input.iconStickerId,
-        )?.id ??
-        existing?.iconAssetId ??
-        remoteAssets[0]?.id ??
-        null,
-      telegram: createDefaultTelegramSummary({
-        stickerSetId: input.stickerSetId,
-        shortName: input.shortName,
-        title: input.title,
-        syncState: input.syncState,
-        lastSyncedAt: input.lastSyncedAt,
-        lastSyncError: input.lastSyncError,
-        publishedFromLocalPackId:
-          input.publishedFromLocalPackId ??
-          existing?.telegram?.publishedFromLocalPackId ??
-          null,
-      }),
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-      updatedAt: existing?.updatedAt ?? new Date().toISOString(),
-      assets: [...remoteAssets, ...localOnlyAssets],
-      outputs:
-        existing?.outputs.filter((output) =>
-          [...remoteAssets, ...localOnlyAssets].some(
-            (asset) => asset.id === output.sourceAssetId,
-          ),
-        ) ?? [],
-    };
+            return {
+              id: existingAsset?.id ?? assetInput.id ?? randomUUID(),
+              packId: existing?.id ?? directoryName,
+              relativePath,
+              emojiList: assetInput.emojiList,
+              kind: assetInput.kind ?? "webm",
+              importedAt: existingAsset?.importedAt ?? new Date().toISOString(),
+              originalImportPath: existingAsset?.originalImportPath ?? null,
+              downloadState: localFileExists ? "ready" : assetInput.downloadState,
+              telegram: {
+                ...assetInput.telegram,
+                baselineOutputHash:
+                  existingAsset?.telegram?.baselineOutputHash ??
+                  assetInput.telegram.baselineOutputHash ??
+                  null,
+                position: index,
+              },
+            };
+          }),
+      );
 
-    await this.writePackRecord(rootPath, record);
-    return hydratePackDetails(record, rootPath);
+      const record: StickerPackRecord = {
+        schemaVersion: 2,
+        id: existing?.id ?? directoryName,
+        source: "telegram",
+        name: input.title,
+        slug: slugify(input.shortName || input.title),
+        iconAssetId:
+          remoteAssets.find(
+            (asset) => asset.telegram?.stickerId === input.iconStickerId,
+          )?.id ?? null,
+        telegram: createDefaultTelegramSummary({
+          stickerSetId: input.stickerSetId,
+          shortName: input.shortName,
+          title: input.title,
+          format: input.format,
+          thumbnailPath: storedThumbnailPath,
+          syncState: input.syncState,
+          lastSyncedAt: input.lastSyncedAt,
+          lastSyncError: input.lastSyncError,
+          publishedFromLocalPackId:
+            input.publishedFromLocalPackId ??
+            existing?.telegram?.publishedFromLocalPackId ??
+            null,
+        }),
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        updatedAt: existing?.updatedAt ?? new Date().toISOString(),
+        assets: [...remoteAssets, ...localOnlyAssets],
+        outputs:
+          existing?.outputs.filter((output) =>
+            [...remoteAssets, ...localOnlyAssets].some(
+              (asset) => asset.id === output.sourceAssetId,
+            ),
+          ) ?? [],
+      };
+
+      await this.writePackRecord(rootPath, record);
+      return hydratePackDetails(record, rootPath);
+    });
   }
 
   async renamePack(input: {
@@ -872,6 +1043,7 @@ export class LibraryService {
     lastSyncError?: string | null;
     title?: string;
     shortName?: string;
+    thumbnailPath?: string | null;
     publishedFromLocalPackId?: string | null;
   }) {
     return this.mutatePackRecord(input.packId, (record) => {
@@ -886,6 +1058,9 @@ export class LibraryService {
       if (input.shortName) {
         record.slug = slugify(input.shortName);
         record.telegram.shortName = input.shortName;
+      }
+      if (input.thumbnailPath !== undefined) {
+        record.telegram.thumbnailPath = input.thumbnailPath;
       }
       if (input.syncState) {
         record.telegram.syncState = input.syncState;

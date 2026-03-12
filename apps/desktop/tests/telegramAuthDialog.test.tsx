@@ -152,7 +152,7 @@ describe("TelegramAuthDialog", () => {
         }),
     );
 
-    const { root, container } = await renderDialog(
+    const { root } = await renderDialog(
       createTelegramState({
         authStep: "wait_code",
         message: "Enter the login code Telegram sent to your account.",
@@ -160,11 +160,15 @@ describe("TelegramAuthDialog", () => {
       { onSubmitCode },
     );
 
-    const codeInput = container.querySelector("input");
+    const codeInput = document.body.querySelector("input");
     expect(codeInput).toBeTruthy();
 
     await act(async () => {
-      (codeInput as HTMLInputElement).value = "12345";
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(codeInput, "12345");
       codeInput?.dispatchEvent(new Event("input", { bubbles: true }));
       codeInput?.dispatchEvent(new Event("change", { bubbles: true }));
       await Promise.resolve();

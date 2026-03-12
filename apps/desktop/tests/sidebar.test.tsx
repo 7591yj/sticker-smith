@@ -52,6 +52,7 @@ describe("Sidebar", () => {
       <Sidebar
         packs={[createPack()]}
         telegramState={createTelegramState()}
+        telegramSyncInProgress={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -59,6 +60,7 @@ describe("Sidebar", () => {
         onSubmitTelegramCode={vi.fn(async () => undefined)}
         onSubmitTelegramPassword={vi.fn(async () => undefined)}
         onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
         onSyncTelegramPacks={vi.fn(async () => undefined)}
         refreshPacks={vi.fn(async () => [])}
         setSelectedPackId={vi.fn()}
@@ -75,6 +77,7 @@ describe("Sidebar", () => {
           createPack({ thumbnailPath: "/tmp/sample-pack/webm/icon.webm" }),
         ]}
         telegramState={createTelegramState()}
+        telegramSyncInProgress={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -82,6 +85,7 @@ describe("Sidebar", () => {
         onSubmitTelegramCode={vi.fn(async () => undefined)}
         onSubmitTelegramPassword={vi.fn(async () => undefined)}
         onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
         onSyncTelegramPacks={vi.fn(async () => undefined)}
         refreshPacks={vi.fn(async () => [])}
         setSelectedPackId={vi.fn()}
@@ -90,6 +94,30 @@ describe("Sidebar", () => {
 
     expect(markup).toContain("<video");
     expect(markup).toContain("icon.webm");
+  });
+
+  it("renders a reset telegram action while disconnected", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[]}
+        telegramState={createTelegramState()}
+        telegramSyncInProgress={false}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
+        onSubmitTelegramPhoneNumber={vi.fn(async () => undefined)}
+        onSubmitTelegramCode={vi.fn(async () => undefined)}
+        onSubmitTelegramPassword={vi.fn(async () => undefined)}
+        onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
+        onSyncTelegramPacks={vi.fn(async () => undefined)}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Reset Telegram");
+    expect(markup).not.toContain(">Logout<");
   });
 
   it("renders separate local and telegram sections", () => {
@@ -106,7 +134,7 @@ describe("Sidebar", () => {
               shortName: "telegram_pack",
               title: "Telegram Pack",
               format: "video",
-              syncState: "idle",
+              syncState: "stale",
               lastSyncedAt: "2026-03-12T00:00:00.000Z",
               lastSyncError: null,
               publishedFromLocalPackId: null,
@@ -123,6 +151,7 @@ describe("Sidebar", () => {
           },
           message: "Telegram is connected.",
         })}
+        telegramSyncInProgress={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -130,6 +159,7 @@ describe("Sidebar", () => {
         onSubmitTelegramCode={vi.fn(async () => undefined)}
         onSubmitTelegramPassword={vi.fn(async () => undefined)}
         onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
         onSyncTelegramPacks={vi.fn(async () => undefined)}
         refreshPacks={vi.fn(async () => [])}
         setSelectedPackId={vi.fn()}
@@ -144,5 +174,156 @@ describe("Sidebar", () => {
     expect(markup).toContain("Sticker Smith (@stickersmith)");
     expect(markup).toContain("Manage Telegram");
     expect(markup).toContain("Resync");
+    expect(markup).toContain("Needs update");
+  });
+
+  it("renders unsupported telegram packs in a separate section", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[
+          createPack({
+            id: "telegram-pack",
+            name: "Telegram Pack",
+            source: "telegram",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "telegram_pack",
+              title: "Telegram Pack",
+              format: "video",
+              syncState: "stale",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
+          createPack({
+            id: "unsupported-pack",
+            name: "Static Pack",
+            source: "telegram",
+            telegram: {
+              stickerSetId: "200",
+              shortName: "static_pack",
+              title: "Static Pack",
+              format: "static",
+              syncState: "unsupported",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError:
+                'Telegram pack "Static Pack" uses static stickers, and only video sticker packs are supported currently.',
+              publishedFromLocalPackId: null,
+            },
+          }),
+        ]}
+        telegramState={createTelegramState({
+          status: "connected",
+          authStep: "ready",
+          sessionUser: {
+            id: 1,
+            username: "stickersmith",
+            displayName: "Sticker Smith",
+          },
+          message: "Telegram is connected.",
+        })}
+        telegramSyncInProgress={false}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
+        onSubmitTelegramPhoneNumber={vi.fn(async () => undefined)}
+        onSubmitTelegramCode={vi.fn(async () => undefined)}
+        onSubmitTelegramPassword={vi.fn(async () => undefined)}
+        onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
+        onSyncTelegramPacks={vi.fn(async () => undefined)}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Telegram");
+    expect(markup).toContain("Unsupported Telegram");
+    expect(markup).toContain("Telegram Pack");
+    expect(markup).toContain("Static Pack");
+    expect(markup).toContain("Needs update");
+    expect(markup).toContain("Unsupported");
+  });
+
+  it("renders sync-in-progress while telegram mirrors are syncing", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[
+          createPack({
+            id: "telegram-pack",
+            name: "Telegram Pack",
+            source: "telegram",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "telegram_pack",
+              title: "Telegram Pack",
+              format: "video",
+              syncState: "syncing",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
+        ]}
+        telegramState={createTelegramState({
+          status: "connected",
+          authStep: "ready",
+          sessionUser: {
+            id: 1,
+            username: "stickersmith",
+            displayName: "Sticker Smith",
+          },
+          message: "Telegram is connected.",
+        })}
+        telegramSyncInProgress={false}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
+        onSubmitTelegramPhoneNumber={vi.fn(async () => undefined)}
+        onSubmitTelegramCode={vi.fn(async () => undefined)}
+        onSubmitTelegramPassword={vi.fn(async () => undefined)}
+        onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
+        onSyncTelegramPacks={vi.fn(async () => undefined)}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Sync in progress");
+    expect(markup).toContain("Syncing");
+  });
+
+  it("renders sync-in-progress even before any telegram packs exist", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[]}
+        telegramState={createTelegramState({
+          status: "connected",
+          authStep: "ready",
+          sessionUser: {
+            id: 1,
+            username: "stickersmith",
+            displayName: "Sticker Smith",
+          },
+          message: "Telegram is connected.",
+        })}
+        telegramSyncInProgress={true}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
+        onSubmitTelegramPhoneNumber={vi.fn(async () => undefined)}
+        onSubmitTelegramCode={vi.fn(async () => undefined)}
+        onSubmitTelegramPassword={vi.fn(async () => undefined)}
+        onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
+        onSyncTelegramPacks={vi.fn(async () => undefined)}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Sync in progress");
   });
 });

@@ -173,4 +173,121 @@ describe("LibraryService", () => {
 
     expect(updated.assets[0]?.emojiList).toEqual(["👋", "✨"]);
   });
+
+  it("recovers a pack manifest from a backup when the primary JSON is truncated", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Recovered Pack" });
+    const packFilePath = path.join(pack.rootPath, "pack.json");
+    const backupPath = `${packFilePath}.bak`;
+    const manifest = await fs.readFile(packFilePath, "utf8");
+
+    await fs.writeFile(backupPath, manifest);
+    await fs.writeFile(packFilePath, '{"id":"broken"');
+
+    const recovered = await libraryService.getPack(pack.id);
+    const repairedManifest = await fs.readFile(packFilePath, "utf8");
+
+    expect(recovered.pack.name).toBe("Recovered Pack");
+    expect(repairedManifest).toContain('"name": "Recovered Pack"');
+  });
+
+  it("skips and cleans broken telegram mirror directories while listing packs", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Healthy Pack" });
+    const missingRoot = path.join(root, "packs", "telegram-100");
+    const corruptRoot = path.join(root, "packs", "telegram-200");
+
+    await fs.mkdir(missingRoot, { recursive: true });
+    await fs.mkdir(corruptRoot, { recursive: true });
+    await fs.writeFile(path.join(corruptRoot, "pack.json"), '{"id":"broken"}}');
+
+    const packs = await libraryService.listPacks();
+
+    expect(packs.map((item) => item.id)).toEqual([pack.id]);
+    await expect(fs.access(missingRoot)).rejects.toThrow();
+    await expect(fs.access(corruptRoot)).rejects.toThrow();
+  });
+
+  it("ignores broken telegram mirror directories during telegram sticker set lookup", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const validRoot = path.join(root, "packs", "telegram-300");
+    const brokenRoot = path.join(root, "packs", "telegram-400");
+    await fs.mkdir(path.join(validRoot, "source"), { recursive: true });
+    await fs.mkdir(path.join(validRoot, "webm"), { recursive: true });
+    await fs.writeFile(
+      path.join(validRoot, "pack.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 2,
+          id: "telegram-300",
+          source: "telegram",
+          name: "Valid Telegram Pack",
+          slug: "valid-telegram-pack",
+          iconAssetId: null,
+          telegram: {
+            stickerSetId: "300",
+            shortName: "valid_pack",
+            title: "Valid Telegram Pack",
+            format: "video",
+            syncState: "idle",
+            lastSyncedAt: null,
+            lastSyncError: null,
+            publishedFromLocalPackId: null,
+          },
+          createdAt: "2026-03-11T00:00:00.000Z",
+          updatedAt: "2026-03-11T00:00:00.000Z",
+          assets: [],
+          outputs: [],
+        },
+        null,
+        2,
+      ),
+    );
+    await fs.mkdir(brokenRoot, { recursive: true });
+    await fs.writeFile(path.join(brokenRoot, "pack.json"), '{"id":"broken"');
+
+    const missing = await libraryService.findPackByTelegramStickerSetId("999");
+    const found = await libraryService.findPackByTelegramStickerSetId("300");
+
+    expect(missing).toBeNull();
+    expect(found?.record.id).toBe("telegram-300");
+    await expect(fs.access(brokenRoot)).rejects.toThrow();
+  });
+
+  it("copies telegram pack thumbnails into the pack source directory", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const thumbnailRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-thumb-"),
+    );
+    cleanup.push(thumbnailRoot);
+    const thumbnailPath = path.join(thumbnailRoot, "icon.webp");
+    await fs.writeFile(thumbnailPath, "thumbnail");
+
+    const details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "500",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      iconStickerId: null,
+      assets: [],
+    });
+
+    expect(details.pack.thumbnailPath).toContain("/source/telegram-pack-icon.webp");
+    await expect(fs.readFile(details.pack.thumbnailPath!, "utf8")).resolves.toBe(
+      "thumbnail",
+    );
+  });
 });

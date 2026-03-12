@@ -26,12 +26,13 @@ export type TelegramAuthStep =
   | "wait_password"
   | "ready"
   | "logged_out";
-export type TelegramPackFormat = "video";
+export type TelegramPackFormat = "video" | "static" | "animated" | "mixed" | "unknown";
 export type TelegramPackSyncState =
   | "idle"
   | "syncing"
   | "stale"
-  | "error";
+  | "error"
+  | "unsupported";
 export type DownloadState =
   | "missing"
   | "queued"
@@ -46,6 +47,7 @@ export interface TelegramPackSummary {
   shortName: string;
   title: string;
   format: TelegramPackFormat;
+  thumbnailPath?: string | null;
   syncState: TelegramPackSyncState;
   lastSyncedAt: string | null;
   lastSyncError: string | null;

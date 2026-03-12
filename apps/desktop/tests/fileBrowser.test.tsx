@@ -134,6 +134,51 @@ describe("AssetGrid", () => {
 
     expect(markup).toContain("Emoji required");
   });
+
+  it("renders a standalone telegram pack icon preview in the assets grid", () => {
+    const markup = renderToStaticMarkup(
+      <AssetGrid
+        assets={[]}
+        pack={createPack({
+          source: "telegram",
+          thumbnailPath: "/tmp/sample-pack/source/telegram-pack-icon.webp",
+          telegram: {
+            stickerSetId: "100",
+            shortName: "sample_pack",
+            title: "Sample Pack",
+            format: "video",
+            syncState: "idle",
+            lastSyncedAt: "2026-03-12T00:00:00.000Z",
+            lastSyncError: null,
+            publishedFromLocalPackId: null,
+          },
+        })}
+        view="gallery"
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack({
+            source: "telegram",
+            thumbnailPath: "/tmp/sample-pack/source/telegram-pack-icon.webp",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "sample_pack",
+              title: "Sample Pack",
+              format: "video",
+              syncState: "idle",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).toContain("telegram-pack-icon.webp");
+    expect(markup).toContain("icon");
+    expect(markup).toContain("ready");
+  });
 });
 
 describe("OutputsList", () => {
