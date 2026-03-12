@@ -988,6 +988,7 @@ export class TelegramService {
       stickerSetId: stickerSet.stickerSetId,
     });
 
+    await this.downloadPackMedia({ packId: details.pack.id });
     await this.mirrorService.markPackSyncState(details.pack.id, "idle", null);
     this.emit({
       type: "pack_sync_completed",

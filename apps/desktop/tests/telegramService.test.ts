@@ -1027,8 +1027,9 @@ describe("TelegramService", () => {
 
     const details = await libraryService.getPack(packs[0]!.id);
     expect(details.assets[0]?.emojiList).toEqual(["🙂"]);
-    expect(details.assets[0]?.absolutePath).toBeNull();
-    expect(details.assets[0]?.downloadState).toBe("missing");
+    expect(details.assets[0]?.absolutePath).not.toBeNull();
+    expect(details.assets[0]?.downloadState).toBe("ready");
+    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
   });
 
   it("keeps non-video owned packs as unsupported telegram mirrors", async () => {
@@ -1169,7 +1170,7 @@ describe("TelegramService", () => {
     expect(mirrorPack?.iconAssetId).toBeNull();
   });
 
-  it("does not download sticker media during owned-pack sync", async () => {
+  it("downloads missing sticker media during owned-pack sync", async () => {
     const { root, downloadRoot, telegramService, tdlibService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1192,7 +1193,7 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
 
-    expect(downloadCount).toBe(0);
+    expect(downloadCount).toBe(1);
   });
 
   it("does not fetch thumbnails for unsupported packs during sync", async () => {
@@ -1268,8 +1269,6 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const mirror = await libraryService.findPackByTelegramStickerSetId("100");
     expect(mirror).not.toBeNull();
-
-    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
     let details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
@@ -1304,8 +1303,6 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const mirror = await libraryService.findPackByTelegramStickerSetId("100");
     expect(mirror).not.toBeNull();
-
-    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
     const nestedPath = path.join(mirror!.rootPath, "source", "stickers/001.webm");
     const flatPath = path.join(mirror!.rootPath, "source", "sticker-001.webm");
     await fs.mkdir(path.dirname(nestedPath), { recursive: true });
