@@ -49,6 +49,7 @@
   "build": {
     "appId": "dev.stickersmith.desktop",
     "productName": "Sticker Smith",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
