@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import type { MouseEvent } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Box from "@mui/material/Box";
@@ -39,6 +40,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     asset: SourceAsset;
   } | null>(null);
   const [renameAsset, setRenameAsset] = useState<SourceAsset | null>(null);
+  const [emojiAsset, setEmojiAsset] = useState<SourceAsset | null>(null);
   const sortedAssets = sortItemsWithPinnedFirst(assets, {
     getLabel: (asset) => asset.relativePath,
     isPinned: (asset) => pack.iconAssetId === asset.id,
@@ -81,6 +83,12 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     handleClose();
   }, [contextMenu, handleClose]);
 
+  const handleEmojiOpen = useCallback(() => {
+    if (!contextMenu) return;
+    setEmojiAsset(contextMenu.asset);
+    handleClose();
+  }, [contextMenu, handleClose]);
+
   const handleRenameConfirm = useCallback(
     async (nextRelativePath: string) => {
       if (!renameAsset) return;
@@ -93,6 +101,28 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       await refreshDetails();
     },
     [renameAsset, pack.id, refreshDetails],
+  );
+
+  const handleEmojiConfirm = useCallback(
+    async (value: string) => {
+      if (!emojiAsset) {
+        return;
+      }
+
+      const emojis = parseEmojiInput(value);
+      if (emojis.length === 0) {
+        return;
+      }
+
+      await window.stickerSmith.assets.setEmojis({
+        packId: pack.id,
+        assetId: emojiAsset.id,
+        emojis,
+      });
+      setEmojiAsset(null);
+      await refreshDetails();
+    },
+    [emojiAsset, pack.id, refreshDetails],
   );
 
   if (assets.length === 0) {
@@ -133,11 +163,18 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                     />
                   }
                   metadata={
-                    <Chip
-                      label={asset.kind}
-                      size="small"
-                      sx={fileMetaChipSx}
-                    />
+                    <Box sx={fileMetadataRowSx}>
+                      <Chip
+                        label={asset.kind}
+                        size="small"
+                        sx={fileMetaChipSx}
+                      />
+                      <Chip
+                        label={formatEmojiSummary(asset)}
+                        size="small"
+                        sx={emojiMetaChipSx(asset.emojiList.length === 0)}
+                      />
+                    </Box>
                   }
                 />
               );
@@ -172,11 +209,18 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                     />
                   }
                   metadata={
-                    <Chip
-                      label={asset.kind}
-                      size="small"
-                      sx={fileMetaChipSx}
-                    />
+                    <Box sx={fileMetadataRowSx}>
+                      <Chip
+                        label={asset.kind}
+                        size="small"
+                        sx={fileMetaChipSx}
+                      />
+                      <Chip
+                        label={formatEmojiSummary(asset)}
+                        size="small"
+                        sx={emojiMetaChipSx(asset.emojiList.length === 0)}
+                      />
+                    </Box>
                   }
                 />
               );
@@ -232,6 +276,12 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           <EditIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.rename}
         </MenuItem>
+        <MenuItem onClick={handleEmojiOpen} dense>
+          <InsertEmoticonIcon
+            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
+          />
+          {appTokens.copy.actions.editEmojis}
+        </MenuItem>
         <MenuItem onClick={handleDelete} dense sx={{ color: "error.light" }}>
           <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.delete}
@@ -247,9 +297,39 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           onClose={() => setRenameAsset(null)}
         />
       )}
+
+      {emojiAsset && (
+        <RenameDialog
+          open
+          title={appTokens.copy.dialogs.editEmojis}
+          label={appTokens.copy.labels.emojiList}
+          initialValue={emojiAsset.emojiList.join(" ")}
+          onConfirm={handleEmojiConfirm}
+          onClose={() => setEmojiAsset(null)}
+        />
+      )}
     </>
   );
 }
+
+function parseEmojiInput(value: string) {
+  return Array.from(
+    new Set(value.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean)),
+  ).slice(0, 20);
+}
+
+function formatEmojiSummary(asset: SourceAsset) {
+  return asset.emojiList.length > 0
+    ? asset.emojiList.join(" ")
+    : appTokens.copy.labels.stickersNeedEmoji;
+}
+
+const fileMetadataRowSx = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0.75,
+  flexWrap: "wrap",
+} as const;
 
 const fileMetaChipSx = {
   height: 18,
@@ -257,3 +337,12 @@ const fileMetaChipSx = {
   textTransform: "uppercase",
   letterSpacing: appTokens.typography.letterSpacing.chip,
 } as const;
+
+const emojiMetaChipSx = (missingEmoji: boolean) =>
+  ({
+    height: 18,
+    fontSize: appTokens.typography.fontSizes.assetKind,
+    letterSpacing: appTokens.typography.letterSpacing.chip,
+    color: missingEmoji ? "error.main" : "text.secondary",
+    borderColor: missingEmoji ? "error.main" : "divider",
+  }) as const;

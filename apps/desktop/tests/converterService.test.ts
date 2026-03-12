@@ -115,6 +115,7 @@ function createDetails(): StickerPackDetails {
   return {
     pack: {
       id: "pack-1",
+      source: "local",
       name: "Sample Pack",
       slug: "sample-pack",
       rootPath: "/tmp/sample-pack",
@@ -131,6 +132,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "one.png",
         absolutePath: "/tmp/sample-pack/source/one.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/one.png",
@@ -140,6 +142,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "two.png",
         absolutePath: "/tmp/sample-pack/source/two.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/two.png",
@@ -149,6 +152,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "icon.png",
         absolutePath: "/tmp/sample-pack/source/icon.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/icon.png",

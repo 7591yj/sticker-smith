@@ -7,6 +7,8 @@ import type {
   ImportResult,
   MoveAssetInput,
   RenameAssetInput,
+  SetAssetEmojisInput,
+  TelegramState,
   StickerSmithApi,
   StickerPack,
   StickerPackDetails,
@@ -15,6 +17,13 @@ import type {
 const stickerSmith: StickerSmithApi = {
   settings: {
     getConfig: () => ipcRenderer.invoke("settings.getConfig"),
+  },
+  telegram: {
+    getState: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.getState"),
+    selectAuthMode: (input: { mode: "user" | "bot" }): Promise<TelegramState> =>
+      ipcRenderer.invoke("telegram.selectAuthMode", input),
+    disconnect: (): Promise<TelegramState> =>
+      ipcRenderer.invoke("telegram.disconnect"),
   },
   packs: {
     list: (): Promise<StickerPack[]> => ipcRenderer.invoke("packs.list"),
@@ -44,6 +53,8 @@ const stickerSmith: StickerSmithApi = {
       directoryPath?: string;
     }): Promise<ImportResult> =>
       ipcRenderer.invoke("assets.importDirectory", input),
+    setEmojis: (input: SetAssetEmojisInput): Promise<StickerPackDetails> =>
+      ipcRenderer.invoke("assets.setEmojis", input),
     rename: (input: RenameAssetInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.rename", input),
     move: (input: MoveAssetInput): Promise<StickerPackDetails> =>

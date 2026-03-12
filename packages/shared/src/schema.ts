@@ -6,6 +6,8 @@ export const packIdSchema = z.string().min(1);
 export const assetIdSchema = z.string().min(1);
 export const mediaKindSchema = z.enum(supportedMediaKinds);
 export const conversionModeSchema = z.enum(["icon", "sticker"]);
+export const telegramAuthModeSchema = z.enum(["user", "bot"]);
+export const emojiListSchema = z.array(z.string().min(1)).min(1).max(20);
 
 export const conversionTaskSchema = z.object({
   assetId: assetIdSchema,
@@ -53,6 +55,12 @@ export const renameAssetSchema = z.object({
   nextRelativePath: z.string().min(1),
 });
 
+export const setAssetEmojisSchema = z.object({
+  packId: packIdSchema,
+  assetId: assetIdSchema,
+  emojis: emojiListSchema,
+});
+
 export const moveAssetSchema = z.object({
   packId: packIdSchema,
   assetId: assetIdSchema,
@@ -80,4 +88,8 @@ export const revealOutputSchema = z.object({
 
 export const exportOutputFolderSchema = z.object({
   packId: packIdSchema,
+});
+
+export const selectTelegramAuthModeSchema = z.object({
+  mode: telegramAuthModeSchema,
 });

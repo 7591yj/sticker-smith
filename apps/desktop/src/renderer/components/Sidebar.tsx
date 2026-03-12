@@ -8,6 +8,7 @@ import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import LayersIcon from "@mui/icons-material/Layers";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
@@ -18,7 +19,7 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import type { StickerPack } from "@sticker-smith/shared";
+import type { StickerPack, TelegramState } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 import { RenameDialog } from "./RenameDialog";
 import { toFileUrl } from "../utils/fileUrl";
@@ -86,19 +87,27 @@ function PackThumbnail({
 
 interface Props {
   packs: StickerPack[];
+  telegramState: TelegramState | null;
   selectedPackId: string | null;
   onSelect: (id: string) => void;
+  onSelectTelegramAuthMode: (mode: "user" | "bot") => Promise<unknown>;
+  onDisconnectTelegram: () => Promise<unknown>;
   refreshPacks: () => Promise<StickerPack[]>;
   setSelectedPackId: (id: string | null) => void;
 }
 
 export function Sidebar({
   packs,
+  telegramState,
   selectedPackId,
   onSelect,
+  onSelectTelegramAuthMode,
+  onDisconnectTelegram,
   refreshPacks,
   setSelectedPackId,
 }: Props) {
+  const localPacks = packs.filter((pack) => pack.source === "local");
+  const telegramPacks = packs.filter((pack) => pack.source === "telegram");
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -109,6 +118,9 @@ export function Sidebar({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, pack: StickerPack) => {
+      if (pack.source !== "local") {
+        return;
+      }
       e.preventDefault();
       setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pack });
     },
@@ -176,6 +188,58 @@ export function Sidebar({
     await window.stickerSmith.outputs.exportFolder({ packId: pack.id });
   }, [contextMenu, handleCloseMenu]);
 
+  const telegramStatusLabel =
+    telegramState?.status === "awaiting_credentials"
+      ? appTokens.copy.labels.telegramNeedsCredentials
+      : appTokens.copy.labels.telegramDisconnected;
+
+  const renderPackList = (
+    sectionPacks: StickerPack[],
+    emptyState: string,
+  ) => {
+    if (sectionPacks.length === 0) {
+      if (emptyState.length === 0) {
+        return null;
+      }
+
+      return (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            px: 2,
+            py: 1.5,
+            fontSize: appTokens.typography.fontSizes.body,
+          }}
+        >
+          {emptyState}
+        </Typography>
+      );
+    }
+
+    return sectionPacks.map((pack) => (
+      <ListItemButton
+        key={pack.id}
+        selected={pack.id === selectedPackId}
+        onClick={() => onSelect(pack.id)}
+        onContextMenu={(e) => handleContextMenu(e, pack)}
+        dense
+        sx={{ borderRadius: appTokens.radii.panel / 8 }}
+      >
+        <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
+        <ListItemText
+          primary={pack.name}
+          primaryTypographyProps={{
+            variant: "body2",
+            noWrap: true,
+            fontWeight: pack.id === selectedPackId ? 600 : 400,
+            fontSize: appTokens.typography.fontSizes.bodyDefault,
+          }}
+        />
+      </ListItemButton>
+    ));
+  };
+
   return (
     <Box
       sx={{
@@ -217,44 +281,107 @@ export function Sidebar({
       <Divider />
 
       <List sx={{ flex: 1, overflowY: "auto", py: 0.5, px: 0.5 }}>
-        {packs.length === 0 ? (
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{
+            display: "block",
+            px: 1.5,
+            pt: 0.75,
+            pb: 0.25,
+            letterSpacing: appTokens.typography.letterSpacing.overline,
+            fontSize: appTokens.typography.fontSizes.overline,
+          }}
+        >
+          {appTokens.copy.labels.localPacks}
+        </Typography>
+        {renderPackList(localPacks, appTokens.copy.emptyStates.noLocalPacks)}
+
+        <Divider sx={{ my: 0.75 }} />
+
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{
+            display: "block",
+            px: 1.5,
+            pt: 0.5,
+            pb: 0.25,
+            letterSpacing: appTokens.typography.letterSpacing.overline,
+            fontSize: appTokens.typography.fontSizes.overline,
+          }}
+        >
+          {appTokens.copy.labels.telegramPacks}
+        </Typography>
+        <Box
+          sx={{
+            px: 1.5,
+            pb: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 0.75,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+          >
+            {telegramStatusLabel}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+            <Button
+              size="small"
+              variant={
+                telegramState?.selectedMode === "user" ? "contained" : "outlined"
+              }
+              onClick={() => void onSelectTelegramAuthMode("user")}
+              sx={{
+                textTransform: "none",
+                fontSize: appTokens.typography.fontSizes.bodyCompact,
+              }}
+            >
+              {appTokens.copy.actions.userAccount}
+            </Button>
+            <Button
+              size="small"
+              variant={
+                telegramState?.selectedMode === "bot" ? "contained" : "outlined"
+              }
+              onClick={() => void onSelectTelegramAuthMode("bot")}
+              sx={{
+                textTransform: "none",
+                fontSize: appTokens.typography.fontSizes.bodyCompact,
+              }}
+            >
+              {appTokens.copy.actions.botToken}
+            </Button>
+            {telegramState?.selectedMode ? (
+              <Button
+                size="small"
+                color="inherit"
+                variant="text"
+                onClick={() => void onDisconnectTelegram()}
+                sx={{
+                  textTransform: "none",
+                  fontSize: appTokens.typography.fontSizes.bodyCompact,
+                }}
+              >
+                {appTokens.copy.actions.disconnect}
+              </Button>
+            ) : null}
+          </Box>
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{
-              px: 2,
-              py: 3,
-              textAlign: "center",
-              fontSize: appTokens.typography.fontSizes.body,
-            }}
+            sx={{ fontSize: appTokens.typography.fontSizes.body }}
           >
-            {appTokens.copy.emptyStates.noPacks}
+            {telegramState?.message ?? appTokens.copy.emptyStates.noTelegramPacks}
           </Typography>
-        ) : (
-          packs.map((pack) => (
-            <ListItemButton
-              key={pack.id}
-              selected={pack.id === selectedPackId}
-              onClick={() => onSelect(pack.id)}
-              onContextMenu={(e) => handleContextMenu(e, pack)}
-              dense
-              sx={{ borderRadius: appTokens.radii.panel / 8 }}
-            >
-              <PackThumbnail
-                name={pack.name}
-                thumbnailPath={pack.thumbnailPath}
-              />
-              <ListItemText
-                primary={pack.name}
-                primaryTypographyProps={{
-                  variant: "body2",
-                  noWrap: true,
-                  fontWeight: pack.id === selectedPackId ? 600 : 400,
-                  fontSize: appTokens.typography.fontSizes.bodyDefault,
-                }}
-              />
-            </ListItemButton>
-          ))
+        </Box>
+        {renderPackList(
+          telegramPacks,
+          "",
         )}
       </List>
 

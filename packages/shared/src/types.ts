@@ -11,11 +11,18 @@ export const supportedMediaKinds = [
 
 export type SourceMediaKind = (typeof supportedMediaKinds)[number];
 export type ConversionMode = "icon" | "sticker";
+export type PackSource = "local" | "telegram";
+export type TelegramAuthMode = "user" | "bot";
+export type TelegramConnectionStatus =
+  | "disconnected"
+  | "awaiting_credentials"
+  | "connected";
 export type PackId = string;
 export type AssetId = string;
 
 export interface StickerPack {
   id: PackId;
+  source: PackSource;
   name: string;
   slug: string;
   rootPath: string;
@@ -32,6 +39,7 @@ export interface SourceAsset {
   packId: PackId;
   relativePath: string;
   absolutePath: string;
+  emojiList: string[];
   kind: SourceMediaKind;
   importedAt: string;
   originalImportPath: string | null;
@@ -49,6 +57,7 @@ export interface OutputArtifact {
 
 export interface StickerPackRecord {
   id: PackId;
+  source: PackSource;
   name: string;
   slug: string;
   iconAssetId: AssetId | null;
@@ -70,6 +79,15 @@ export interface LibraryConfig {
   updatedAt: string;
 }
 
+export interface TelegramState {
+  backend: "tdlib";
+  status: TelegramConnectionStatus;
+  selectedMode: TelegramAuthMode | null;
+  recommendedMode: TelegramAuthMode;
+  message: string;
+  updatedAt: string;
+}
+
 export interface ImportResult {
   imported: SourceAsset[];
   skipped: string[];
@@ -79,6 +97,12 @@ export interface RenameAssetInput {
   packId: PackId;
   assetId: AssetId;
   nextRelativePath: string;
+}
+
+export interface SetAssetEmojisInput {
+  packId: PackId;
+  assetId: AssetId;
+  emojis: string[];
 }
 
 export interface MoveAssetInput {

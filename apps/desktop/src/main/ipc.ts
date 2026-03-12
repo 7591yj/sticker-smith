@@ -15,6 +15,8 @@ import {
   renameAssetSchema,
   renamePackSchema,
   revealOutputSchema,
+  selectTelegramAuthModeSchema,
+  setAssetEmojisSchema,
   setPackIconSchema,
 } from "@sticker-smith/shared";
 import { appTokens } from "../theme/appTokens";
@@ -23,11 +25,13 @@ import { ConverterService } from "./services/converterService";
 import { LibraryService } from "./services/libraryService";
 import { SettingsService } from "./services/settingsService";
 import { ShellService } from "./services/shellService";
+import { TelegramService } from "./services/telegramService";
 
 const settingsService = new SettingsService();
 const libraryService = new LibraryService(settingsService);
 const shellService = new ShellService(libraryService);
 const converterService = new ConverterService(libraryService);
+const telegramService = new TelegramService(settingsService);
 
 function emitConversionEvent(payload: unknown) {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -39,6 +43,11 @@ export function registerIpc() {
   converterService.setEventSink(emitConversionEvent);
 
   ipcMain.handle("settings.getConfig", async () => settingsService.getConfig());
+  ipcMain.handle("telegram.getState", async () => telegramService.getState());
+  ipcMain.handle("telegram.selectAuthMode", async (_event, input: unknown) =>
+    telegramService.selectAuthMode(selectTelegramAuthModeSchema.parse(input)),
+  );
+  ipcMain.handle("telegram.disconnect", async () => telegramService.disconnect());
 
   ipcMain.handle("packs.list", async () => libraryService.listPacks());
   ipcMain.handle("packs.get", async (_event, input: { packId: string }) =>
@@ -104,6 +113,9 @@ export function registerIpc() {
 
   ipcMain.handle("assets.rename", async (_event, input: unknown) =>
     libraryService.renameAsset(renameAssetSchema.parse(input)),
+  );
+  ipcMain.handle("assets.setEmojis", async (_event, input: unknown) =>
+    libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
   );
   ipcMain.handle("assets.move", async (_event, input: unknown) =>
     libraryService.moveAsset(moveAssetSchema.parse(input)),

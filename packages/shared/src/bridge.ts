@@ -7,6 +7,9 @@ import type {
   MoveAssetInput,
   OutputArtifact,
   RenameAssetInput,
+  SetAssetEmojisInput,
+  TelegramAuthMode,
+  TelegramState,
   StickerPack,
   StickerPackDetails,
 } from "./types";
@@ -14,6 +17,13 @@ import type {
 export interface StickerSmithApi {
   settings: {
     getConfig: () => Promise<LibraryConfig>;
+  };
+  telegram: {
+    getState: () => Promise<TelegramState>;
+    selectAuthMode: (input: {
+      mode: TelegramAuthMode;
+    }) => Promise<TelegramState>;
+    disconnect: () => Promise<TelegramState>;
   };
   packs: {
     list: () => Promise<StickerPack[]>;
@@ -36,6 +46,7 @@ export interface StickerSmithApi {
       packId: string;
       directoryPath?: string;
     }) => Promise<ImportResult>;
+    setEmojis: (input: SetAssetEmojisInput) => Promise<StickerPackDetails>;
     rename: (input: RenameAssetInput) => Promise<StickerPackDetails>;
     move: (input: MoveAssetInput) => Promise<StickerPackDetails>;
     delete: (input: DeleteAssetInput) => Promise<StickerPackDetails>;

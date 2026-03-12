@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import { ThemeProvider } from "@mui/material/styles";
 import type {
   ConversionJobEvent,
+  TelegramState,
   StickerPack,
   StickerPackDetails,
 } from "@sticker-smith/shared";
@@ -26,6 +27,7 @@ interface ConversionFailureDialogState {
 
 export function App() {
   const [packs, setPacks] = useState<StickerPack[]>([]);
+  const [telegramState, setTelegramState] = useState<TelegramState | null>(null);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [details, setDetails] = useState<StickerPackDetails | null>(null);
   const [conversionEvents, setConversionEvents] = useState<
@@ -55,6 +57,13 @@ export function App() {
 
       setPacks(nextPacks);
       setSelectedPackId(nextPacks[0]?.id ?? null);
+    });
+    void window.stickerSmith.telegram.getState().then((nextTelegramState) => {
+      if (!active) {
+        return;
+      }
+
+      setTelegramState(nextTelegramState);
     });
 
     const unsub = window.stickerSmith.conversion.subscribe((event) => {
@@ -157,6 +166,18 @@ export function App() {
     return next;
   }, []);
 
+  const selectTelegramAuthMode = useCallback(async (mode: "user" | "bot") => {
+    const next = await window.stickerSmith.telegram.selectAuthMode({ mode });
+    setTelegramState(next);
+    return next;
+  }, []);
+
+  const disconnectTelegram = useCallback(async () => {
+    const next = await window.stickerSmith.telegram.disconnect();
+    setTelegramState(next);
+    return next;
+  }, []);
+
   const refreshDetails = useCallback(async (packId: string) => {
     const next = await window.stickerSmith.packs.get(packId);
     setDetails(next);
@@ -176,8 +197,11 @@ export function App() {
       >
         <Sidebar
           packs={packs}
+          telegramState={telegramState}
           selectedPackId={selectedPackId}
           onSelect={setSelectedPackId}
+          onSelectTelegramAuthMode={selectTelegramAuthMode}
+          onDisconnectTelegram={disconnectTelegram}
           refreshPacks={refreshPacks}
           setSelectedPackId={setSelectedPackId}
         />

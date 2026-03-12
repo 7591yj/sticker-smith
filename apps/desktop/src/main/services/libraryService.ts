@@ -6,6 +6,7 @@ import type {
   AssetId,
   ImportResult,
   OutputArtifact,
+  PackSource,
   SourceAsset,
   SourceMediaKind,
   StickerPack,
@@ -68,6 +69,7 @@ function buildStickerPack(
 
   return {
     id: record.id,
+    source: record.source,
     name: record.name,
     slug: record.slug,
     rootPath,
@@ -88,12 +90,26 @@ function hydratePackDetails(
     pack: buildStickerPack(record, rootPath),
     assets: record.assets.map((asset) => ({
       ...asset,
+      emojiList: asset.emojiList ?? [],
       absolutePath: path.join(rootPath, "source", asset.relativePath),
     })),
     outputs: record.outputs.map((output) => ({
       ...output,
       absolutePath: path.join(rootPath, "webm", output.relativePath),
     })),
+  };
+}
+
+function normalizePackRecord(
+  record: Omit<StickerPackRecord, "source"> & { source?: PackSource },
+): StickerPackRecord {
+  return {
+    ...record,
+    assets: record.assets.map((asset) => ({
+      ...asset,
+      emojiList: asset.emojiList ?? [],
+    })),
+    source: record.source ?? "local",
   };
 }
 
@@ -139,7 +155,11 @@ export class LibraryService {
     rootPath: string,
   ): Promise<StickerPackRecord> {
     const raw = await fs.readFile(path.join(rootPath, "pack.json"), "utf8");
-    return JSON.parse(raw) as StickerPackRecord;
+    return normalizePackRecord(
+      JSON.parse(raw) as Omit<StickerPackRecord, "source"> & {
+        source?: PackSource;
+      },
+    );
   }
 
   private async writePackRecord(rootPath: string, record: StickerPackRecord) {
@@ -194,6 +214,7 @@ export class LibraryService {
       packId: record.id,
       relativePath: nextRelativePath,
       absolutePath: destination,
+      emojiList: [],
       kind,
       importedAt: new Date().toISOString(),
       originalImportPath: absolutePath,
@@ -203,6 +224,7 @@ export class LibraryService {
       id: asset.id,
       packId: asset.packId,
       relativePath: asset.relativePath,
+      emojiList: asset.emojiList,
       kind: asset.kind,
       importedAt: asset.importedAt,
       originalImportPath: asset.originalImportPath,
@@ -266,6 +288,7 @@ export class LibraryService {
     const now = new Date().toISOString();
     const record: StickerPackRecord = {
       id,
+      source: "local",
       name: input.name,
       slug,
       iconAssetId: null,
@@ -399,6 +422,24 @@ export class LibraryService {
     await fs.rename(currentAbsolutePath, nextAbsolutePath);
     asset.relativePath = nextRelativePath;
     await this.removeAssetOutputs(record, rootPath, asset.id);
+    await this.writePackRecord(rootPath, record);
+
+    return hydratePackDetails(record, rootPath);
+  }
+
+  async setAssetEmojis(input: {
+    packId: string;
+    assetId: string;
+    emojis: string[];
+  }) {
+    const { record, rootPath } = await this.readPackRecordById(input.packId);
+    const asset = record.assets.find((item) => item.id === input.assetId);
+
+    if (!asset) {
+      throw new Error(`Asset not found: ${input.assetId}`);
+    }
+
+    asset.emojiList = [...input.emojis];
     await this.writePackRecord(rootPath, record);
 
     return hydratePackDetails(record, rootPath);

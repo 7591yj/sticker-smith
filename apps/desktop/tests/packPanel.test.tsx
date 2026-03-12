@@ -9,6 +9,7 @@ function createDetails(): StickerPackDetails {
   return {
     pack: {
       id: "pack-1",
+      source: "local",
       name: "Sample Pack",
       slug: "sample-pack",
       rootPath: "/tmp/sample-pack",

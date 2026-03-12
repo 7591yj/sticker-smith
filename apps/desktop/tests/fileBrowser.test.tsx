@@ -16,6 +16,7 @@ import {
 function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
   return {
     id: "pack-1",
+    source: "local",
     name: "Sample Pack",
     slug: "sample-pack",
     rootPath: "/tmp/sample-pack",
@@ -39,6 +40,7 @@ function createAsset(
     packId: "pack-1",
     relativePath,
     absolutePath: `/tmp/sample-pack/source/${relativePath}`,
+    emojiList: [],
     kind,
     importedAt: "2026-03-11T00:00:00.000Z",
     originalImportPath: null,
@@ -112,6 +114,23 @@ describe("AssetGrid", () => {
     );
 
     expect(markup.indexOf("icon.png")).toBeLessThan(markup.indexOf("alpha.png"));
+  });
+
+  it("renders the emoji requirement state for assets without emojis", () => {
+    const markup = renderToStaticMarkup(
+      <AssetGrid
+        assets={[createAsset("asset-1", "needs-emoji.png")]}
+        pack={createPack()}
+        view="gallery"
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [createAsset("asset-1", "needs-emoji.png")],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).toContain("Emoji required");
   });
 });
 
