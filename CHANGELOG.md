@@ -6,6 +6,8 @@ All notable project releases are documented here.
 
 - Fix AppImage conversion fallback so packaged builds resolve healthy host
   `ffmpeg` and `ffprobe` binaries instead of reusing broken bundled paths.
+- Remove the backend's pre-conversion `ffprobe` dimension check so sticker
+  conversion no longer fails on PNG and GIF inputs when probing is unavailable.
 
 ## 0.1.1-beta.1 - 2026-03-11
 
