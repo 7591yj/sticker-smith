@@ -8,6 +8,8 @@ All notable project releases are documented here.
   `ffmpeg` and `ffprobe` binaries instead of reusing broken bundled paths.
 - Remove the backend's pre-conversion `ffprobe` dimension check so sticker
   conversion no longer fails on PNG and GIF inputs when probing is unavailable.
+- Show a conversion failure dialog in the desktop app when background pack
+  conversion finishes with one or more failed assets.
 
 ## 0.1.1-beta.1 - 2026-03-11
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CssBaseline from "@mui/material/CssBaseline";
 import Box from "@mui/material/Box";
 import { ThemeProvider } from "@mui/material/styles";
@@ -7,10 +7,22 @@ import type {
   StickerPack,
   StickerPackDetails,
 } from "@sticker-smith/shared";
+import { ConversionFailureDialog } from "./components/ConversionFailureDialog";
 import { ConversionStatus } from "./components/ConversionStatus";
 import { PackPanel } from "./components/PackPanel";
 import { Sidebar } from "./components/Sidebar";
 import { appTheme } from "./theme";
+
+interface ConversionFailureDialogState {
+  packName: string | null;
+  successCount: number;
+  failureCount: number;
+  failures: Array<{
+    assetLabel: string;
+    error: string;
+    mode?: ConversionJobEvent["mode"];
+  }>;
+}
 
 export function App() {
   const [packs, setPacks] = useState<StickerPack[]>([]);
@@ -20,6 +32,18 @@ export function App() {
     ConversionJobEvent[]
   >([]);
   const [converting, setConverting] = useState(false);
+  const [failureDialog, setFailureDialog] =
+    useState<ConversionFailureDialogState | null>(null);
+  const latestDetailsRef = useRef<StickerPackDetails | null>(null);
+  const jobFailuresRef = useRef<
+    Record<string, ConversionFailureDialogState["failures"]>
+  >({});
+  const jobPackNamesRef = useRef<Record<string, string | null>>({});
+  const jobAssetNamesRef = useRef<Record<string, Record<string, string>>>({});
+
+  useEffect(() => {
+    latestDetailsRef.current = details;
+  }, [details]);
 
   useEffect(() => {
     let active = true;
@@ -35,8 +59,71 @@ export function App() {
 
     const unsub = window.stickerSmith.conversion.subscribe((event) => {
       setConversionEvents((cur) => [event, ...cur].slice(0, 50));
-      if (event.type === "job_started") setConverting(true);
-      if (event.type === "job_finished") setConverting(false);
+
+      if (event.type === "job_started") {
+        const assetNames = Object.fromEntries(
+          (latestDetailsRef.current?.assets ?? []).map((asset) => [
+            asset.id,
+            asset.relativePath.split("/").pop() ?? asset.relativePath,
+          ]),
+        );
+        setFailureDialog(null);
+        jobFailuresRef.current[event.jobId] = [];
+        jobPackNamesRef.current[event.jobId] =
+          latestDetailsRef.current?.pack.name ?? null;
+        jobAssetNamesRef.current[event.jobId] = assetNames;
+        setConverting(true);
+        return;
+      }
+
+      if (event.type === "asset_failed") {
+        const assetLabel =
+          (event.assetId
+            ? jobAssetNamesRef.current[event.jobId]?.[event.assetId]
+            : null) ??
+          event.assetId ??
+          "Unknown asset";
+        jobFailuresRef.current[event.jobId] = [
+          ...(jobFailuresRef.current[event.jobId] ?? []),
+          {
+            assetLabel,
+            error: event.error ?? "Conversion failed for an unknown reason.",
+            mode: event.mode,
+          },
+        ];
+        return;
+      }
+
+      if (event.type === "job_finished") {
+        const failures = jobFailuresRef.current[event.jobId] ?? [];
+        const failureCount = event.failureCount ?? failures.length;
+        setConverting(false);
+
+        if (failureCount > 0) {
+          setFailureDialog({
+            packName:
+              jobPackNamesRef.current[event.jobId] ??
+              latestDetailsRef.current?.pack.name ??
+              null,
+            successCount: event.successCount ?? 0,
+            failureCount,
+            failures:
+              failures.length > 0
+                ? failures
+                : [
+                    {
+                      assetLabel: "Conversion job",
+                      error:
+                        "One or more assets failed while the conversion ran in the background.",
+                    },
+                  ],
+          });
+        }
+
+        delete jobFailuresRef.current[event.jobId];
+        delete jobPackNamesRef.current[event.jobId];
+        delete jobAssetNamesRef.current[event.jobId];
+      }
     });
 
     return () => {
@@ -113,6 +200,14 @@ export function App() {
           <ConversionStatus events={conversionEvents} converting={converting} />
         </Box>
       </Box>
+      <ConversionFailureDialog
+        open={failureDialog !== null}
+        packName={failureDialog?.packName ?? null}
+        successCount={failureDialog?.successCount ?? 0}
+        failureCount={failureDialog?.failureCount ?? 0}
+        failures={failureDialog?.failures ?? []}
+        onClose={() => setFailureDialog(null)}
+      />
     </ThemeProvider>
   );
 }

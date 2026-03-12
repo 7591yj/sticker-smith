@@ -34,6 +34,9 @@ import { ConverterService } from "../src/main/services/converterService";
 const originalResourcesPath = process.resourcesPath;
 const originalPathEnv = process.env.PATH;
 const originalAppDir = process.env.APPDIR;
+const originalFfmpegEnv = process.env.STICKER_SMITH_FFMPEG;
+const originalFfprobeEnv = process.env.STICKER_SMITH_FFPROBE;
+const tempDirectories: string[] = [];
 
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
@@ -72,6 +75,7 @@ async function createBundledBackend() {
     path.join(os.tmpdir(), "sticker-smith-backend-"),
   );
   const backendDirectory = path.join(resourcesPath, "backend");
+  tempDirectories.push(resourcesPath);
 
   await fs.mkdir(backendDirectory, { recursive: true });
   await Promise.all([
@@ -178,7 +182,24 @@ afterEach(() => {
   } else {
     process.env.APPDIR = originalAppDir;
   }
+  if (originalFfmpegEnv === undefined) {
+    delete process.env.STICKER_SMITH_FFMPEG;
+  } else {
+    process.env.STICKER_SMITH_FFMPEG = originalFfmpegEnv;
+  }
+  if (originalFfprobeEnv === undefined) {
+    delete process.env.STICKER_SMITH_FFPROBE;
+  } else {
+    process.env.STICKER_SMITH_FFPROBE = originalFfprobeEnv;
+  }
   vi.restoreAllMocks();
+
+  const cleanupTargets = tempDirectories.splice(0, tempDirectories.length);
+  return Promise.all(
+    cleanupTargets.map((directory) =>
+      fs.rm(directory, { recursive: true, force: true }),
+    ),
+  );
 });
 
 describe("ConverterService", () => {
@@ -315,8 +336,9 @@ describe("ConverterService", () => {
     appMock.isPackaged = true;
     const { resourcesPath, backendDirectory } = await createBundledBackend();
     const systemBinDirectory = await fs.mkdtemp(
-      path.join(os.tmpdir(), "sticker-smith-system-bin-"),
+      path.join(process.cwd(), ".sticker-smith-system-bin-"),
     );
+    tempDirectories.push(systemBinDirectory);
     await Promise.all([
       fs.writeFile(path.join(systemBinDirectory, "ffmpeg"), ""),
       fs.writeFile(path.join(systemBinDirectory, "ffprobe"), ""),
@@ -327,6 +349,8 @@ describe("ConverterService", () => {
     });
     process.env.APPDIR = resourcesPath;
     process.env.PATH = [backendDirectory, systemBinDirectory].join(path.delimiter);
+    delete process.env.STICKER_SMITH_FFMPEG;
+    delete process.env.STICKER_SMITH_FFPROBE;
 
     spawnMock.mockImplementation((command: string, args?: string[]) => {
       if (args?.[0] === "-version") {

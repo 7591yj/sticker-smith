@@ -107,6 +107,7 @@ export const appTokens = {
       addFiles: "Add Files",
       addFolder: "Add Folder",
       cancel: "Cancel",
+      close: "Close",
       copyFolderHere: "Copy Folder Here",
       confirm: "Confirm",
       convert: "Convert",
@@ -120,6 +121,7 @@ export const appTokens = {
       setAsIcon: "Set as icon",
     },
     dialogs: {
+      conversionFailed: "Conversion failed",
       newPack: "New Pack",
       renameAsset: "Rename Asset",
       renamePack: "Rename Pack",
