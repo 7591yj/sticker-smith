@@ -34,6 +34,7 @@ function createAsset(
   id: string,
   relativePath: string,
   kind: SourceAsset["kind"] = "png",
+  overrides: Partial<SourceAsset> = {},
 ): SourceAsset {
   return {
     id,
@@ -45,6 +46,7 @@ function createAsset(
     importedAt: "2026-03-11T00:00:00.000Z",
     originalImportPath: null,
     downloadState: "ready",
+    ...overrides,
   };
 }
 
@@ -118,7 +120,7 @@ describe("AssetGrid", () => {
     expect(markup.indexOf("icon.png")).toBeLessThan(markup.indexOf("alpha.png"));
   });
 
-  it("renders the empty emoji state for assets without emojis", () => {
+  it("does not render emoji metadata in the assets grid", () => {
     const markup = renderToStaticMarkup(
       <AssetGrid
         assets={[createAsset("asset-1", "needs-emoji.png")]}
@@ -132,7 +134,7 @@ describe("AssetGrid", () => {
       />,
     );
 
-    expect(markup).toContain("No emoji");
+    expect(markup).not.toContain("No emoji");
   });
 
   it("renders a standalone telegram pack icon preview in the assets grid", () => {
@@ -185,16 +187,30 @@ describe("OutputsList", () => {
   it("uses preview cards without per-file open controls and keeps icon output first", () => {
     const markup = renderToStaticMarkup(
       <OutputsList
+        packId="pack-1"
         view="gallery"
+        assets={[
+          createAsset("asset-for-zeta.webm", "zeta.png", "png", {
+            emojiList: ["🙂"],
+          }),
+          createAsset("asset-for-alpha.webm", "alpha.png"),
+        ]}
         outputs={[
           createOutput("zeta.webm"),
           createOutput("icon.webm", "icon"),
           createOutput("alpha.webm"),
         ]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
       />,
     );
 
     expect(markup).not.toContain("Open containing folder");
     expect(markup.indexOf("icon.webm")).toBeLessThan(markup.indexOf("alpha.webm"));
+    expect(markup).toContain("🙂");
+    expect(markup).toContain("No emoji");
   });
 });

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Box from "@mui/material/Box";
@@ -18,7 +17,6 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import { EmojiPickerDialog } from "./EmojiPickerDialog";
 import { RenameDialog } from "./RenameDialog";
 import {
   BrowserGalleryCard,
@@ -48,7 +46,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   const [batchRenameAssetIds, setBatchRenameAssetIds] = useState<string[] | null>(
     null,
   );
-  const [emojiEditAssetIds, setEmojiEditAssetIds] = useState<string[] | null>(null);
   const sortedAssets = useMemo(
     () =>
       sortItemsWithPinnedFirst(assets, {
@@ -252,34 +249,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     [batchRenameAssetIds, pack.id, refreshDetails],
   );
 
-  const handleEmojiConfirm = useCallback(
-    async (emojis: string[]) => {
-      if (!emojiEditAssetIds || emojiEditAssetIds.length === 0) {
-        return;
-      }
-
-      if (emojiEditAssetIds.length === 1) {
-        await window.stickerSmith.assets.setEmojis({
-          packId: pack.id,
-          assetId: emojiEditAssetIds[0]!,
-          emojis,
-        });
-      } else {
-        await window.stickerSmith.assets.setEmojisMany({
-          packId: pack.id,
-          assetIds: emojiEditAssetIds,
-          emojis,
-        });
-      }
-
-      setEmojiEditAssetIds(null);
-      setSelectedAssetIds(emojiEditAssetIds);
-      setSelectionAnchorId(emojiEditAssetIds[0] ?? null);
-      await refreshDetails();
-    },
-    [emojiEditAssetIds, pack.id, refreshDetails],
-  );
-
   const handleSelectAll = useCallback(() => {
     setSelectedAssetIds(selectableAssetIds);
     setSelectionAnchorId(selectableAssetIds[0] ?? null);
@@ -295,12 +264,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     setRenameAsset(contextPrimaryAsset);
     handleCloseContextMenu();
   }, [contextPrimaryAsset, handleCloseContextMenu]);
-
-  const openContextEmojiEditor = useCallback(() => {
-    if (contextAssets.length === 0) return;
-    setEmojiEditAssetIds(contextAssets.map((asset) => asset.id));
-    handleCloseContextMenu();
-  }, [contextAssets, handleCloseContextMenu]);
 
   const openBatchRenameDialog = useCallback(() => {
     if (!hasBatchActions) return;
@@ -374,14 +337,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             <Button
               size="small"
               variant="outlined"
-              onClick={() => setEmojiEditAssetIds(batchActionAssetIds)}
-              sx={{ textTransform: "none" }}
-            >
-              {appTokens.copy.actions.editEmojis}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
               color="error"
               onClick={async () => {
                 await window.stickerSmith.assets.deleteMany({
@@ -449,11 +404,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   metadata={
                     <Box sx={fileMetadataRowSx}>
                       <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
-                      <Chip
-                        label={formatEmojiSummary(asset)}
-                        size="small"
-                        sx={emojiMetaChipSx(asset.emojiList.length === 0)}
-                      />
                       {pack.source === "telegram" ? (
                         <Chip
                           label={formatDownloadSummary(asset)}
@@ -521,11 +471,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   metadata={
                     <Box sx={fileMetadataRowSx}>
                       <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
-                      <Chip
-                        label={formatEmojiSummary(asset)}
-                        size="small"
-                        sx={emojiMetaChipSx(asset.emojiList.length === 0)}
-                      />
                       {pack.source === "telegram" ? (
                         <Chip
                           label={formatDownloadSummary(asset)}
@@ -604,12 +549,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             ? appTokens.copy.actions.rename
             : appTokens.copy.actions.batchRename}
         </MenuItem>
-        <MenuItem onClick={openContextEmojiEditor} dense>
-          <InsertEmoticonIcon
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
-          {appTokens.copy.actions.editEmojis}
-        </MenuItem>
         <MenuItem onClick={() => void handleDelete()} dense sx={{ color: "error.light" }}>
           <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.delete}
@@ -636,47 +575,8 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           onClose={() => setBatchRenameAssetIds(null)}
         />
       ) : null}
-
-      {emojiEditAssetIds ? (
-        <EmojiPickerDialog
-          open
-          title={
-            emojiEditAssetIds.length === 1
-              ? appTokens.copy.dialogs.editEmojis
-              : appTokens.copy.dialogs.editSelectedEmojis
-          }
-          initialEmojis={initialEmojiSelection(emojiEditAssetIds, assetById)}
-          onConfirm={handleEmojiConfirm}
-          onClose={() => setEmojiEditAssetIds(null)}
-        />
-      ) : null}
     </>
   );
-}
-
-function initialEmojiSelection(
-  assetIds: string[],
-  assetById: ReadonlyMap<string, SourceAsset>,
-) {
-  const assets = assetIds
-    .map((assetId) => assetById.get(assetId))
-    .filter((asset): asset is SourceAsset => asset !== undefined);
-
-  if (assets.length === 0) {
-    return [];
-  }
-
-  const [firstAsset, ...rest] = assets;
-  const firstValue = firstAsset.emojiList.join(" ");
-  return rest.every((asset) => asset.emojiList.join(" ") === firstValue)
-    ? [...firstAsset.emojiList]
-    : [];
-}
-
-function formatEmojiSummary(asset: SourceAsset) {
-  return asset.emojiList.length > 0
-    ? asset.emojiList.join(" ")
-    : appTokens.copy.labels.noEmoji;
 }
 
 function formatDownloadSummary(asset: SourceAsset) {
@@ -709,12 +609,3 @@ const fileMetaChipSx = {
   textTransform: "uppercase",
   letterSpacing: appTokens.typography.letterSpacing.chip,
 } as const;
-
-const emojiMetaChipSx = (missingEmoji: boolean) =>
-  ({
-    height: 18,
-    fontSize: appTokens.typography.fontSizes.assetKind,
-    letterSpacing: appTokens.typography.letterSpacing.chip,
-    color: missingEmoji ? "error.main" : "text.secondary",
-    borderColor: missingEmoji ? "error.main" : "divider",
-  }) as const;

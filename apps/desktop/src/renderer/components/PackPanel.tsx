@@ -627,7 +627,13 @@ export function PackPanel({
             refreshDetails={() => refreshDetails(pack.id)}
           />
         ) : (
-          <OutputsList outputs={outputs} view={view} />
+          <OutputsList
+            packId={pack.id}
+            outputs={outputs}
+            assets={assets}
+            view={view}
+            refreshDetails={() => refreshDetails(pack.id)}
+          />
         )}
       </Box>
 
