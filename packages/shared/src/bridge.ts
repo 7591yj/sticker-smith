@@ -11,6 +11,7 @@ import type {
   RenameAssetInput,
   RenameManyAssetsInput,
   SetTelegramPhoneNumberInput,
+  SetPackTelegramShortNameInput,
   SetTelegramTdlibParametersInput,
   SetAssetEmojisInput,
   SetManyAssetEmojisInput,
@@ -55,6 +56,9 @@ export interface StickerSmithApi {
     delete: (input: { packId: string }) => Promise<void>;
     get: (packId: string) => Promise<StickerPackDetails>;
     revealSourceFolder: (input: { packId: string }) => Promise<void>;
+    setTelegramShortName: (
+      input: SetPackTelegramShortNameInput,
+    ) => Promise<StickerPack>;
     setIcon: (input: {
       packId: string;
       assetId: string | null;

@@ -190,6 +190,7 @@ export const appTokens = {
       telegramPassword: "Two-step password",
       telegramNeedsCredentials: "Credentials needed",
       telegramPacks: "Telegram",
+      telegramShortNameUnset: "Short name not set",
       telegramUnsupportedPacks: "Telegram (Unsupported)",
       telegramShortName: "Short name",
       telegramTitle: "Title",

@@ -174,6 +174,22 @@ describe("LibraryService", () => {
     expect(updated.assets[0]?.emojiList).toEqual(["👋", "✨"]);
   });
 
+  it("stores a local pack telegram short name for reuse", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Short Name Pack" });
+    const updated = await libraryService.setPackTelegramShortName({
+      packId: pack.id,
+      shortName: "short_name_pack",
+    });
+
+    expect(updated.telegramShortName).toBe("short_name_pack");
+
+    const details = await libraryService.getPack(pack.id);
+    expect(details.pack.telegramShortName).toBe("short_name_pack");
+  });
+
   it("renames many assets in order while preserving each extension", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);

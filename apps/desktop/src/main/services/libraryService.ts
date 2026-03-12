@@ -216,6 +216,10 @@ function buildStickerPack(
     outputRoot,
     iconAssetId: record.iconAssetId,
     thumbnailPath,
+    telegramShortName:
+      record.source === "telegram"
+        ? record.telegram?.shortName ?? null
+        : record.telegramShortName ?? null,
     telegram: record.telegram,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -259,6 +263,7 @@ function normalizePackRecord(
     name: record?.name ?? "Untitled Pack",
     slug: record?.slug ?? slugify(record?.name ?? "Untitled Pack"),
     iconAssetId: record?.iconAssetId ?? null,
+    telegramShortName: record?.telegramShortName ?? null,
     telegram:
       source === "telegram" && record?.telegram
         ? createDefaultTelegramSummary(record.telegram)
@@ -749,6 +754,7 @@ export class LibraryService {
       name: input.name,
       slug,
       iconAssetId: null,
+      telegramShortName: null,
       createdAt: now,
       updatedAt: now,
       assets: [],
@@ -829,6 +835,7 @@ export class LibraryService {
           remoteAssets.find(
             (asset) => asset.telegram?.stickerId === input.iconStickerId,
           )?.id ?? null,
+        telegramShortName: null,
         telegram: createDefaultTelegramSummary({
           stickerSetId: input.stickerSetId,
           shortName: input.shortName,
@@ -905,6 +912,21 @@ export class LibraryService {
         }
       },
     );
+
+    return details.pack;
+  }
+
+  async setPackTelegramShortName(input: {
+    packId: string;
+    shortName: string | null;
+  }): Promise<StickerPack> {
+    const details = await this.mutatePackRecord(input.packId, (record) => {
+      if (record.source !== "local") {
+        throw new Error("Only local packs can store a Telegram short name.");
+      }
+
+      record.telegramShortName = input.shortName;
+    });
 
     return details.pack;
   }

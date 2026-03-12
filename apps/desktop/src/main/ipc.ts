@@ -21,6 +21,7 @@ import {
   revealPackSourceFolderSchema,
   revealOutputSchema,
   setAssetEmojisSchema,
+  setPackTelegramShortNameSchema,
   setManyAssetEmojisSchema,
   submitTelegramCodeSchema,
   submitTelegramPasswordSchema,
@@ -126,6 +127,11 @@ export function registerIpc() {
   );
   ipcMain.handle("packs.revealSourceFolder", async (_event, input: unknown) =>
     shellService.revealSourceFolder(revealPackSourceFolderSchema.parse(input)),
+  );
+  ipcMain.handle("packs.setTelegramShortName", async (_event, input: unknown) =>
+    libraryService.setPackTelegramShortName(
+      setPackTelegramShortNameSchema.parse(input),
+    ),
   );
   ipcMain.handle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),

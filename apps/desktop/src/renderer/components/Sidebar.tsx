@@ -134,6 +134,23 @@ function statusLabelForTelegram(state: TelegramState | null) {
   return appTokens.copy.labels.telegramDisconnected;
 }
 
+function shortNameLabelForPack(pack: StickerPack) {
+  return pack.telegramShortName ?? appTokens.copy.labels.telegramShortNameUnset;
+}
+
+function secondaryLabelForPack(pack: StickerPack) {
+  const shortNameLabel =
+    pack.source === "telegram"
+      ? pack.telegram?.shortName ?? appTokens.copy.labels.telegramShortNameUnset
+      : shortNameLabelForPack(pack);
+
+  if (pack.source === "telegram" && pack.telegram?.syncState) {
+    return `${shortNameLabel} · ${formatTelegramSyncStateLabel(pack.telegram.syncState)}`;
+  }
+
+  return shortNameLabel;
+}
+
 export function Sidebar({
   packs,
   telegramState,
@@ -285,11 +302,7 @@ export function Sidebar({
         <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
         <ListItemText
           primary={pack.name}
-          secondary={
-            pack.telegram?.syncState && pack.source === "telegram"
-              ? formatTelegramSyncStateLabel(pack.telegram.syncState)
-              : undefined
-          }
+          secondary={secondaryLabelForPack(pack)}
           primaryTypographyProps={{
             variant: "body2",
             noWrap: true,
@@ -299,6 +312,7 @@ export function Sidebar({
           secondaryTypographyProps={{
             variant: "caption",
             noWrap: true,
+            sx: { fontSize: appTokens.typography.fontSizes.caption },
           }}
         />
       </ListItemButton>
@@ -359,7 +373,22 @@ export function Sidebar({
               disabled={!telegramReady || telegramSyncBusy}
               onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
             >
-              <SyncIcon fontSize="small" />
+              <SyncIcon
+                fontSize="small"
+                sx={{
+                  animation: telegramSyncBusy
+                    ? "telegram-sync-spin 1s linear infinite"
+                    : "none",
+                  "@keyframes telegram-sync-spin": {
+                    from: {
+                      transform: "rotate(0deg)",
+                    },
+                    to: {
+                      transform: "rotate(360deg)",
+                    },
+                  },
+                }}
+              />
             </IconButton>
           </span>
         </Tooltip>

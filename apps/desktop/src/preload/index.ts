@@ -10,6 +10,7 @@ import type {
   PublishLocalPackInput,
   RenameAssetInput,
   RenameManyAssetsInput,
+  SetPackTelegramShortNameInput,
   SetTelegramPhoneNumberInput,
   SetTelegramTdlibParametersInput,
   SetAssetEmojisInput,
@@ -78,6 +79,10 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("packs.get", { packId }),
     revealSourceFolder: (input: { packId: string }): Promise<void> =>
       ipcRenderer.invoke("packs.revealSourceFolder", input),
+    setTelegramShortName: (
+      input: SetPackTelegramShortNameInput,
+    ): Promise<StickerPack> =>
+      ipcRenderer.invoke("packs.setTelegramShortName", input),
     setIcon: (input: {
       packId: string;
       assetId: string | null;

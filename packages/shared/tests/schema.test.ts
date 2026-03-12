@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createPackSchema,
   conversionJobRequestSchema,
+  setPackTelegramShortNameSchema,
   setTelegramPhoneNumberSchema,
   setTelegramTdlibParametersSchema,
   setAssetEmojisSchema,
@@ -87,5 +88,20 @@ describe("shared schemas", () => {
         password: "correct horse battery staple",
       }).password,
     ).toBe("correct horse battery staple");
+  });
+
+  it("validates optional local pack telegram short names", () => {
+    expect(
+      setPackTelegramShortNameSchema.parse({
+        packId: "pack-1",
+        shortName: "sample_pack",
+      }).shortName,
+    ).toBe("sample_pack");
+    expect(
+      setPackTelegramShortNameSchema.parse({
+        packId: "pack-1",
+        shortName: null,
+      }).shortName,
+    ).toBeNull();
   });
 });

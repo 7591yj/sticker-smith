@@ -50,7 +50,10 @@ interface Props {
 }
 
 function suggestShortName(details: StickerPackDetails) {
-  return `${details.pack.slug.replace(/-/g, "_")}_${details.pack.id.replace(/-/g, "").slice(0, 6)}`;
+  return (
+    details.pack.telegramShortName ??
+    `${details.pack.slug.replace(/-/g, "_")}_${details.pack.id.replace(/-/g, "").slice(0, 6)}`
+  );
 }
 
 export function PackPanel({
@@ -643,6 +646,11 @@ export function PackPanel({
         onClose={() => setPublishDialogOpen(false)}
         onConfirm={async ({ title, shortName }) => {
           try {
+            await window.stickerSmith.packs.setTelegramShortName({
+              packId: pack.id,
+              shortName,
+            });
+            await Promise.all([refreshPacks(), refreshDetails(pack.id)]);
             await onPublishLocalPack({
               packId: pack.id,
               title,

@@ -72,6 +72,7 @@ export interface StickerPack {
   outputRoot: string;
   iconAssetId: AssetId | null;
   thumbnailPath: string | null;
+  telegramShortName?: string | null;
   telegram?: TelegramPackSummary;
   createdAt: string;
   updatedAt: string;
@@ -108,6 +109,7 @@ export interface StickerPackRecord {
   name: string;
   slug: string;
   iconAssetId: AssetId | null;
+  telegramShortName?: string | null;
   telegram?: TelegramPackSummary;
   createdAt: string;
   updatedAt: string;
@@ -300,6 +302,11 @@ export interface PublishLocalPackInput {
   packId: PackId;
   title: string;
   shortName: string;
+}
+
+export interface SetPackTelegramShortNameInput {
+  packId: PackId;
+  shortName: string | null;
 }
 
 export interface UpdateTelegramPackInput {

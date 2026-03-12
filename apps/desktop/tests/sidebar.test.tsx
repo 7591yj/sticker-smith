@@ -68,6 +68,7 @@ describe("Sidebar", () => {
     );
 
     expect(markup).toContain("fallback pack icon");
+    expect(markup).toContain("Short name not set");
   });
 
   it("renders webm pack thumbnails as video previews", () => {
@@ -175,6 +176,8 @@ describe("Sidebar", () => {
     expect(markup).toContain("Telegram Pack");
     expect(markup).toContain('aria-label="Telegram account"');
     expect(markup).toContain('aria-label="Resync"');
+    expect(markup).toContain("Short name not set");
+    expect(markup).toContain("telegram_pack");
     expect(markup).toContain("Needs update");
     expect(markup).not.toContain("Telegram is connected.");
     expect(markup).not.toContain(">Connected<");

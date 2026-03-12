@@ -75,6 +75,11 @@ export const setPackIconSchema = z.object({
   assetId: assetIdSchema.nullable(),
 });
 
+export const setPackTelegramShortNameSchema = z.object({
+  packId: packIdSchema,
+  shortName: telegramShortNameSchema.nullable(),
+});
+
 export const importFilesSchema = z.object({
   packId: packIdSchema,
   filePaths: z.array(z.string().min(1)).optional(),
