@@ -55,6 +55,16 @@ describe("shared schemas", () => {
     ).toEqual(["1️⃣", "🇺🇸"]);
   });
 
+  it("allows clearing local emoji edits to an empty list", () => {
+    expect(
+      setAssetEmojisSchema.parse({
+        packId: "pack-1",
+        assetId: "asset-1",
+        emojis: [],
+      }).emojis,
+    ).toEqual([]);
+  });
+
   it("validates telegram tdlib setup inputs", () => {
     expect(
       setTelegramTdlibParametersSchema.parse({

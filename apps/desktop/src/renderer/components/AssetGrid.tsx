@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -6,6 +6,7 @@ import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
@@ -17,6 +18,7 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
+import { EmojiPickerDialog } from "./EmojiPickerDialog";
 import { RenameDialog } from "./RenameDialog";
 import {
   BrowserGalleryCard,
@@ -34,17 +36,31 @@ interface Props {
 }
 
 export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
-    asset: SourceAsset;
+    assetIds: string[];
+    primaryAssetId: string;
   } | null>(null);
   const [renameAsset, setRenameAsset] = useState<SourceAsset | null>(null);
-  const [emojiAsset, setEmojiAsset] = useState<SourceAsset | null>(null);
-  const sortedAssets = sortItemsWithPinnedFirst(assets, {
-    getLabel: (asset) => asset.relativePath,
-    isPinned: (asset) => pack.iconAssetId === asset.id,
-  });
+  const [batchRenameAssetIds, setBatchRenameAssetIds] = useState<string[] | null>(
+    null,
+  );
+  const [emojiEditAssetIds, setEmojiEditAssetIds] = useState<string[] | null>(null);
+  const sortedAssets = useMemo(
+    () =>
+      sortItemsWithPinnedFirst(assets, {
+        getLabel: (asset) => asset.relativePath,
+        isPinned: (asset) => pack.iconAssetId === asset.id,
+      }),
+    [assets, pack.iconAssetId],
+  );
+  const assetById = useMemo(
+    () => new Map(sortedAssets.map((asset) => [asset.id, asset])),
+    [sortedAssets],
+  );
   const standaloneTelegramIconPath =
     pack.source === "telegram" &&
     pack.thumbnailPath &&
@@ -53,85 +69,244 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       : null;
   const standaloneTelegramIconRelativePath =
     standaloneTelegramIconPath?.split("/").pop() ?? "telegram-pack-icon";
+  const selectableAssetIds = useMemo(
+    () =>
+      sortedAssets
+        .filter((asset) => asset.id !== pack.iconAssetId)
+        .map((asset) => asset.id),
+    [pack.iconAssetId, sortedAssets],
+  );
+  const selectedContainsIcon =
+    pack.iconAssetId !== null && selectedAssetIds.includes(pack.iconAssetId);
+  const batchActionAssetIds = selectedContainsIcon
+    ? []
+    : sortedAssets
+        .filter((asset) => selectedAssetIds.includes(asset.id))
+        .map((asset) => asset.id);
+  const hasBatchActions = batchActionAssetIds.length > 0;
+  const contextAssets = (contextMenu?.assetIds ?? [])
+    .map((assetId) => assetById.get(assetId))
+    .filter((asset): asset is SourceAsset => asset !== undefined);
+  const contextPrimaryAsset =
+    contextMenu?.primaryAssetId !== undefined
+      ? assetById.get(contextMenu.primaryAssetId) ?? null
+      : null;
 
-  const handleContextMenu = useCallback(
-    (e: MouseEvent, asset: SourceAsset) => {
-      e.preventDefault();
-      setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, asset });
+  useEffect(() => {
+    setSelectedAssetIds([]);
+    setSelectionAnchorId(null);
+    setContextMenu(null);
+  }, [pack.id]);
+
+  useEffect(() => {
+    setSelectedAssetIds((current) =>
+      current.filter((assetId) => assetById.has(assetId)),
+    );
+    setSelectionAnchorId((current) =>
+      current && assetById.has(current) ? current : null,
+    );
+  }, [assetById]);
+
+  const selectOnly = useCallback((assetId: string) => {
+    setSelectedAssetIds([assetId]);
+    setSelectionAnchorId(assetId);
+  }, []);
+
+  const handleAssetClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>, asset: SourceAsset) => {
+      const isIcon = pack.iconAssetId === asset.id;
+      const modifierPressed = event.metaKey || event.ctrlKey;
+
+      if (
+        event.shiftKey &&
+        !isIcon &&
+        selectionAnchorId &&
+        selectionAnchorId !== pack.iconAssetId
+      ) {
+        const anchorIndex = selectableAssetIds.indexOf(selectionAnchorId);
+        const currentIndex = selectableAssetIds.indexOf(asset.id);
+
+        if (anchorIndex !== -1 && currentIndex !== -1) {
+          const [start, end] =
+            anchorIndex < currentIndex
+              ? [anchorIndex, currentIndex]
+              : [currentIndex, anchorIndex];
+          setSelectedAssetIds(selectableAssetIds.slice(start, end + 1));
+          return;
+        }
+      }
+
+      if (modifierPressed && !isIcon) {
+        setSelectedAssetIds((current) => {
+          const next = current.filter((assetId) => assetId !== pack.iconAssetId);
+          return next.includes(asset.id)
+            ? next.filter((assetId) => assetId !== asset.id)
+            : [...next, asset.id];
+        });
+        setSelectionAnchorId(asset.id);
+        return;
+      }
+
+      selectOnly(asset.id);
     },
-    [],
+    [pack.iconAssetId, selectableAssetIds, selectOnly, selectionAnchorId],
   );
 
-  const handleClose = useCallback(() => setContextMenu(null), []);
+  const handleContextMenu = useCallback(
+    (event: MouseEvent, asset: SourceAsset) => {
+      event.preventDefault();
+
+      const isSelected = selectedAssetIds.includes(asset.id);
+      const nextSelected = isSelected ? selectedAssetIds : [asset.id];
+
+      if (!isSelected) {
+        selectOnly(asset.id);
+      }
+
+      setContextMenu({
+        mouseX: event.clientX,
+        mouseY: event.clientY,
+        assetIds: nextSelected,
+        primaryAssetId: asset.id,
+      });
+    },
+    [selectOnly, selectedAssetIds],
+  );
+
+  const handleCloseContextMenu = useCallback(() => setContextMenu(null), []);
 
   const handleSetIcon = useCallback(async () => {
-    if (!contextMenu) return;
-    const isCurrentIcon = pack.iconAssetId === contextMenu.asset.id;
+    if (!contextPrimaryAsset) return;
+    const isCurrentIcon = pack.iconAssetId === contextPrimaryAsset.id;
     await window.stickerSmith.packs.setIcon({
       packId: pack.id,
-      assetId: isCurrentIcon ? null : contextMenu.asset.id,
+      assetId: isCurrentIcon ? null : contextPrimaryAsset.id,
     });
-    handleClose();
+    handleCloseContextMenu();
+    selectOnly(contextPrimaryAsset.id);
     await refreshDetails();
-  }, [contextMenu, pack.iconAssetId, pack.id, handleClose, refreshDetails]);
+  }, [
+    contextPrimaryAsset,
+    pack.iconAssetId,
+    pack.id,
+    handleCloseContextMenu,
+    refreshDetails,
+    selectOnly,
+  ]);
 
   const handleDelete = useCallback(async () => {
-    if (!contextMenu) return;
-    handleClose();
-    await window.stickerSmith.assets.delete({
-      packId: pack.id,
-      assetId: contextMenu.asset.id,
-    });
+    if (contextAssets.length === 0) {
+      return;
+    }
+
+    if (contextAssets.length === 1) {
+      await window.stickerSmith.assets.delete({
+        packId: pack.id,
+        assetId: contextAssets[0]!.id,
+      });
+    } else {
+      await window.stickerSmith.assets.deleteMany({
+        packId: pack.id,
+        assetIds: contextAssets.map((asset) => asset.id),
+      });
+    }
+
+    handleCloseContextMenu();
+    setSelectedAssetIds([]);
+    setSelectionAnchorId(null);
     await refreshDetails();
-  }, [contextMenu, pack.id, handleClose, refreshDetails]);
-
-  const handleRenameOpen = useCallback(() => {
-    if (!contextMenu) return;
-    setRenameAsset(contextMenu.asset);
-    handleClose();
-  }, [contextMenu, handleClose]);
-
-  const handleEmojiOpen = useCallback(() => {
-    if (!contextMenu) return;
-    setEmojiAsset(contextMenu.asset);
-    handleClose();
-  }, [contextMenu, handleClose]);
+  }, [contextAssets, handleCloseContextMenu, pack.id, refreshDetails]);
 
   const handleRenameConfirm = useCallback(
     async (nextRelativePath: string) => {
       if (!renameAsset) return;
+
       await window.stickerSmith.assets.rename({
         packId: pack.id,
         assetId: renameAsset.id,
         nextRelativePath,
       });
       setRenameAsset(null);
+      selectOnly(renameAsset.id);
       await refreshDetails();
     },
-    [renameAsset, pack.id, refreshDetails],
+    [pack.id, refreshDetails, renameAsset, selectOnly],
+  );
+
+  const handleBatchRenameConfirm = useCallback(
+    async (baseName: string) => {
+      if (!batchRenameAssetIds || batchRenameAssetIds.length === 0) {
+        return;
+      }
+
+      await window.stickerSmith.assets.renameMany({
+        packId: pack.id,
+        assetIds: batchRenameAssetIds,
+        baseName,
+      });
+      setBatchRenameAssetIds(null);
+      setSelectedAssetIds(batchRenameAssetIds);
+      setSelectionAnchorId(batchRenameAssetIds[0] ?? null);
+      await refreshDetails();
+    },
+    [batchRenameAssetIds, pack.id, refreshDetails],
   );
 
   const handleEmojiConfirm = useCallback(
-    async (value: string) => {
-      if (!emojiAsset) {
+    async (emojis: string[]) => {
+      if (!emojiEditAssetIds || emojiEditAssetIds.length === 0) {
         return;
       }
 
-      const emojis = parseEmojiInput(value);
-      if (emojis.length === 0) {
-        return;
+      if (emojiEditAssetIds.length === 1) {
+        await window.stickerSmith.assets.setEmojis({
+          packId: pack.id,
+          assetId: emojiEditAssetIds[0]!,
+          emojis,
+        });
+      } else {
+        await window.stickerSmith.assets.setEmojisMany({
+          packId: pack.id,
+          assetIds: emojiEditAssetIds,
+          emojis,
+        });
       }
 
-      await window.stickerSmith.assets.setEmojis({
-        packId: pack.id,
-        assetId: emojiAsset.id,
-        emojis,
-      });
-      setEmojiAsset(null);
+      setEmojiEditAssetIds(null);
+      setSelectedAssetIds(emojiEditAssetIds);
+      setSelectionAnchorId(emojiEditAssetIds[0] ?? null);
       await refreshDetails();
     },
-    [emojiAsset, pack.id, refreshDetails],
+    [emojiEditAssetIds, pack.id, refreshDetails],
   );
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedAssetIds(selectableAssetIds);
+    setSelectionAnchorId(selectableAssetIds[0] ?? null);
+  }, [selectableAssetIds]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedAssetIds([]);
+    setSelectionAnchorId(null);
+  }, []);
+
+  const openSingleRename = useCallback(() => {
+    if (!contextPrimaryAsset) return;
+    setRenameAsset(contextPrimaryAsset);
+    handleCloseContextMenu();
+  }, [contextPrimaryAsset, handleCloseContextMenu]);
+
+  const openContextEmojiEditor = useCallback(() => {
+    if (contextAssets.length === 0) return;
+    setEmojiEditAssetIds(contextAssets.map((asset) => asset.id));
+    handleCloseContextMenu();
+  }, [contextAssets, handleCloseContextMenu]);
+
+  const openBatchRenameDialog = useCallback(() => {
+    if (!hasBatchActions) return;
+    setBatchRenameAssetIds(batchActionAssetIds);
+    handleCloseContextMenu();
+  }, [batchActionAssetIds, handleCloseContextMenu, hasBatchActions]);
 
   if (assets.length === 0 && !standaloneTelegramIconPath) {
     return (
@@ -148,9 +323,87 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
 
   return (
     <>
+      <Box
+        sx={{
+          px: 2.5,
+          pt: 1.25,
+          pb: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          flexWrap: "wrap",
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+        >
+          {selectedAssetIds.length > 0
+            ? `${selectedAssetIds.length} selected asset${selectedAssetIds.length !== 1 ? "s" : ""}`
+            : `${sortedAssets.length} asset${sortedAssets.length !== 1 ? "s" : ""}`}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={handleSelectAll}
+          disabled={selectableAssetIds.length === 0}
+          sx={{ textTransform: "none" }}
+        >
+          {appTokens.copy.actions.selectAll}
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={handleClearSelection}
+          disabled={selectedAssetIds.length === 0}
+          sx={{ textTransform: "none" }}
+        >
+          {appTokens.copy.actions.clearSelection}
+        </Button>
+        {hasBatchActions ? (
+          <>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={openBatchRenameDialog}
+              sx={{ textTransform: "none" }}
+            >
+              {appTokens.copy.actions.batchRename}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setEmojiEditAssetIds(batchActionAssetIds)}
+              sx={{ textTransform: "none" }}
+            >
+              {appTokens.copy.actions.editEmojis}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              onClick={async () => {
+                await window.stickerSmith.assets.deleteMany({
+                  packId: pack.id,
+                  assetIds: batchActionAssetIds,
+                });
+                handleClearSelection();
+                await refreshDetails();
+              }}
+              sx={{ textTransform: "none" }}
+            >
+              {appTokens.copy.actions.delete}
+            </Button>
+          </>
+        ) : null}
+      </Box>
+
       <Box sx={{ pb: 2.5 }}>
         {view === "list" ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, px: 2.5 }}>
+          <Box
+            sx={{ display: "flex", flexDirection: "column", gap: 0.75, px: 2.5 }}
+          >
             {standaloneTelegramIconPath ? (
               <BrowserListRow
                 key="telegram-pack-icon"
@@ -182,6 +435,8 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   title={asset.relativePath}
                   filename={filename}
                   isPinned={isIcon}
+                  selected={selectedAssetIds.includes(asset.id)}
+                  onClick={(event) => handleAssetClick(event, asset)}
                   onContextMenu={(event) => handleContextMenu(event, asset)}
                   preview={
                     <FilePreview
@@ -193,18 +448,18 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   }
                   metadata={
                     <Box sx={fileMetadataRowSx}>
-                      <Chip
-                        label={asset.kind}
-                        size="small"
-                        sx={fileMetaChipSx}
-                      />
+                      <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
                       <Chip
                         label={formatEmojiSummary(asset)}
                         size="small"
                         sx={emojiMetaChipSx(asset.emojiList.length === 0)}
                       />
                       {pack.source === "telegram" ? (
-                        <Chip label={formatDownloadSummary(asset)} size="small" sx={fileMetaChipSx} />
+                        <Chip
+                          label={formatDownloadSummary(asset)}
+                          size="small"
+                          sx={fileMetaChipSx}
+                        />
                       ) : null}
                     </Box>
                   }
@@ -252,6 +507,8 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   title={asset.relativePath}
                   filename={filename}
                   isPinned={isIcon}
+                  selected={selectedAssetIds.includes(asset.id)}
+                  onClick={(event) => handleAssetClick(event, asset)}
                   onContextMenu={(event) => handleContextMenu(event, asset)}
                   preview={
                     <FilePreview
@@ -263,18 +520,18 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   }
                   metadata={
                     <Box sx={fileMetadataRowSx}>
-                      <Chip
-                        label={asset.kind}
-                        size="small"
-                        sx={fileMetaChipSx}
-                      />
+                      <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
                       <Chip
                         label={formatEmojiSummary(asset)}
                         size="small"
                         sx={emojiMetaChipSx(asset.emojiList.length === 0)}
                       />
                       {pack.source === "telegram" ? (
-                        <Chip label={formatDownloadSummary(asset)} size="small" sx={fileMetaChipSx} />
+                        <Chip
+                          label={formatDownloadSummary(asset)}
+                          size="small"
+                          sx={fileMetaChipSx}
+                        />
                       ) : null}
                     </Box>
                   }
@@ -287,7 +544,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
 
       <Menu
         open={Boolean(contextMenu)}
-        onClose={handleClose}
+        onClose={handleCloseContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={
           contextMenu
@@ -298,7 +555,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           paper: { sx: { minWidth: appTokens.sizes.contextMenuWide } },
         }}
       >
-        {contextMenu && (
+        {contextAssets.length > 0 ? (
           <MenuItem
             disabled
             dense
@@ -309,42 +566,57 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
               fontWeight: appTokens.typography.fontWeights.medium,
             }}
           >
-            {contextMenu.asset.relativePath.split("/").pop()}
+            {contextAssets.length === 1
+              ? contextAssets[0]!.relativePath.split("/").pop()
+              : `${contextAssets.length} selected asset${contextAssets.length !== 1 ? "s" : ""}`}
           </MenuItem>
-        )}
+        ) : null}
         <Divider />
-        <MenuItem onClick={handleSetIcon} dense>
-          {contextMenu && pack.iconAssetId === contextMenu.asset.id ? (
-            <>
-              <StarBorderIcon
-                sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-              />
-              {appTokens.copy.actions.removeIcon}
-            </>
-          ) : (
-            <>
-              <StarIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
-              {appTokens.copy.actions.setAsIcon}
-            </>
-          )}
-        </MenuItem>
-        <MenuItem onClick={handleRenameOpen} dense>
+        {contextAssets.length === 1 ? (
+          <MenuItem onClick={handleSetIcon} dense>
+            {contextPrimaryAsset && pack.iconAssetId === contextPrimaryAsset.id ? (
+              <>
+                <StarBorderIcon
+                  sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
+                />
+                {appTokens.copy.actions.removeIcon}
+              </>
+            ) : (
+              <>
+                <StarIcon
+                  sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
+                />
+                {appTokens.copy.actions.setAsIcon}
+              </>
+            )}
+          </MenuItem>
+        ) : null}
+        <MenuItem
+          onClick={
+            contextAssets.length === 1
+              ? openSingleRename
+              : openBatchRenameDialog
+          }
+          dense
+        >
           <EditIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
-          {appTokens.copy.actions.rename}
+          {contextAssets.length === 1
+            ? appTokens.copy.actions.rename
+            : appTokens.copy.actions.batchRename}
         </MenuItem>
-        <MenuItem onClick={handleEmojiOpen} dense>
+        <MenuItem onClick={openContextEmojiEditor} dense>
           <InsertEmoticonIcon
             sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
           />
           {appTokens.copy.actions.editEmojis}
         </MenuItem>
-        <MenuItem onClick={handleDelete} dense sx={{ color: "error.light" }}>
+        <MenuItem onClick={() => void handleDelete()} dense sx={{ color: "error.light" }}>
           <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.delete}
         </MenuItem>
       </Menu>
 
-      {renameAsset && (
+      {renameAsset ? (
         <RenameDialog
           open
           title={appTokens.copy.dialogs.renameAsset}
@@ -352,32 +624,59 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           onConfirm={handleRenameConfirm}
           onClose={() => setRenameAsset(null)}
         />
-      )}
+      ) : null}
 
-      {emojiAsset && (
+      {batchRenameAssetIds ? (
         <RenameDialog
           open
-          title={appTokens.copy.dialogs.editEmojis}
-          label={appTokens.copy.labels.emojiList}
-          initialValue={emojiAsset.emojiList.join(" ")}
-          onConfirm={handleEmojiConfirm}
-          onClose={() => setEmojiAsset(null)}
+          title={appTokens.copy.dialogs.batchRenameAssets}
+          label={appTokens.copy.labels.baseName}
+          initialValue="sticker"
+          onConfirm={handleBatchRenameConfirm}
+          onClose={() => setBatchRenameAssetIds(null)}
         />
-      )}
+      ) : null}
+
+      {emojiEditAssetIds ? (
+        <EmojiPickerDialog
+          open
+          title={
+            emojiEditAssetIds.length === 1
+              ? appTokens.copy.dialogs.editEmojis
+              : appTokens.copy.dialogs.editSelectedEmojis
+          }
+          initialEmojis={initialEmojiSelection(emojiEditAssetIds, assetById)}
+          onConfirm={handleEmojiConfirm}
+          onClose={() => setEmojiEditAssetIds(null)}
+        />
+      ) : null}
     </>
   );
 }
 
-function parseEmojiInput(value: string) {
-  return Array.from(
-    new Set(value.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean)),
-  ).slice(0, 20);
+function initialEmojiSelection(
+  assetIds: string[],
+  assetById: ReadonlyMap<string, SourceAsset>,
+) {
+  const assets = assetIds
+    .map((assetId) => assetById.get(assetId))
+    .filter((asset): asset is SourceAsset => asset !== undefined);
+
+  if (assets.length === 0) {
+    return [];
+  }
+
+  const [firstAsset, ...rest] = assets;
+  const firstValue = firstAsset.emojiList.join(" ");
+  return rest.every((asset) => asset.emojiList.join(" ") === firstValue)
+    ? [...firstAsset.emojiList]
+    : [];
 }
 
 function formatEmojiSummary(asset: SourceAsset) {
   return asset.emojiList.length > 0
     ? asset.emojiList.join(" ")
-    : appTokens.copy.labels.stickersNeedEmoji;
+    : appTokens.copy.labels.noEmoji;
 }
 
 function formatDownloadSummary(asset: SourceAsset) {

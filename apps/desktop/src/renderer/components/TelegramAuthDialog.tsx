@@ -250,21 +250,23 @@ export function TelegramAuthDialog({
               ? appTokens.copy.actions.cancel
               : appTokens.copy.actions.close}
           </Button>
-          <Button
-            size="small"
-            type="submit"
-            variant="contained"
-            disabled={
-              submitting ||
-              (state?.authStep === "wait_tdlib_parameters" &&
-                (!apiId.trim() || !apiHash.trim())) ||
-              (state?.authStep === "wait_phone_number" && !phoneNumber.trim()) ||
-              (state?.authStep === "wait_code" && !code.trim()) ||
-              (state?.authStep === "wait_password" && password.length === 0)
-            }
-          >
-            {actionLabelForState(state)}
-          </Button>
+          {requiresSubmit ? (
+            <Button
+              size="small"
+              type="submit"
+              variant="contained"
+              disabled={
+                submitting ||
+                (state?.authStep === "wait_tdlib_parameters" &&
+                  (!apiId.trim() || !apiHash.trim())) ||
+                (state?.authStep === "wait_phone_number" && !phoneNumber.trim()) ||
+                (state?.authStep === "wait_code" && !code.trim()) ||
+                (state?.authStep === "wait_password" && password.length === 0)
+              }
+            >
+              {actionLabelForState(state)}
+            </Button>
+          ) : null}
         </DialogActions>
       </form>
     </Dialog>

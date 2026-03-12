@@ -116,7 +116,10 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(markup).toContain("Reset Telegram");
+    expect(markup).toContain('aria-label="Telegram account"');
+    expect(markup).toContain('aria-label="Sync"');
+    expect(markup).toContain("color:error.main");
+    expect(markup).not.toContain(">Reset Telegram<");
     expect(markup).not.toContain(">Logout<");
   });
 
@@ -170,11 +173,11 @@ describe("Sidebar", () => {
     expect(markup).toContain("Telegram");
     expect(markup).toContain("Local Pack");
     expect(markup).toContain("Telegram Pack");
-    expect(markup).toContain("Connected");
-    expect(markup).toContain("Sticker Smith (@stickersmith)");
-    expect(markup).toContain("Manage Telegram");
-    expect(markup).toContain("Resync");
+    expect(markup).toContain('aria-label="Telegram account"');
+    expect(markup).toContain('aria-label="Resync"');
     expect(markup).toContain("Needs update");
+    expect(markup).not.toContain("Telegram is connected.");
+    expect(markup).not.toContain(">Connected<");
   });
 
   it("renders unsupported telegram packs in a separate section", () => {
@@ -239,7 +242,7 @@ describe("Sidebar", () => {
     );
 
     expect(markup).toContain("Telegram");
-    expect(markup).toContain("Unsupported Telegram");
+    expect(markup).toContain("Telegram (Unsupported)");
     expect(markup).toContain("Telegram Pack");
     expect(markup).toContain("Static Pack");
     expect(markup).toContain("Needs update");

@@ -41,8 +41,10 @@ interface BrowserGalleryCardProps {
   title: string;
   filename: string;
   isPinned?: boolean;
+  selected?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -50,8 +52,10 @@ interface BrowserListRowProps {
   title: string;
   filename: string;
   isPinned?: boolean;
+  selected?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -237,12 +241,15 @@ export function BrowserGalleryCard({
   title,
   filename,
   isPinned = false,
+  selected = false,
   preview,
   metadata,
+  onClick,
   onContextMenu,
 }: BrowserGalleryCardProps) {
   return (
     <Box
+      onClick={onClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
@@ -250,13 +257,14 @@ export function BrowserGalleryCard({
         borderRadius: appTokens.radii.card / 8,
         overflow: "hidden",
         border: "1px solid",
-        borderColor: isPinned ? "primary.main" : "divider",
-        bgcolor: "action.hover",
+        borderColor: selected || isPinned ? "primary.main" : "divider",
+        bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
-        transition: "border-color 0.15s, background-color 0.15s",
+        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+        boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
           bgcolor: "action.selected",
-          borderColor: isPinned ? "primary.light" : "action.selected",
+          borderColor: selected || isPinned ? "primary.light" : "action.selected",
         },
       }}
     >
@@ -304,12 +312,15 @@ export function BrowserListRow({
   title,
   filename,
   isPinned = false,
+  selected = false,
   preview,
   metadata,
+  onClick,
   onContextMenu,
 }: BrowserListRowProps) {
   return (
     <Box
+      onClick={onClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
@@ -321,28 +332,26 @@ export function BrowserListRow({
         py: 0.85,
         borderRadius: appTokens.radii.panel / 8,
         border: "1px solid",
-        borderColor: isPinned ? "primary.main" : "divider",
-        bgcolor: "action.hover",
+        borderColor: selected || isPinned ? "primary.main" : "divider",
+        bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
-        transition: "border-color 0.15s, background-color 0.15s",
+        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+        boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
           bgcolor: "action.selected",
-          borderColor: isPinned ? "primary.light" : "action.selected",
+          borderColor: selected || isPinned ? "primary.light" : "action.selected",
         },
       }}
     >
       {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
-          width: 54,
-          minWidth: 54,
-          aspectRatio: appTokens.layout.squareAspectRatio,
-          borderRadius: appTokens.radii.control,
+          width: 56,
+          minWidth: 56,
+          height: 56,
           overflow: "hidden",
           bgcolor: "background.paper",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          display: "block",
         }}
       >
         {preview}

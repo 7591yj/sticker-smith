@@ -67,6 +67,19 @@ class FakeTdlibService {
   private readonly listeners = new Set<TelegramTdlibStateListener>();
   private readonly downloadFilePath: string;
   private lastEnsureStartedCredentials: TelegramTdlibCredentials | null = null;
+  private started = false;
+  private currentAuthStep:
+    | "wait_tdlib_parameters"
+    | "wait_phone_number"
+    | "wait_code"
+    | "wait_password"
+    | "ready"
+    | "logged_out" = "logged_out";
+  private currentSessionUser: {
+    id: number;
+    username: string | null;
+    displayName: string;
+  } | null = null;
   private submitPhoneNumberCalls: string[] = [];
   private setStickerSetTitleError: Error | null = null;
   private setStickerSetThumbnailError: Error | null = null;
@@ -169,12 +182,47 @@ class FakeTdlibService {
     return [...this.submitPhoneNumberCalls];
   }
 
+  isStarted() {
+    return this.started;
+  }
+
+  getCurrentAuthState() {
+    return {
+      authStep: this.currentAuthStep,
+      sessionUser: this.currentSessionUser,
+    };
+  }
+
+  setCurrentAuthState(
+    authStep:
+      | "wait_tdlib_parameters"
+      | "wait_phone_number"
+      | "wait_code"
+      | "wait_password"
+      | "ready"
+      | "logged_out",
+    sessionUser: { id: number; username: string | null; displayName: string } | null = null,
+  ) {
+    this.currentAuthStep = authStep;
+    this.currentSessionUser = authStep === "ready" ? sessionUser : null;
+  }
+
   async ensureStarted(credentials: TelegramTdlibCredentials) {
     this.lastEnsureStartedCredentials = credentials;
+    this.started = true;
+    if (this.currentAuthStep === "logged_out") {
+      this.currentAuthStep = credentials.phoneNumber
+        ? "wait_code"
+        : "wait_phone_number";
+      this.currentSessionUser = null;
+    }
     return;
   }
 
   async close() {
+    this.started = false;
+    this.currentAuthStep = "logged_out";
+    this.currentSessionUser = null;
     return;
   }
 
@@ -182,6 +230,7 @@ class FakeTdlibService {
     if (phoneNumber) {
       this.submitPhoneNumberCalls.push(phoneNumber);
     }
+    this.currentAuthStep = "wait_code";
     for (const listener of this.listeners) {
       listener.onAuthStateChanged({
         authStep: "wait_code",
@@ -191,15 +240,17 @@ class FakeTdlibService {
   }
 
   async submitCode() {
+    this.currentAuthStep = "ready";
+    this.currentSessionUser = {
+      id: 1,
+      username: "stickersmith",
+      displayName: "Sticker Smith",
+    };
     for (const listener of this.listeners) {
       listener.onAuthStateChanged({
         authStep: "ready",
         message: "Telegram is connected.",
-        sessionUser: {
-          id: 1,
-          username: "stickersmith",
-          displayName: "Sticker Smith",
-        },
+        sessionUser: this.currentSessionUser,
       });
     }
   }
@@ -209,6 +260,8 @@ class FakeTdlibService {
   }
 
   async logout() {
+    this.currentAuthStep = "logged_out";
+    this.currentSessionUser = null;
     for (const listener of this.listeners) {
       listener.onAuthStateChanged({
         authStep: "logged_out",
@@ -505,6 +558,54 @@ describe("TelegramService", () => {
     expect(savedKey).toMatch(/^[A-Za-z0-9+/]*={0,2}$/);
     expect(savedKey?.length).toBeGreaterThan(36);
     expect(startedWith?.databaseEncryptionKey).toBe(savedKey);
+  });
+
+  it("downgrades a stale persisted connected state when the runtime is not actually ready", async () => {
+    const { root, downloadRoot, telegramService, secretsService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    const telegramRoot = path.join(root, "telegram");
+    await fs.mkdir(telegramRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(telegramRoot, "state.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          backend: "tdlib",
+          status: "connected",
+          authStep: "ready",
+          selectedMode: "user",
+          recommendedMode: "user",
+          message: "Telegram is connected.",
+          tdlib: {
+            apiId: "12345",
+            apiHashConfigured: true,
+          },
+          user: {
+            phoneNumber: "+12025550123",
+          },
+          sessionUser: {
+            id: 1,
+            username: "stickersmith",
+            displayName: "Sticker Smith",
+          },
+          lastError: null,
+          updatedAt: "2026-03-12T00:00:00.000Z",
+        },
+        null,
+        2,
+      ),
+    );
+    await secretsService.setSecret("default", "api_hash", VALID_API_HASH);
+    tdlibService.setCurrentAuthState("wait_code");
+
+    const state = await telegramService.getState();
+
+    expect(state.status).toBe("awaiting_credentials");
+    expect(state.authStep).toBe("wait_code");
+    expect(state.sessionUser).toBeNull();
+    expect(state.message).toContain("login code");
   });
 
   it("migrates plaintext telegram secrets out of state.json", async () => {
@@ -1172,6 +1273,10 @@ describe("TelegramService", () => {
     let details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
+    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    await expect(fs.readFile(details.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
+      "webm-data",
+    );
 
     await telegramService.syncOwnedPacks();
 
@@ -1179,6 +1284,7 @@ describe("TelegramService", () => {
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
     expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
   });
 
   it("migrates downloaded telegram media from nested sticker paths to flat source paths", async () => {
@@ -1218,6 +1324,42 @@ describe("TelegramService", () => {
     const details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
     expect(details.assets[0]?.absolutePath).toBe(flatPath);
+  });
+
+  it("does not overwrite divergent telegram sticker outputs on resync", async () => {
+    const { root, downloadRoot, telegramService, libraryService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
+    expect(mirror).not.toBeNull();
+
+    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
+    const details = await libraryService.getPack(mirror!.record.id);
+    const customOutputPath = path.join(mirror!.rootPath, "webm", "custom.webm");
+    await fs.writeFile(customOutputPath, "custom-webm");
+    await libraryService.recordConversionResult(mirror!.record.id, {
+      assetId: details.assets[0]!.id,
+      mode: "sticker",
+      outputFileName: "custom.webm",
+      sizeBytes: "custom-webm".length,
+    });
+
+    await telegramService.syncOwnedPacks();
+
+    const resynced = await libraryService.getPack(mirror!.record.id);
+    expect(resynced.outputs[0]?.relativePath).toBe("custom.webm");
+    await expect(fs.readFile(customOutputPath, "utf8")).resolves.toBe("custom-webm");
   });
 
   it("removes telegram mirrors that are no longer owned after resync", async () => {

@@ -533,6 +533,139 @@ export class LibraryService {
     );
   }
 
+  private getStickerOutputForAsset(
+    record: StickerPackRecord,
+    assetId: AssetId,
+  ) {
+    return record.outputs.find(
+      (output) => output.sourceAssetId === assetId && output.mode === "sticker",
+    );
+  }
+
+  private async reconcileTelegramMirrorOutputs(
+    record: StickerPackRecord,
+    rootPath: string,
+    options: {
+      baselineFallbackByAssetId?: ReadonlyMap<AssetId, string | null>;
+    } = {},
+  ) {
+    if (record.source !== "telegram") {
+      return;
+    }
+
+    const baselineFallbackByAssetId =
+      options.baselineFallbackByAssetId ?? new Map<AssetId, string | null>();
+    const assetById = new Map(record.assets.map((asset) => [asset.id, asset]));
+    const nextOutputs: StickerPackRecord["outputs"] = [];
+
+    for (const output of record.outputs) {
+      if (output.mode !== "sticker") {
+        nextOutputs.push(output);
+        continue;
+      }
+
+      const asset = assetById.get(output.sourceAssetId);
+      const sourcePath = asset
+        ? path.join(rootPath, "source", asset.relativePath)
+        : null;
+      const sourceExists = sourcePath ? await pathExists(sourcePath) : false;
+      const eligible =
+        asset?.telegram &&
+        asset.kind === "webm" &&
+        asset.downloadState === "ready" &&
+        sourceExists;
+
+      if (eligible) {
+        nextOutputs.push(output);
+        continue;
+      }
+
+      if (asset?.telegram && asset.downloadState === "ready" && !sourceExists) {
+        asset.downloadState = "missing";
+      }
+
+      await fs.rm(path.join(rootPath, "webm", output.relativePath), {
+        force: true,
+      });
+    }
+
+    record.outputs = nextOutputs;
+
+    for (const asset of record.assets) {
+      if (!asset.telegram || asset.kind !== "webm") {
+        continue;
+      }
+
+      const sourcePath = path.join(rootPath, "source", asset.relativePath);
+      if (asset.downloadState !== "ready" || !(await pathExists(sourcePath))) {
+        if (asset.downloadState === "ready") {
+          asset.downloadState = "missing";
+        }
+        continue;
+      }
+
+      const baselineHash =
+        asset.telegram.baselineOutputHash ?? (await sha256ForFile(sourcePath));
+      asset.telegram.baselineOutputHash = baselineHash;
+
+      let output = this.getStickerOutputForAsset(record, asset.id);
+      if (output) {
+        const outputPath = path.join(rootPath, "webm", output.relativePath);
+        if (!(await pathExists(outputPath))) {
+          record.outputs = record.outputs.filter(
+            (item) =>
+              !(
+                item.mode === "sticker" &&
+                item.sourceAssetId === asset.id &&
+                item.relativePath === output!.relativePath
+              ),
+          );
+          output = undefined;
+        }
+      }
+
+      const priorBaselineHash =
+        baselineFallbackByAssetId.get(asset.id) ?? asset.telegram.baselineOutputHash;
+      const outputMatchesBaseline =
+        output !== undefined &&
+        (output.sha256 === baselineHash ||
+          output.sha256 === priorBaselineHash);
+
+      if (output && !outputMatchesBaseline) {
+        continue;
+      }
+
+      const nextRelativePath = asset.relativePath;
+      const nextAbsolutePath = path.join(rootPath, "webm", nextRelativePath);
+      const previousOutputPath =
+        output && output.relativePath !== nextRelativePath
+          ? path.join(rootPath, "webm", output.relativePath)
+          : null;
+
+      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+      await fs.copyFile(sourcePath, nextAbsolutePath);
+      const stat = await fs.stat(nextAbsolutePath);
+      const sha256 = baselineHash ?? (await sha256ForFile(nextAbsolutePath));
+
+      if (previousOutputPath) {
+        await fs.rm(previousOutputPath, { force: true });
+      }
+
+      record.outputs = record.outputs.filter(
+        (item) => !(item.mode === "sticker" && item.sourceAssetId === asset.id),
+      );
+      record.outputs.push({
+        packId: record.id,
+        sourceAssetId: asset.id,
+        mode: "sticker",
+        relativePath: nextRelativePath,
+        sizeBytes: stat.size,
+        sha256,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
   async listPacks(): Promise<StickerPack[]> {
     await this.ensureReady();
     const packsRoot = this.getPacksRoot();
@@ -721,6 +854,7 @@ export class LibraryService {
           ) ?? [],
       };
 
+      await this.reconcileTelegramMirrorOutputs(record, rootPath);
       await this.writePackRecord(rootPath, record);
       return hydratePackDetails(record, rootPath);
     });
@@ -865,9 +999,98 @@ export class LibraryService {
       }
 
       asset.relativePath = nextRelativePath;
-      await this.removeAssetOutputs(record, rootPath, asset.id);
       if (record.telegram) {
         record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      } else {
+        await this.removeAssetOutputs(record, rootPath, asset.id);
+      }
+    });
+  }
+
+  async renameManyAssets(input: {
+    packId: string;
+    assetIds: string[];
+    baseName: string;
+  }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      const selectedAssetIds = [...new Set(input.assetIds)];
+      const assets = selectedAssetIds.map((assetId) => {
+        const asset = record.assets.find((item) => item.id === assetId);
+        if (!asset) {
+          throw new Error(`Asset not found: ${assetId}`);
+        }
+        return asset;
+      });
+
+      const stagedMoves = assets.map((asset, index) => {
+        const parsed = path.posix.parse(asset.relativePath);
+        const candidate = path.posix.join(
+          parsed.dir,
+          `${input.baseName}-${String(index + 1).padStart(3, "0")}${parsed.ext}`,
+        );
+        const nextRelativePath = this.resolveUniqueRelativePath(
+          record,
+          candidate,
+          asset.id,
+        );
+
+        return {
+          asset,
+          currentRelativePath: asset.relativePath,
+          nextRelativePath,
+          tempRelativePath: path.posix.join(
+            parsed.dir,
+            `.rename-${randomUUID()}${parsed.ext}`,
+          ),
+        };
+      });
+
+      for (const stagedMove of stagedMoves) {
+        const currentAbsolutePath = path.join(
+          rootPath,
+          "source",
+          stagedMove.currentRelativePath,
+        );
+        const tempAbsolutePath = path.join(
+          rootPath,
+          "source",
+          stagedMove.tempRelativePath,
+        );
+        if (!(await pathExists(currentAbsolutePath))) {
+          continue;
+        }
+        await fs.mkdir(path.dirname(tempAbsolutePath), { recursive: true });
+        await fs.rename(currentAbsolutePath, tempAbsolutePath);
+      }
+
+      for (const stagedMove of stagedMoves) {
+        const tempAbsolutePath = path.join(
+          rootPath,
+          "source",
+          stagedMove.tempRelativePath,
+        );
+        const nextAbsolutePath = path.join(
+          rootPath,
+          "source",
+          stagedMove.nextRelativePath,
+        );
+        if (await pathExists(tempAbsolutePath)) {
+          await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+          await fs.rename(tempAbsolutePath, nextAbsolutePath);
+        }
+        stagedMove.asset.relativePath = stagedMove.nextRelativePath;
+      }
+
+      if (record.telegram) {
+        record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      } else {
+        await Promise.all(
+          stagedMoves.map((stagedMove) =>
+            this.removeAssetOutputs(record, rootPath, stagedMove.asset.id),
+          ),
+        );
       }
     });
   }
@@ -877,7 +1100,7 @@ export class LibraryService {
     assetId: string;
     emojis: string[];
   }) {
-    return this.mutatePackRecord(input.packId, (record) => {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
       const asset = record.assets.find((item) => item.id === input.assetId);
 
       if (!asset) {
@@ -887,6 +1110,30 @@ export class LibraryService {
       asset.emojiList = [...input.emojis];
       if (record.telegram) {
         record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      }
+    });
+  }
+
+  async setManyAssetEmojis(input: {
+    packId: string;
+    assetIds: string[];
+    emojis: string[];
+  }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      for (const assetId of [...new Set(input.assetIds)]) {
+        const asset = record.assets.find((item) => item.id === assetId);
+
+        if (!asset) {
+          throw new Error(`Asset not found: ${assetId}`);
+        }
+
+        asset.emojiList = [...input.emojis];
+      }
+
+      if (record.telegram) {
+        record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
       }
     });
   }
@@ -919,9 +1166,11 @@ export class LibraryService {
       }
 
       asset.relativePath = nextRelativePath;
-      await this.removeAssetOutputs(record, rootPath, asset.id);
       if (record.telegram) {
         record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      } else {
+        await this.removeAssetOutputs(record, rootPath, asset.id);
       }
     });
   }
@@ -949,6 +1198,35 @@ export class LibraryService {
 
       if (record.telegram) {
         record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      }
+    });
+  }
+
+  async deleteManyAssets(input: { packId: string; assetIds: string[] }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      for (const assetId of [...new Set(input.assetIds)]) {
+        const assetIndex = record.assets.findIndex((item) => item.id === assetId);
+
+        if (assetIndex === -1) {
+          throw new Error(`Asset not found: ${assetId}`);
+        }
+
+        const [asset] = record.assets.splice(assetIndex, 1);
+        await fs.rm(path.join(rootPath, "source", asset.relativePath), {
+          force: true,
+        });
+        await this.removeAssetOutputs(record, rootPath, asset.id);
+
+        if (record.iconAssetId === asset.id) {
+          record.iconAssetId = null;
+          await fs.rm(path.join(rootPath, "webm", "icon.webm"), { force: true });
+        }
+      }
+
+      if (record.telegram) {
+        record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
       }
     });
   }
@@ -1003,6 +1281,13 @@ export class LibraryService {
       if (!asset) {
         throw new Error(`Asset not found: ${input.assetId}`);
       }
+      const baselineFallbackByAssetId = new Map<AssetId, string | null>();
+      if (asset.telegram) {
+        baselineFallbackByAssetId.set(
+          asset.id,
+          asset.telegram.baselineOutputHash ?? null,
+        );
+      }
 
       const nextRelativePath = input.relativePath
         ? this.resolveUniqueRelativePath(record, input.relativePath, asset.id)
@@ -1019,6 +1304,9 @@ export class LibraryService {
       } else if (asset.telegram) {
         asset.telegram.baselineOutputHash = await sha256ForFile(destination);
       }
+      await this.reconcileTelegramMirrorOutputs(record, rootPath, {
+        baselineFallbackByAssetId,
+      });
     });
   }
 

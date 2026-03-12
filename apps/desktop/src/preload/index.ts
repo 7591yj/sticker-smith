@@ -4,13 +4,16 @@ import type {
   ConversionJobEvent,
   ConvertSelectionInput,
   DeleteAssetInput,
+  DeleteManyAssetsInput,
   ImportResult,
   MoveAssetInput,
   PublishLocalPackInput,
   RenameAssetInput,
+  RenameManyAssetsInput,
   SetTelegramPhoneNumberInput,
   SetTelegramTdlibParametersInput,
   SetAssetEmojisInput,
+  SetManyAssetEmojisInput,
   StickerSmithApi,
   StickerPack,
   StickerPackDetails,
@@ -73,6 +76,8 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("packs.delete", input),
     get: (packId: string): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("packs.get", { packId }),
+    revealSourceFolder: (input: { packId: string }): Promise<void> =>
+      ipcRenderer.invoke("packs.revealSourceFolder", input),
     setIcon: (input: {
       packId: string;
       assetId: string | null;
@@ -91,12 +96,20 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("assets.importDirectory", input),
     setEmojis: (input: SetAssetEmojisInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.setEmojis", input),
+    setEmojisMany: (
+      input: SetManyAssetEmojisInput,
+    ): Promise<StickerPackDetails> =>
+      ipcRenderer.invoke("assets.setEmojisMany", input),
     rename: (input: RenameAssetInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.rename", input),
+    renameMany: (input: RenameManyAssetsInput): Promise<StickerPackDetails> =>
+      ipcRenderer.invoke("assets.renameMany", input),
     move: (input: MoveAssetInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.move", input),
     delete: (input: DeleteAssetInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.delete", input),
+    deleteMany: (input: DeleteManyAssetsInput): Promise<StickerPackDetails> =>
+      ipcRenderer.invoke("assets.deleteMany", input),
   },
   outputs: {
     list: (packId: string) => ipcRenderer.invoke("outputs.list", { packId }),

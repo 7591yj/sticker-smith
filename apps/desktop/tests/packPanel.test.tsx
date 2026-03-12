@@ -44,10 +44,13 @@ describe("PackPanel", () => {
       />,
     );
 
+    expect(markup).toContain("Open Assets");
     expect(markup).toContain("Open Outputs");
     expect(markup).toContain("Export");
     expect(markup).toContain("Upload");
     expect(markup).toContain('aria-label="Delete pack"');
+    expect(markup).toContain('aria-label="List view"');
+    expect(markup).toContain("disabled");
   });
 
   it("renders telegram sync errors on mirror packs", () => {

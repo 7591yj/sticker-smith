@@ -546,7 +546,10 @@ export function App() {
           <PackPanel
             details={details}
             converting={converting}
-            telegramConnected={telegramState?.status === "connected"}
+            telegramConnected={
+              telegramState?.status === "connected" &&
+              telegramState.authStep === "ready"
+            }
             telegramPublishing={
               details?.pack.source === "local"
                 ? telegramPublishingPackIds.includes(details.pack.id)

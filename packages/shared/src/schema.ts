@@ -36,7 +36,8 @@ export const emojiSchema = z
   .refine(isTelegramCompatibleEmoji, {
     message: "Expected a Telegram-compatible emoji.",
   });
-export const emojiListSchema = z.array(emojiSchema).min(1).max(20);
+export const emojiListSchema = z.array(emojiSchema).max(20);
+export const telegramRequiredEmojiListSchema = emojiListSchema.min(1);
 export const telegramShortNameSchema = z
   .string()
   .trim()
@@ -90,9 +91,21 @@ export const renameAssetSchema = z.object({
   nextRelativePath: z.string().min(1),
 });
 
+export const renameManyAssetsSchema = z.object({
+  packId: packIdSchema,
+  assetIds: z.array(assetIdSchema).min(1),
+  baseName: z.string().trim().min(1),
+});
+
 export const setAssetEmojisSchema = z.object({
   packId: packIdSchema,
   assetId: assetIdSchema,
+  emojis: emojiListSchema,
+});
+
+export const setManyAssetEmojisSchema = z.object({
+  packId: packIdSchema,
+  assetIds: z.array(assetIdSchema).min(1),
   emojis: emojiListSchema,
 });
 
@@ -105,6 +118,11 @@ export const moveAssetSchema = z.object({
 export const deleteAssetSchema = z.object({
   packId: packIdSchema,
   assetId: assetIdSchema,
+});
+
+export const deleteManyAssetsSchema = z.object({
+  packId: packIdSchema,
+  assetIds: z.array(assetIdSchema).min(1),
 });
 
 export const convertSelectionSchema = z.object({
@@ -122,6 +140,10 @@ export const revealOutputSchema = z.object({
 });
 
 export const exportOutputFolderSchema = z.object({
+  packId: packIdSchema,
+});
+
+export const revealPackSourceFolderSchema = z.object({
   packId: packIdSchema,
 });
 

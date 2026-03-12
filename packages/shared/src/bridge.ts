@@ -2,15 +2,18 @@ import type {
   ConversionJobEvent,
   ConvertSelectionInput,
   DeleteAssetInput,
+  DeleteManyAssetsInput,
   ImportResult,
   LibraryConfig,
   MoveAssetInput,
   OutputArtifact,
   PublishLocalPackInput,
   RenameAssetInput,
+  RenameManyAssetsInput,
   SetTelegramPhoneNumberInput,
   SetTelegramTdlibParametersInput,
   SetAssetEmojisInput,
+  SetManyAssetEmojisInput,
   StickerPack,
   StickerPackDetails,
   SubmitTelegramCodeInput,
@@ -51,6 +54,7 @@ export interface StickerSmithApi {
     rename: (input: { packId: string; name: string }) => Promise<StickerPack>;
     delete: (input: { packId: string }) => Promise<void>;
     get: (packId: string) => Promise<StickerPackDetails>;
+    revealSourceFolder: (input: { packId: string }) => Promise<void>;
     setIcon: (input: {
       packId: string;
       assetId: string | null;
@@ -66,9 +70,14 @@ export interface StickerSmithApi {
       directoryPath?: string;
     }) => Promise<ImportResult>;
     setEmojis: (input: SetAssetEmojisInput) => Promise<StickerPackDetails>;
+    setEmojisMany: (
+      input: SetManyAssetEmojisInput,
+    ) => Promise<StickerPackDetails>;
     rename: (input: RenameAssetInput) => Promise<StickerPackDetails>;
+    renameMany: (input: RenameManyAssetsInput) => Promise<StickerPackDetails>;
     move: (input: MoveAssetInput) => Promise<StickerPackDetails>;
     delete: (input: DeleteAssetInput) => Promise<StickerPackDetails>;
+    deleteMany: (input: DeleteManyAssetsInput) => Promise<StickerPackDetails>;
   };
   outputs: {
     list: (packId: string) => Promise<OutputArtifact[]>;

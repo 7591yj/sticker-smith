@@ -257,9 +257,21 @@ export interface RenameAssetInput {
   nextRelativePath: string;
 }
 
+export interface RenameManyAssetsInput {
+  packId: PackId;
+  assetIds: AssetId[];
+  baseName: string;
+}
+
 export interface SetAssetEmojisInput {
   packId: PackId;
   assetId: AssetId;
+  emojis: string[];
+}
+
+export interface SetManyAssetEmojisInput {
+  packId: PackId;
+  assetIds: AssetId[];
   emojis: string[];
 }
 
@@ -303,6 +315,11 @@ export interface MoveAssetInput {
 export interface DeleteAssetInput {
   packId: PackId;
   assetId: AssetId;
+}
+
+export interface DeleteManyAssetsInput {
+  packId: PackId;
+  assetIds: AssetId[];
 }
 
 export interface ConvertSelectionInput {

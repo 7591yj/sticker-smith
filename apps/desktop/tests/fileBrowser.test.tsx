@@ -118,7 +118,7 @@ describe("AssetGrid", () => {
     expect(markup.indexOf("icon.png")).toBeLessThan(markup.indexOf("alpha.png"));
   });
 
-  it("renders the emoji requirement state for assets without emojis", () => {
+  it("renders the empty emoji state for assets without emojis", () => {
     const markup = renderToStaticMarkup(
       <AssetGrid
         assets={[createAsset("asset-1", "needs-emoji.png")]}
@@ -132,7 +132,7 @@ describe("AssetGrid", () => {
       />,
     );
 
-    expect(markup).toContain("Emoji required");
+    expect(markup).toContain("No emoji");
   });
 
   it("renders a standalone telegram pack icon preview in the assets grid", () => {

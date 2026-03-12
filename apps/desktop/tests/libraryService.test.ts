@@ -174,6 +174,193 @@ describe("LibraryService", () => {
     expect(updated.assets[0]?.emojiList).toEqual(["👋", "✨"]);
   });
 
+  it("renames many assets in order while preserving each extension", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Batch Rename Pack" });
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-batch-rename-"),
+    );
+    cleanup.push(fileRoot);
+
+    const alphaPath = path.join(fileRoot, "alpha.png");
+    const betaPath = path.join(fileRoot, "beta.webp");
+    await fs.writeFile(alphaPath, "alpha");
+    await fs.writeFile(betaPath, "beta");
+
+    const imported = await libraryService.importFiles(pack.id, [alphaPath, betaPath]);
+    const renamed = await libraryService.renameManyAssets({
+      packId: pack.id,
+      assetIds: imported.imported
+        .map((asset) => asset.id)
+        .sort((left, right) => {
+          const leftAsset = imported.imported.find((asset) => asset.id === left)!;
+          const rightAsset = imported.imported.find((asset) => asset.id === right)!;
+          return leftAsset.relativePath.localeCompare(rightAsset.relativePath);
+        }),
+      baseName: "sticker",
+    });
+
+    expect(renamed.assets.map((asset) => asset.relativePath).sort()).toEqual([
+      "sticker-001.png",
+      "sticker-002.webp",
+    ]);
+  });
+
+  it("mirrors downloaded telegram webm assets into sticker outputs and updates baseline-synced outputs", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "500",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath: null,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      iconStickerId: null,
+      assets: [
+        {
+          relativePath: "sticker-001.webm",
+          emojiList: ["🙂"],
+          kind: "webm",
+          downloadState: "missing",
+          telegram: {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            position: 0,
+            baselineOutputHash: null,
+          },
+        },
+      ],
+    });
+
+    expect(details.outputs).toEqual([]);
+
+    const downloadRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-output-"),
+    );
+    cleanup.push(downloadRoot);
+    const sourceA = path.join(downloadRoot, "source-a.webm");
+    const sourceB = path.join(downloadRoot, "source-b.webm");
+    await fs.writeFile(sourceA, "webm-a");
+    await fs.writeFile(sourceB, "webm-b");
+
+    let updated = await libraryService.writeTelegramAssetFile({
+      packId: details.pack.id,
+      assetId: details.assets[0]!.id,
+      sourceFilePath: sourceA,
+      relativePath: "sticker-001.webm",
+    });
+    expect(updated.outputs).toHaveLength(1);
+    await expect(fs.readFile(updated.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
+      "webm-a",
+    );
+
+    updated = await libraryService.writeTelegramAssetFile({
+      packId: details.pack.id,
+      assetId: details.assets[0]!.id,
+      sourceFilePath: sourceB,
+      relativePath: "sticker-001.webm",
+    });
+    await expect(fs.readFile(updated.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
+      "webm-b",
+    );
+  });
+
+  it("does not overwrite divergent telegram sticker outputs during mirror reconciliation", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "600",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath: null,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      iconStickerId: null,
+      assets: [
+        {
+          relativePath: "sticker-001.webm",
+          emojiList: ["🙂"],
+          kind: "webm",
+          downloadState: "missing",
+          telegram: {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            position: 0,
+            baselineOutputHash: null,
+          },
+        },
+      ],
+    });
+
+    const downloadRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-divergent-"),
+    );
+    cleanup.push(downloadRoot);
+    const sourcePath = path.join(downloadRoot, "source.webm");
+    const customOutputPath = path.join(details.pack.outputRoot, "custom.webm");
+    await fs.writeFile(sourcePath, "baseline-webm");
+
+    await libraryService.writeTelegramAssetFile({
+      packId: details.pack.id,
+      assetId: details.assets[0]!.id,
+      sourceFilePath: sourcePath,
+      relativePath: "sticker-001.webm",
+    });
+
+    await fs.writeFile(customOutputPath, "custom-webm");
+    await libraryService.recordConversionResult(details.pack.id, {
+      assetId: details.assets[0]!.id,
+      mode: "sticker",
+      outputFileName: "custom.webm",
+      sizeBytes: "custom-webm".length,
+    });
+
+    const reconciled = await libraryService.upsertTelegramMirror({
+      stickerSetId: "600",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath: null,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      iconStickerId: null,
+      assets: [
+        {
+          id: details.assets[0]!.id,
+          relativePath: "sticker-001.webm",
+          emojiList: ["🙂"],
+          kind: "webm",
+          downloadState: "missing",
+          telegram: {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            position: 0,
+            baselineOutputHash: null,
+          },
+        },
+      ],
+    });
+
+    expect(reconciled.outputs[0]?.relativePath).toBe("custom.webm");
+    await expect(fs.readFile(customOutputPath, "utf8")).resolves.toBe("custom-webm");
+  });
+
   it("recovers a pack manifest from a backup when the primary JSON is truncated", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);

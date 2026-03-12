@@ -6,6 +6,7 @@ import {
   convertSelectionSchema,
   createPackSchema,
   deleteAssetSchema,
+  deleteManyAssetsSchema,
   deletePackSchema,
   downloadTelegramPackMediaSchema,
   exportOutputFolderSchema,
@@ -15,9 +16,12 @@ import {
   moveAssetSchema,
   publishLocalPackSchema,
   renameAssetSchema,
+  renameManyAssetsSchema,
   renamePackSchema,
+  revealPackSourceFolderSchema,
   revealOutputSchema,
   setAssetEmojisSchema,
+  setManyAssetEmojisSchema,
   submitTelegramCodeSchema,
   submitTelegramPasswordSchema,
   setTelegramPhoneNumberSchema,
@@ -120,6 +124,9 @@ export function registerIpc() {
   ipcMain.handle("packs.delete", async (_event, input: unknown) =>
     libraryService.deletePack(deletePackSchema.parse(input)),
   );
+  ipcMain.handle("packs.revealSourceFolder", async (_event, input: unknown) =>
+    shellService.revealSourceFolder(revealPackSourceFolderSchema.parse(input)),
+  );
   ipcMain.handle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
   );
@@ -155,14 +162,23 @@ export function registerIpc() {
   ipcMain.handle("assets.rename", async (_event, input: unknown) =>
     libraryService.renameAsset(renameAssetSchema.parse(input)),
   );
+  ipcMain.handle("assets.renameMany", async (_event, input: unknown) =>
+    libraryService.renameManyAssets(renameManyAssetsSchema.parse(input)),
+  );
   ipcMain.handle("assets.setEmojis", async (_event, input: unknown) =>
     libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
+  );
+  ipcMain.handle("assets.setEmojisMany", async (_event, input: unknown) =>
+    libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
   );
   ipcMain.handle("assets.move", async (_event, input: unknown) =>
     libraryService.moveAsset(moveAssetSchema.parse(input)),
   );
   ipcMain.handle("assets.delete", async (_event, input: unknown) =>
     libraryService.deleteAsset(deleteAssetSchema.parse(input)),
+  );
+  ipcMain.handle("assets.deleteMany", async (_event, input: unknown) =>
+    libraryService.deleteManyAssets(deleteManyAssetsSchema.parse(input)),
   );
 
   ipcMain.handle("outputs.list", async (_event, input: unknown) =>

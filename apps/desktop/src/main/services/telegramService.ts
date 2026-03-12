@@ -240,6 +240,25 @@ function describeUnsupportedStickerSet(
   return `Telegram pack "${stickerSet.title}" uses ${stickerSet.format} stickers, and only video sticker packs are supported currently.`;
 }
 
+function describeTelegramAuthStep(
+  authStep: TelegramState["authStep"],
+) {
+  switch (authStep) {
+    case "wait_tdlib_parameters":
+      return "TDLib requires your Telegram api_id and api_hash.";
+    case "wait_phone_number":
+      return "Enter the phone number for the Telegram account that owns the sticker sets.";
+    case "wait_code":
+      return "Enter the login code Telegram sent to your account.";
+    case "wait_password":
+      return "Enter your Telegram two-step verification password.";
+    case "ready":
+      return "Telegram is connected.";
+    default:
+      return "Telegram is logged out.";
+  }
+}
+
 function normalizeTdlibCredential(value: string) {
   return value
     .trim()
@@ -696,13 +715,42 @@ export class TelegramService {
       throw error;
     }
 
+    const runtimeState = this.tdlibService.getCurrentAuthState();
+    const expectedStatus =
+      runtimeState.authStep === "ready" ? "connected" : "awaiting_credentials";
+    const expectedSessionUser =
+      runtimeState.authStep === "ready" ? runtimeState.sessionUser ?? null : null;
+
+    if (
+      state.status !== expectedStatus ||
+      state.authStep !== runtimeState.authStep ||
+      state.message !== describeTelegramAuthStep(runtimeState.authStep) ||
+      state.sessionUser?.id !== expectedSessionUser?.id
+    ) {
+      return this.updateState((current) => ({
+        ...current,
+        status: expectedStatus,
+        authStep: runtimeState.authStep,
+        message: describeTelegramAuthStep(runtimeState.authStep),
+        sessionUser: expectedSessionUser,
+        lastError: runtimeState.authStep === "ready" ? null : current.lastError,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
     return state;
   }
 
   private async requireConnectedState() {
-    const state = await this.ensureRuntimeStarted();
+    await this.ensureRuntimeStarted();
     const fresh = await this.readState();
-    if (fresh.status !== "connected" || fresh.authStep !== "ready") {
+    const runtimeState = this.tdlibService.getCurrentAuthState();
+    if (
+      !this.tdlibService.isStarted() ||
+      fresh.status !== "connected" ||
+      fresh.authStep !== "ready" ||
+      runtimeState.authStep !== "ready"
+    ) {
       throw new Error("Telegram is not connected.");
     }
     return fresh;

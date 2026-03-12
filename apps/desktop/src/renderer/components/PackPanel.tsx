@@ -70,7 +70,7 @@ export function PackPanel({
   const [renaming, setRenaming] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
-  const [view, setView] = useState<BrowserView>("gallery");
+  const [view, setView] = useState<BrowserView>("list");
 
   const handleConvert = useCallback(async () => {
     if (!details) return;
@@ -97,6 +97,13 @@ export function PackPanel({
   const handleOpenOutputs = useCallback(async () => {
     if (!details) return;
     await window.stickerSmith.outputs.revealInFolder({
+      packId: details.pack.id,
+    });
+  }, [details]);
+
+  const handleOpenAssets = useCallback(async () => {
+    if (!details) return;
+    await window.stickerSmith.packs.revealSourceFolder({
       packId: details.pack.id,
     });
   }, [details]);
@@ -515,6 +522,23 @@ export function PackPanel({
                 sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
               />
             }
+            onClick={handleOpenAssets}
+            sx={{
+              textTransform: "none",
+              fontSize: appTokens.typography.fontSizes.bodyCompact,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {appTokens.copy.actions.openAssets}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={
+              <FolderOpenIcon
+                sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
+              />
+            }
             onClick={handleOpenOutputs}
             sx={{
               textTransform: "none",
@@ -533,6 +557,7 @@ export function PackPanel({
               />
             }
             onClick={handleExportOutputs}
+            disabled={outputs.length === 0}
             sx={{
               textTransform: "none",
               fontSize: appTokens.typography.fontSizes.bodyCompact,

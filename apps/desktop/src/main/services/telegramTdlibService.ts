@@ -210,6 +210,17 @@ export class TelegramTdlibService {
     };
   }
 
+  isStarted() {
+    return Boolean(this.client && !this.client.isClosed());
+  }
+
+  getCurrentAuthState() {
+    return {
+      authStep: this.currentAuthStep,
+      sessionUser: this.sessionUser,
+    };
+  }
+
   private emitAuthStateChanged(
     authStep:
       | "wait_tdlib_parameters"

@@ -137,6 +137,11 @@ describe("TelegramAuthDialog", () => {
     expect(document.body.textContent).toContain(
       "Account: Sticker Smith (@stickersmith)",
     );
+    expect(
+      [...document.querySelectorAll("button")].filter(
+        (button) => button.textContent?.trim() === "Close",
+      ),
+    ).toHaveLength(1);
 
     await act(async () => {
       root.unmount();
