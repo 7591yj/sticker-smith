@@ -32,6 +32,8 @@ vi.mock("node:child_process", () => ({
 import { ConverterService } from "../src/main/services/converterService";
 
 const originalResourcesPath = process.resourcesPath;
+const originalPathEnv = process.env.PATH;
+const originalAppDir = process.env.APPDIR;
 
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
@@ -170,6 +172,12 @@ afterEach(() => {
     configurable: true,
     value: originalResourcesPath,
   });
+  process.env.PATH = originalPathEnv;
+  if (originalAppDir === undefined) {
+    delete process.env.APPDIR;
+  } else {
+    process.env.APPDIR = originalAppDir;
+  }
   vi.restoreAllMocks();
 });
 
@@ -306,13 +314,36 @@ describe("ConverterService", () => {
   it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {
     appMock.isPackaged = true;
     const { resourcesPath, backendDirectory } = await createBundledBackend();
+    const systemBinDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-system-bin-"),
+    );
+    await Promise.all([
+      fs.writeFile(path.join(systemBinDirectory, "ffmpeg"), ""),
+      fs.writeFile(path.join(systemBinDirectory, "ffprobe"), ""),
+    ]);
     Object.defineProperty(process, "resourcesPath", {
       configurable: true,
       value: resourcesPath,
     });
+    process.env.APPDIR = resourcesPath;
+    process.env.PATH = [backendDirectory, systemBinDirectory].join(path.delimiter);
 
     spawnMock.mockImplementation((command: string, args?: string[]) => {
       if (args?.[0] === "-version") {
+        if (
+          command === path.join(backendDirectory, "ffmpeg") ||
+          command === path.join(backendDirectory, "ffprobe")
+        ) {
+          return new FakeCommandProcess(127) as never;
+        }
+
+        if (
+          command === path.join(systemBinDirectory, "ffmpeg") ||
+          command === path.join(systemBinDirectory, "ffprobe")
+        ) {
+          return new FakeCommandProcess(0) as never;
+        }
+
         return new FakeCommandProcess(127) as never;
       }
 
@@ -324,8 +355,12 @@ describe("ConverterService", () => {
 
     expect(backend.command).toBe(path.join(backendDirectory, "gui-api"));
     expect(backend.cwd).toBe(backendDirectory);
-    expect(backend.env.STICKER_SMITH_FFMPEG).toBe("ffmpeg");
-    expect(backend.env.STICKER_SMITH_FFPROBE).toBe("ffprobe");
+    expect(backend.env.STICKER_SMITH_FFMPEG).toBe(
+      path.join(systemBinDirectory, "ffmpeg"),
+    );
+    expect(backend.env.STICKER_SMITH_FFPROBE).toBe(
+      path.join(systemBinDirectory, "ffprobe"),
+    );
   });
 
   it("uses bundled ffmpeg and ffprobe for packaged builds when both binaries are healthy", async () => {

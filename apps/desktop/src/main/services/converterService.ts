@@ -61,6 +61,39 @@ async function commandIsHealthy(command: string, cwd?: string) {
   });
 }
 
+function isWithinDirectory(targetPath: string, directory: string) {
+  const relativePath = path.relative(directory, targetPath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+async function resolveSystemCommand(
+  commandName: string,
+  excludedRoots: string[],
+) {
+  const pathEntries = process.env.PATH?.split(path.delimiter).filter(Boolean) ?? [];
+
+  for (const entry of pathEntries) {
+    const normalizedEntry = path.resolve(entry);
+    if (excludedRoots.some((root) => isWithinDirectory(normalizedEntry, root))) {
+      continue;
+    }
+
+    const candidate = path.join(normalizedEntry, commandName);
+    if (!(await pathExists(candidate))) {
+      continue;
+    }
+
+    if (await commandIsHealthy(candidate)) {
+      return candidate;
+    }
+  }
+
+  return commandName;
+}
+
 async function findWorkspaceRoot() {
   const explicitRoot = process.env.STICKER_SMITH_ROOT;
   if (
@@ -116,6 +149,16 @@ async function resolveBundledBackend(backendDirectory: string) {
     );
   }
 
+  const excludedRoots = new Set<string>([
+    path.resolve(backendDirectory),
+    path.resolve(process.resourcesPath),
+    path.resolve(path.dirname(process.resourcesPath)),
+  ]);
+
+  if (process.env.APPDIR) {
+    excludedRoots.add(path.resolve(process.env.APPDIR));
+  }
+
   return {
     command,
     args: [] as string[],
@@ -125,11 +168,13 @@ async function resolveBundledBackend(backendDirectory: string) {
       STICKER_SMITH_FFMPEG:
         bundledFfmpegAvailable
           ? ffmpeg
-          : process.env.STICKER_SMITH_FFMPEG ?? FFMPEG_BINARY,
+          : process.env.STICKER_SMITH_FFMPEG ??
+            (await resolveSystemCommand(FFMPEG_BINARY, [...excludedRoots])),
       STICKER_SMITH_FFPROBE:
         bundledFfprobeAvailable
           ? ffprobe
-          : process.env.STICKER_SMITH_FFPROBE ?? FFPROBE_BINARY,
+          : process.env.STICKER_SMITH_FFPROBE ??
+            (await resolveSystemCommand(FFPROBE_BINARY, [...excludedRoots])),
     },
   };
 }

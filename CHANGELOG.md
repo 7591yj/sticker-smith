@@ -2,6 +2,11 @@
 
 All notable project releases are documented here.
 
+## 0.1.1-beta.2 - 2026-03-12
+
+- Fix AppImage conversion fallback so packaged builds resolve healthy host
+  `ffmpeg` and `ffprobe` binaries instead of reusing broken bundled paths.
+
 ## 0.1.1-beta.1 - 2026-03-11
 
 - Support larger `.webm` previews in the desktop app by serving media previews
