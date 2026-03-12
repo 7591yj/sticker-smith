@@ -44,6 +44,7 @@ function createAsset(
     kind,
     importedAt: "2026-03-11T00:00:00.000Z",
     originalImportPath: null,
+    downloadState: "ready",
   };
 }
 
@@ -58,6 +59,7 @@ function createOutput(
     relativePath,
     absolutePath: `/tmp/sample-pack/webm/${relativePath}`,
     sizeBytes: 32_768,
+    sha256: null,
     updatedAt: "2026-03-11T00:00:00.000Z",
   };
 }

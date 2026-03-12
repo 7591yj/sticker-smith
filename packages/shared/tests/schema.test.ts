@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   createPackSchema,
   conversionJobRequestSchema,
+  setTelegramPhoneNumberSchema,
+  setTelegramTdlibParametersSchema,
   setAssetEmojisSchema,
+  submitTelegramCodeSchema,
+  submitTelegramPasswordSchema,
 } from "../src/schema";
 
 describe("shared schemas", () => {
@@ -29,5 +33,49 @@ describe("shared schemas", () => {
         emojis: ["🙂", "✨"],
       }).emojis,
     ).toEqual(["🙂", "✨"]);
+  });
+
+  it("rejects non-emoji telegram sticker keywords", () => {
+    expect(() =>
+      setAssetEmojisSchema.parse({
+        packId: "pack-1",
+        assetId: "asset-1",
+        emojis: ["smile"],
+      }),
+    ).toThrow("Expected a Telegram-compatible emoji.");
+  });
+
+  it("accepts telegram emoji sequences such as keycaps and flags", () => {
+    expect(
+      setAssetEmojisSchema.parse({
+        packId: "pack-1",
+        assetId: "asset-1",
+        emojis: ["1️⃣", "🇺🇸"],
+      }).emojis,
+    ).toEqual(["1️⃣", "🇺🇸"]);
+  });
+
+  it("validates telegram tdlib setup inputs", () => {
+    expect(
+      setTelegramTdlibParametersSchema.parse({
+        apiId: "12345",
+        apiHash: "hash",
+      }).apiId,
+    ).toBe("12345");
+    expect(
+      setTelegramPhoneNumberSchema.parse({
+        phoneNumber: "+12025550123",
+      }).phoneNumber,
+    ).toBe("+12025550123");
+    expect(
+      submitTelegramCodeSchema.parse({
+        code: "12345",
+      }).code,
+    ).toBe("12345");
+    expect(
+      submitTelegramPasswordSchema.parse({
+        password: "correct horse battery staple",
+      }).password,
+    ).toBe("correct horse battery staple");
   });
 });

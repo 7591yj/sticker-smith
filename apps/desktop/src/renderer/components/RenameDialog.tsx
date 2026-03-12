@@ -12,7 +12,7 @@ interface Props {
   title: string;
   label?: string;
   initialValue: string;
-  onConfirm: (value: string) => void;
+  onConfirm: (value: string) => void | Promise<unknown>;
   onClose: () => void;
 }
 
@@ -25,16 +25,35 @@ export function RenameDialog({
   onClose,
 }: Props) {
   const [value, setValue] = useState(initialValue);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) setValue(initialValue);
+    if (open) {
+      setValue(initialValue);
+      setSubmitting(false);
+      setErrorMessage(null);
+    }
   }, [open, initialValue]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = value.trim();
-    if (trimmed) onConfirm(trimmed);
-    else onClose();
+    if (!trimmed) {
+      onClose();
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      await onConfirm(trimmed);
+    } catch (error) {
+      setErrorMessage((error as Error)?.message ?? "Unable to save changes.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -56,21 +75,28 @@ export function RenameDialog({
             size="small"
             label={label}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (errorMessage) {
+                setErrorMessage(null);
+              }
+            }}
+            error={Boolean(errorMessage)}
+            helperText={errorMessage ?? " "}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose();
             }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={onClose}>
+          <Button size="small" onClick={onClose} disabled={submitting}>
             {appTokens.copy.actions.cancel}
           </Button>
           <Button
             size="small"
             type="submit"
             variant="contained"
-            disabled={!value.trim()}
+            disabled={!value.trim() || submitting}
           >
             {appTokens.copy.actions.confirm}
           </Button>

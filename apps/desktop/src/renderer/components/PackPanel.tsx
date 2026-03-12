@@ -6,6 +6,9 @@ import EditIcon from "@mui/icons-material/Edit";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PublishIcon from "@mui/icons-material/Publish";
+import DownloadIcon from "@mui/icons-material/Download";
+import UpdateIcon from "@mui/icons-material/Update";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -20,25 +23,43 @@ import { AssetGrid } from "./AssetGrid";
 import { BrowserViewToggle, type BrowserView } from "./fileBrowser";
 import { OutputsList } from "./OutputsList";
 import { RenameDialog } from "./RenameDialog";
+import { TelegramPublishDialog } from "./TelegramPublishDialog";
 
 interface Props {
   details: StickerPackDetails | null;
   converting: boolean;
+  telegramConnected: boolean;
   setDetails: (d: StickerPackDetails | null) => void;
   refreshDetails: (packId: string) => Promise<StickerPackDetails>;
   refreshPacks: () => Promise<StickerPack[]>;
   setSelectedPackId: (id: string | null) => void;
+  onPublishLocalPack: (input: {
+    packId: string;
+    title: string;
+    shortName: string;
+  }) => Promise<unknown>;
+  onDownloadTelegramPackMedia: (input: { packId: string }) => Promise<unknown>;
+  onUpdateTelegramPack: (input: { packId: string }) => Promise<unknown>;
+}
+
+function suggestShortName(details: StickerPackDetails) {
+  return `${details.pack.slug.replace(/-/g, "_")}_${details.pack.id.replace(/-/g, "").slice(0, 6)}`;
 }
 
 export function PackPanel({
   details,
   converting,
+  telegramConnected,
   setDetails,
   refreshDetails,
   refreshPacks,
   setSelectedPackId,
+  onPublishLocalPack,
+  onDownloadTelegramPackMedia,
+  onUpdateTelegramPack,
 }: Props) {
   const [renaming, setRenaming] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
   const [view, setView] = useState<BrowserView>("gallery");
 
@@ -79,7 +100,7 @@ export function PackPanel({
   }, [details]);
 
   const handleDelete = useCallback(async () => {
-    if (!details) return;
+    if (!details || details.pack.source === "telegram") return;
     await window.stickerSmith.packs.delete({ packId: details.pack.id });
     const next = await refreshPacks();
     setSelectedPackId(next[0]?.id ?? null);
@@ -124,6 +145,21 @@ export function PackPanel({
   }
 
   const { pack, assets, outputs } = details;
+  const primaryActionLabel =
+    pack.source === "telegram"
+      ? appTokens.copy.actions.update
+      : appTokens.copy.actions.upload;
+  const hasPendingTelegramMedia =
+    pack.source === "telegram" &&
+    assets.some(
+      (asset) =>
+        asset.downloadState === "missing" || asset.downloadState === "failed",
+    );
+  const telegramMediaActionLabel = assets.some(
+    (asset) => asset.downloadState === "failed",
+  )
+    ? appTokens.copy.actions.retryMedia
+    : appTokens.copy.actions.downloadMedia;
 
   return (
     <Box
@@ -146,27 +182,122 @@ export function PackPanel({
           minHeight: appTokens.layout.panelHeaderMinHeight,
         }}
       >
-        <Typography
-          variant="subtitle1"
-          fontWeight={appTokens.typography.fontWeights.medium}
-          sx={{ flex: 1, fontSize: appTokens.typography.fontSizes.subtitle }}
-          noWrap
-        >
-          {pack.name}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="subtitle1"
+            fontWeight={appTokens.typography.fontWeights.medium}
+            sx={{ fontSize: appTokens.typography.fontSizes.subtitle }}
+            noWrap
+          >
+            {pack.name}
+          </Typography>
+          {pack.telegram ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+            >
+              {`${pack.telegram.syncState} · ${pack.telegram.shortName}`}
+            </Typography>
+          ) : null}
+        </Box>
 
         <Tooltip title={appTokens.copy.tooltips.rename}>
-          <IconButton size="small" onClick={() => setRenaming(true)}>
+          <IconButton
+            size="small"
+            onClick={() => setRenaming(true)}
+            aria-label={appTokens.copy.tooltips.rename}
+          >
             <EditIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
           </IconButton>
         </Tooltip>
-        <Tooltip title={appTokens.copy.tooltips.deletePack}>
-          <IconButton size="small" onClick={handleDelete} color="error">
-            <DeleteIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
-          </IconButton>
-        </Tooltip>
+        {pack.source === "local" ? (
+          <Tooltip title={appTokens.copy.tooltips.deletePack}>
+            <IconButton
+              size="small"
+              onClick={handleDelete}
+              color="error"
+              aria-label={appTokens.copy.tooltips.deletePack}
+            >
+              <DeleteIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
+            </IconButton>
+          </Tooltip>
+        ) : (
+          <Tooltip title={appTokens.copy.tooltips.deleteTelegramPack}>
+            <span>
+              <IconButton
+                size="small"
+                color="error"
+                disabled
+                aria-label={appTokens.copy.tooltips.deleteTelegramPack}
+              >
+                <DeleteIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.75 }} />
+
+        {pack.source === "local" ? (
+          <Tooltip
+            title={
+              telegramConnected
+                ? "Publish this local pack as a Telegram video sticker set"
+                : "Connect Telegram before uploading"
+            }
+          >
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={
+                  <PublishIcon
+                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
+                  />
+                }
+                disabled={!telegramConnected}
+                onClick={() => setPublishDialogOpen(true)}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: appTokens.typography.fontWeights.medium,
+                  fontSize: appTokens.typography.fontSizes.body,
+                  px: 1.5,
+                }}
+              >
+                {primaryActionLabel}
+              </Button>
+            </span>
+          </Tooltip>
+        ) : (
+          <Tooltip title="Push local mirror changes to Telegram">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={
+                  <UpdateIcon
+                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
+                  />
+                }
+                disabled={!telegramConnected}
+                onClick={() =>
+                  void onUpdateTelegramPack({ packId: pack.id }).catch(
+                    () => undefined,
+                  )
+                }
+                sx={{
+                  textTransform: "none",
+                  fontWeight: appTokens.typography.fontWeights.medium,
+                  fontSize: appTokens.typography.fontSizes.body,
+                  px: 1.5,
+                }}
+              >
+                {primaryActionLabel}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
 
         <Tooltip
           title={
@@ -200,7 +331,55 @@ export function PackPanel({
             </Button>
           </span>
         </Tooltip>
+        {pack.source === "telegram" && hasPendingTelegramMedia ? (
+          <Tooltip title="Download missing Telegram sticker media for this mirror">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={
+                  <DownloadIcon
+                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
+                  />
+                }
+                onClick={() =>
+                  void onDownloadTelegramPackMedia({
+                    packId: details.pack.id,
+                  }).catch(() => undefined)
+                }
+                sx={{
+                  textTransform: "none",
+                  fontWeight: appTokens.typography.fontWeights.medium,
+                  fontSize: appTokens.typography.fontSizes.body,
+                  px: 1.5,
+                }}
+              >
+                {telegramMediaActionLabel}
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
       </Box>
+
+      {pack.telegram?.lastSyncError ? (
+        <Box
+          sx={{
+            px: 2.5,
+            py: 1,
+            borderBottom: 1,
+            borderColor: "divider",
+            bgcolor: "error.dark",
+            color: "error.contrastText",
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+          >
+            {pack.telegram.lastSyncError}
+          </Typography>
+        </Box>
+      ) : null}
 
       <Box
         sx={{
@@ -368,6 +547,25 @@ export function PackPanel({
         initialValue={pack.name}
         onConfirm={handleRename}
         onClose={() => setRenaming(false)}
+      />
+
+      <TelegramPublishDialog
+        open={publishDialogOpen}
+        initialTitle={pack.name}
+        initialShortName={suggestShortName(details)}
+        onClose={() => setPublishDialogOpen(false)}
+        onConfirm={async ({ title, shortName }) => {
+          try {
+            await onPublishLocalPack({
+              packId: pack.id,
+              title,
+              shortName,
+            });
+            setPublishDialogOpen(false);
+          } catch {
+            // App-level Telegram failure handling keeps the dialog open for retry.
+          }
+        }}
       />
     </Box>
   );

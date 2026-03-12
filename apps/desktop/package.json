@@ -23,8 +23,11 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "@sticker-smith/shared": "workspace:*",
+    "keytar": "^7.9.0",
+    "prebuilt-tdlib": "^0.1008062.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tdl": "^8.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -51,7 +54,10 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/keytar/**/*",
+      "node_modules/prebuilt-tdlib/**/*",
+      "node_modules/tdl/**/*"
     ],
     "extraResources": [
       {

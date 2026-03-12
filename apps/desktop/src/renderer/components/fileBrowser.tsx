@@ -24,9 +24,10 @@ const IMAGE_EXTENSIONS = new Set([
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm"]);
 
 interface PreviewProps {
-  absolutePath: string;
+  absolutePath: string | null;
   relativePath: string;
   kind?: string;
+  placeholderLabel?: string;
 }
 
 interface BrowserViewToggleProps {
@@ -89,9 +90,42 @@ export function sortItemsWithPinnedFirst<T>(
   return [...pinned.sort(byLabel), ...rest.sort(byLabel)];
 }
 
-export function FilePreview({ absolutePath, relativePath, kind }: PreviewProps) {
+export function FilePreview({
+  absolutePath,
+  relativePath,
+  kind,
+  placeholderLabel,
+}: PreviewProps) {
   const filename = relativePath.split("/").pop() ?? relativePath;
   const extension = (kind ?? getFileExtension(relativePath)).toLowerCase();
+
+  if (!absolutePath) {
+    return (
+      <Box
+        sx={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "action.hover",
+          color: "text.secondary",
+          textAlign: "center",
+          px: 1,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: appTokens.typography.fontSizes.caption,
+          }}
+        >
+          {placeholderLabel ?? "Waiting for Telegram media"}
+        </Typography>
+      </Box>
+    );
+  }
+
   const fileUrl = toFileUrl(absolutePath);
 
   if (IMAGE_EXTENSIONS.has(extension)) {

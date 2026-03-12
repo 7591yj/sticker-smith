@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import CssBaseline from "@mui/material/CssBaseline";
 import Box from "@mui/material/Box";
+import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 import type {
   ConversionJobEvent,
@@ -12,6 +12,7 @@ import { ConversionFailureDialog } from "./components/ConversionFailureDialog";
 import { ConversionStatus } from "./components/ConversionStatus";
 import { PackPanel } from "./components/PackPanel";
 import { Sidebar } from "./components/Sidebar";
+import { TelegramErrorDialog } from "./components/TelegramErrorDialog";
 import { appTheme } from "./theme";
 
 interface ConversionFailureDialogState {
@@ -25,6 +26,11 @@ interface ConversionFailureDialogState {
   }>;
 }
 
+interface TelegramErrorDialogState {
+  title: string;
+  message: string;
+}
+
 export function App() {
   const [packs, setPacks] = useState<StickerPack[]>([]);
   const [telegramState, setTelegramState] = useState<TelegramState | null>(null);
@@ -36,12 +42,50 @@ export function App() {
   const [converting, setConverting] = useState(false);
   const [failureDialog, setFailureDialog] =
     useState<ConversionFailureDialogState | null>(null);
+  const [telegramErrorDialog, setTelegramErrorDialog] =
+    useState<TelegramErrorDialogState | null>(null);
   const latestDetailsRef = useRef<StickerPackDetails | null>(null);
+  const autoSyncedTelegramAccountRef = useRef<string | null>(null);
+  const requestedTelegramDownloadsRef = useRef<Set<string>>(new Set());
   const jobFailuresRef = useRef<
     Record<string, ConversionFailureDialogState["failures"]>
   >({});
   const jobPackNamesRef = useRef<Record<string, string | null>>({});
   const jobAssetNamesRef = useRef<Record<string, Record<string, string>>>({});
+
+  const refreshPacks = useCallback(async () => {
+    const next = await window.stickerSmith.packs.list();
+    setPacks(next);
+    setSelectedPackId((current) =>
+      current && next.some((pack) => pack.id === current)
+        ? current
+        : next[0]?.id ?? null,
+    );
+    return next;
+  }, []);
+
+  const refreshDetails = useCallback(async (packId: string) => {
+    const next = await window.stickerSmith.packs.get(packId);
+    setDetails(next);
+    return next;
+  }, []);
+
+  const refreshDetailsSafely = useCallback(
+    async (packId: string) => {
+      try {
+        return await refreshDetails(packId);
+      } catch {
+        setDetails(null);
+        await refreshPacks();
+        return null;
+      }
+    },
+    [refreshDetails, refreshPacks],
+  );
+
+  const showTelegramError = useCallback((title: string, message: string) => {
+    setTelegramErrorDialog({ title, message });
+  }, []);
 
   useEffect(() => {
     latestDetailsRef.current = details;
@@ -50,23 +94,26 @@ export function App() {
   useEffect(() => {
     let active = true;
 
-    void window.stickerSmith.packs.list().then((nextPacks) => {
-      if (!active) {
-        return;
-      }
+    void refreshPacks();
+    void window.stickerSmith.telegram
+      .getState()
+      .then((nextTelegramState) => {
+        if (active) {
+          setTelegramState(nextTelegramState);
+        }
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
 
-      setPacks(nextPacks);
-      setSelectedPackId(nextPacks[0]?.id ?? null);
-    });
-    void window.stickerSmith.telegram.getState().then((nextTelegramState) => {
-      if (!active) {
-        return;
-      }
+        showTelegramError(
+          "Telegram startup failed",
+          (error as Error)?.message ?? "Telegram startup failed.",
+        );
+      });
 
-      setTelegramState(nextTelegramState);
-    });
-
-    const unsub = window.stickerSmith.conversion.subscribe((event) => {
+    const unsubConversion = window.stickerSmith.conversion.subscribe((event) => {
       setConversionEvents((cur) => [event, ...cur].slice(0, 50));
 
       if (event.type === "job_started") {
@@ -108,6 +155,10 @@ export function App() {
         const failureCount = event.failureCount ?? failures.length;
         setConverting(false);
 
+        if (latestDetailsRef.current?.pack.id) {
+          void refreshDetails(latestDetailsRef.current.pack.id);
+        }
+
         if (failureCount > 0) {
           setFailureDialog({
             packName:
@@ -135,11 +186,64 @@ export function App() {
       }
     });
 
+    const unsubTelegram = window.stickerSmith.telegram.subscribe((event) => {
+      if (event.type === "auth_state_changed") {
+        setTelegramState(event.state);
+        void refreshPacks();
+        return;
+      }
+
+      if (event.type === "pack_sync_failed") {
+        showTelegramError("Telegram sync failed", event.error);
+      }
+
+      if (event.type === "publish_failed") {
+        showTelegramError("Telegram upload failed", event.error);
+        return;
+      }
+
+      if (event.type === "update_failed") {
+        showTelegramError("Telegram update failed", event.error);
+      }
+
+      if (event.type === "publish_finished") {
+        void refreshPacks().then((nextPacks) => {
+          setSelectedPackId(
+            nextPacks.find((pack) => pack.id === event.packId)?.id ?? event.packId,
+          );
+        });
+        return;
+      }
+
+      if (
+        event.type === "sync_finished" ||
+        event.type === "pack_sync_completed" ||
+        event.type === "pack_sync_failed" ||
+        event.type === "update_finished" ||
+        event.type === "update_failed"
+      ) {
+        void refreshPacks();
+      }
+
+      if (
+        (event.type === "pack_sync_completed" ||
+          event.type === "pack_sync_failed" ||
+          event.type === "file_download_progress" ||
+          event.type === "update_finished" ||
+          event.type === "update_failed") &&
+        event.packId &&
+        latestDetailsRef.current?.pack.id === event.packId
+      ) {
+        void refreshDetails(event.packId);
+      }
+    });
+
     return () => {
       active = false;
-      unsub();
+      unsubConversion();
+      unsubTelegram();
     };
-  }, []);
+  }, [refreshDetails, refreshPacks, showTelegramError]);
 
   useEffect(() => {
     let active = true;
@@ -149,40 +253,227 @@ export function App() {
       return;
     }
 
-    void window.stickerSmith.packs.get(selectedPackId).then((nextDetails) => {
-      if (active) {
+    void window.stickerSmith.packs
+      .get(selectedPackId)
+      .then((nextDetails) => {
+        if (!active) {
+          return;
+        }
+
         setDetails(nextDetails);
-      }
-    });
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setDetails(null);
+        void refreshPacks();
+      });
 
     return () => {
       active = false;
     };
-  }, [selectedPackId]);
+  }, [refreshPacks, selectedPackId]);
 
-  const refreshPacks = useCallback(async () => {
-    const next = await window.stickerSmith.packs.list();
-    setPacks(next);
-    return next;
-  }, []);
+  useEffect(() => {
+    let active = true;
 
-  const selectTelegramAuthMode = useCallback(async (mode: "user" | "bot") => {
-    const next = await window.stickerSmith.telegram.selectAuthMode({ mode });
-    setTelegramState(next);
-    return next;
-  }, []);
+    if (
+      !details ||
+      details.pack.source !== "telegram" ||
+      !details.assets.some((asset) => asset.downloadState === "missing") ||
+      requestedTelegramDownloadsRef.current.has(details.pack.id)
+    ) {
+      return;
+    }
 
-  const disconnectTelegram = useCallback(async () => {
-    const next = await window.stickerSmith.telegram.disconnect();
-    setTelegramState(next);
-    return next;
-  }, []);
+    requestedTelegramDownloadsRef.current.add(details.pack.id);
+    void (async () => {
+      try {
+        await window.stickerSmith.telegram.downloadPackMedia({
+          packId: details.pack.id,
+        });
+      } catch (error) {
+        showTelegramError(
+          "Telegram media download failed",
+          (error as Error)?.message ?? "Telegram media download failed.",
+        );
+      } finally {
+        requestedTelegramDownloadsRef.current.delete(details.pack.id);
+        if (!active) {
+          return;
+        }
 
-  const refreshDetails = useCallback(async (packId: string) => {
-    const next = await window.stickerSmith.packs.get(packId);
-    setDetails(next);
-    return next;
-  }, []);
+        await refreshDetailsSafely(details.pack.id);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [details, refreshDetailsSafely, showTelegramError]);
+
+  const submitTelegramTdlibParameters = useCallback(
+    async (input: { apiId: string; apiHash: string }) => {
+      try {
+        const next = await window.stickerSmith.telegram.submitTdlibParameters(
+          input,
+        );
+        setTelegramState(next);
+        return next;
+      } catch (error) {
+        showTelegramError(
+          "Telegram login failed",
+          (error as Error)?.message ?? "Telegram login failed.",
+        );
+        return null;
+      }
+    },
+    [showTelegramError],
+  );
+
+  const submitTelegramPhoneNumber = useCallback(
+    async (input: { phoneNumber: string }) => {
+      try {
+        const next = await window.stickerSmith.telegram.submitPhoneNumber(input);
+        setTelegramState(next);
+        return next;
+      } catch (error) {
+        showTelegramError(
+          "Telegram login failed",
+          (error as Error)?.message ?? "Telegram login failed.",
+        );
+        return null;
+      }
+    },
+    [showTelegramError],
+  );
+
+  const submitTelegramCode = useCallback(async (input: { code: string }) => {
+    try {
+      const next = await window.stickerSmith.telegram.submitCode(input);
+      setTelegramState(next);
+      return next;
+    } catch (error) {
+      showTelegramError(
+        "Telegram login failed",
+        (error as Error)?.message ?? "Telegram login failed.",
+      );
+      return null;
+    }
+  }, [showTelegramError]);
+
+  const submitTelegramPassword = useCallback(
+    async (input: { password: string }) => {
+      try {
+        const next = await window.stickerSmith.telegram.submitPassword(input);
+        setTelegramState(next);
+        return next;
+      } catch (error) {
+        showTelegramError(
+          "Telegram login failed",
+          (error as Error)?.message ?? "Telegram login failed.",
+        );
+        return null;
+      }
+    },
+    [showTelegramError],
+  );
+
+  const logoutTelegram = useCallback(async () => {
+    try {
+      const next = await window.stickerSmith.telegram.logout();
+      setTelegramState(next);
+      return next;
+    } catch (error) {
+      showTelegramError(
+        "Telegram logout failed",
+        (error as Error)?.message ?? "Telegram logout failed.",
+      );
+      return null;
+    }
+  }, [showTelegramError]);
+
+  const syncTelegramPacks = useCallback(async () => {
+    try {
+      await window.stickerSmith.telegram.syncOwnedPacks();
+      await refreshPacks();
+    } catch (error) {
+      showTelegramError(
+        "Telegram sync failed",
+        (error as Error)?.message ?? "Telegram sync failed.",
+      );
+      throw error;
+    }
+  }, [refreshPacks, showTelegramError]);
+
+  const publishLocalPack = useCallback(
+    async (input: { packId: string; title: string; shortName: string }) => {
+      try {
+        await window.stickerSmith.telegram.publishLocalPack(input);
+        await refreshPacks();
+      } catch (error) {
+        showTelegramError(
+          "Telegram upload failed",
+          (error as Error)?.message ?? "Telegram upload failed.",
+        );
+        throw error;
+      }
+    },
+    [refreshPacks, showTelegramError],
+  );
+
+  const updateTelegramPack = useCallback(
+    async (input: { packId: string }) => {
+      try {
+        await window.stickerSmith.telegram.updateTelegramPack(input);
+        await Promise.all([refreshPacks(), refreshDetails(input.packId)]);
+      } catch (error) {
+        showTelegramError(
+          "Telegram update failed",
+          (error as Error)?.message ?? "Telegram update failed.",
+        );
+        throw error;
+      }
+    },
+    [refreshDetails, refreshPacks, showTelegramError],
+  );
+
+  const downloadTelegramPackMedia = useCallback(
+    async (input: { packId: string }) => {
+      requestedTelegramDownloadsRef.current.delete(input.packId);
+      try {
+        await window.stickerSmith.telegram.downloadPackMedia(input);
+        await refreshDetailsSafely(input.packId);
+      } catch (error) {
+        showTelegramError(
+          "Telegram media download failed",
+          (error as Error)?.message ?? "Telegram media download failed.",
+        );
+        throw error;
+      }
+    },
+    [refreshDetailsSafely, showTelegramError],
+  );
+
+  useEffect(() => {
+    if (telegramState?.status !== "connected" || telegramState.authStep !== "ready") {
+      autoSyncedTelegramAccountRef.current = null;
+      return;
+    }
+
+    const accountKey = telegramState.sessionUser?.id
+      ? String(telegramState.sessionUser.id)
+      : "connected";
+
+    if (autoSyncedTelegramAccountRef.current === accountKey) {
+      return;
+    }
+
+    autoSyncedTelegramAccountRef.current = accountKey;
+    void syncTelegramPacks().catch(() => undefined);
+  }, [syncTelegramPacks, telegramState]);
 
   return (
     <ThemeProvider theme={appTheme}>
@@ -200,8 +491,12 @@ export function App() {
           telegramState={telegramState}
           selectedPackId={selectedPackId}
           onSelect={setSelectedPackId}
-          onSelectTelegramAuthMode={selectTelegramAuthMode}
-          onDisconnectTelegram={disconnectTelegram}
+          onSubmitTelegramTdlibParameters={submitTelegramTdlibParameters}
+          onSubmitTelegramPhoneNumber={submitTelegramPhoneNumber}
+          onSubmitTelegramCode={submitTelegramCode}
+          onSubmitTelegramPassword={submitTelegramPassword}
+          onLogoutTelegram={logoutTelegram}
+          onSyncTelegramPacks={syncTelegramPacks}
           refreshPacks={refreshPacks}
           setSelectedPackId={setSelectedPackId}
         />
@@ -216,10 +511,14 @@ export function App() {
           <PackPanel
             details={details}
             converting={converting}
+            telegramConnected={telegramState?.status === "connected"}
             setDetails={setDetails}
             refreshDetails={refreshDetails}
             refreshPacks={refreshPacks}
             setSelectedPackId={setSelectedPackId}
+            onPublishLocalPack={publishLocalPack}
+            onDownloadTelegramPackMedia={downloadTelegramPackMedia}
+            onUpdateTelegramPack={updateTelegramPack}
           />
           <ConversionStatus events={conversionEvents} converting={converting} />
         </Box>
@@ -231,6 +530,12 @@ export function App() {
         failureCount={failureDialog?.failureCount ?? 0}
         failures={failureDialog?.failures ?? []}
         onClose={() => setFailureDialog(null)}
+      />
+      <TelegramErrorDialog
+        open={telegramErrorDialog !== null}
+        title={telegramErrorDialog?.title ?? "Telegram request failed"}
+        message={telegramErrorDialog?.message ?? "Telegram request failed."}
+        onClose={() => setTelegramErrorDialog(null)}
       />
     </ThemeProvider>
   );

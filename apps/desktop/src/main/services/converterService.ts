@@ -274,6 +274,9 @@ export class ConverterService {
       if (selectedAssetIds && !selectedAssetIds.has(asset.id)) {
         continue;
       }
+      if (!asset.absolutePath) {
+        continue;
+      }
 
       if (asset.id === details.pack.iconAssetId) {
         iconTask = {

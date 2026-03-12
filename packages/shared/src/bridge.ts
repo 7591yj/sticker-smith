@@ -6,12 +6,18 @@ import type {
   LibraryConfig,
   MoveAssetInput,
   OutputArtifact,
+  PublishLocalPackInput,
   RenameAssetInput,
+  SetTelegramPhoneNumberInput,
+  SetTelegramTdlibParametersInput,
   SetAssetEmojisInput,
-  TelegramAuthMode,
-  TelegramState,
   StickerPack,
   StickerPackDetails,
+  SubmitTelegramCodeInput,
+  SubmitTelegramPasswordInput,
+  TelegramEvent,
+  TelegramState,
+  UpdateTelegramPackInput,
 } from "./types";
 
 export interface StickerSmithApi {
@@ -20,10 +26,22 @@ export interface StickerSmithApi {
   };
   telegram: {
     getState: () => Promise<TelegramState>;
-    selectAuthMode: (input: {
-      mode: TelegramAuthMode;
-    }) => Promise<TelegramState>;
-    disconnect: () => Promise<TelegramState>;
+    submitTdlibParameters: (
+      input: SetTelegramTdlibParametersInput,
+    ) => Promise<TelegramState>;
+    submitPhoneNumber: (
+      input: SetTelegramPhoneNumberInput,
+    ) => Promise<TelegramState>;
+    submitCode: (input: SubmitTelegramCodeInput) => Promise<TelegramState>;
+    submitPassword: (
+      input: SubmitTelegramPasswordInput,
+    ) => Promise<TelegramState>;
+    logout: () => Promise<TelegramState>;
+    syncOwnedPacks: () => Promise<void>;
+    downloadPackMedia: (input: { packId: string }) => Promise<void>;
+    publishLocalPack: (input: PublishLocalPackInput) => Promise<void>;
+    updateTelegramPack: (input: UpdateTelegramPackInput) => Promise<void>;
+    subscribe: (listener: (event: TelegramEvent) => void) => () => void;
   };
   packs: {
     list: () => Promise<StickerPack[]>;

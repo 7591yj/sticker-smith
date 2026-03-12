@@ -7,6 +7,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import LayersIcon from "@mui/icons-material/Layers";
+import SyncIcon from "@mui/icons-material/Sync";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -22,6 +23,7 @@ import Typography from "@mui/material/Typography";
 import type { StickerPack, TelegramState } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 import { RenameDialog } from "./RenameDialog";
+import { TelegramAuthDialog } from "./TelegramAuthDialog";
 import { toFileUrl } from "../utils/fileUrl";
 
 function isVideoThumbnail(filePath: string) {
@@ -90,10 +92,43 @@ interface Props {
   telegramState: TelegramState | null;
   selectedPackId: string | null;
   onSelect: (id: string) => void;
-  onSelectTelegramAuthMode: (mode: "user" | "bot") => Promise<unknown>;
-  onDisconnectTelegram: () => Promise<unknown>;
+  onSubmitTelegramTdlibParameters: (input: {
+    apiId: string;
+    apiHash: string;
+  }) => Promise<unknown>;
+  onSubmitTelegramPhoneNumber: (input: {
+    phoneNumber: string;
+  }) => Promise<unknown>;
+  onSubmitTelegramCode: (input: { code: string }) => Promise<unknown>;
+  onSubmitTelegramPassword: (input: { password: string }) => Promise<unknown>;
+  onLogoutTelegram: () => Promise<unknown>;
+  onSyncTelegramPacks: () => Promise<unknown>;
   refreshPacks: () => Promise<StickerPack[]>;
   setSelectedPackId: (id: string | null) => void;
+}
+
+function statusLabelForTelegram(state: TelegramState | null) {
+  if (!state) {
+    return appTokens.copy.labels.telegramDisconnected;
+  }
+
+  if (state.status === "connected") {
+    return appTokens.copy.labels.telegramConnected;
+  }
+
+  if (state.authStep === "wait_code") {
+    return appTokens.copy.labels.telegramNeedsCode;
+  }
+
+  if (state.authStep === "wait_password") {
+    return appTokens.copy.labels.telegramNeedsPassword;
+  }
+
+  if (state.status === "awaiting_credentials") {
+    return appTokens.copy.labels.telegramNeedsCredentials;
+  }
+
+  return appTokens.copy.labels.telegramDisconnected;
 }
 
 export function Sidebar({
@@ -101,8 +136,12 @@ export function Sidebar({
   telegramState,
   selectedPackId,
   onSelect,
-  onSelectTelegramAuthMode,
-  onDisconnectTelegram,
+  onSubmitTelegramTdlibParameters,
+  onSubmitTelegramPhoneNumber,
+  onSubmitTelegramCode,
+  onSubmitTelegramPassword,
+  onLogoutTelegram,
+  onSyncTelegramPacks,
   refreshPacks,
   setSelectedPackId,
 }: Props) {
@@ -115,6 +154,7 @@ export function Sidebar({
   } | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renamePack, setRenamePack] = useState<StickerPack | null>(null);
+  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, pack: StickerPack) => {
@@ -188,20 +228,8 @@ export function Sidebar({
     await window.stickerSmith.outputs.exportFolder({ packId: pack.id });
   }, [contextMenu, handleCloseMenu]);
 
-  const telegramStatusLabel =
-    telegramState?.status === "awaiting_credentials"
-      ? appTokens.copy.labels.telegramNeedsCredentials
-      : appTokens.copy.labels.telegramDisconnected;
-
-  const renderPackList = (
-    sectionPacks: StickerPack[],
-    emptyState: string,
-  ) => {
+  const renderPackList = (sectionPacks: StickerPack[], emptyState: string) => {
     if (sectionPacks.length === 0) {
-      if (emptyState.length === 0) {
-        return null;
-      }
-
       return (
         <Typography
           variant="body2"
@@ -229,11 +257,20 @@ export function Sidebar({
         <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
         <ListItemText
           primary={pack.name}
+          secondary={
+            pack.telegram?.syncState && pack.source === "telegram"
+              ? pack.telegram.syncState
+              : undefined
+          }
           primaryTypographyProps={{
             variant: "body2",
             noWrap: true,
             fontWeight: pack.id === selectedPackId ? 600 : 400,
             fontSize: appTokens.typography.fontSizes.bodyDefault,
+          }}
+          secondaryTypographyProps={{
+            variant: "caption",
+            noWrap: true,
           }}
         />
       </ListItemButton>
@@ -327,62 +364,71 @@ export function Sidebar({
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            {telegramStatusLabel}
+            {statusLabelForTelegram(telegramState)}
           </Typography>
+          {telegramState?.sessionUser ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+            >
+              {telegramState.sessionUser.username
+                ? `${telegramState.sessionUser.displayName} (@${telegramState.sessionUser.username})`
+                : telegramState.sessionUser.displayName}
+            </Typography>
+          ) : null}
           <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
             <Button
               size="small"
-              variant={
-                telegramState?.selectedMode === "user" ? "contained" : "outlined"
-              }
-              onClick={() => void onSelectTelegramAuthMode("user")}
+              variant="contained"
+              onClick={() => setTelegramDialogOpen(true)}
               sx={{
                 textTransform: "none",
                 fontSize: appTokens.typography.fontSizes.bodyCompact,
               }}
             >
-              {appTokens.copy.actions.userAccount}
+              {telegramState?.status === "connected"
+                ? appTokens.copy.actions.manageTelegram
+                : appTokens.copy.actions.connectTelegram}
             </Button>
             <Button
               size="small"
-              variant={
-                telegramState?.selectedMode === "bot" ? "contained" : "outlined"
-              }
-              onClick={() => void onSelectTelegramAuthMode("bot")}
+              variant="outlined"
+              startIcon={<SyncIcon sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }} />}
+              onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
+              disabled={telegramState?.status !== "connected"}
               sx={{
                 textTransform: "none",
                 fontSize: appTokens.typography.fontSizes.bodyCompact,
               }}
             >
-              {appTokens.copy.actions.botToken}
+              {telegramPacks.length > 0
+                ? appTokens.copy.actions.resync
+                : appTokens.copy.actions.sync}
             </Button>
-            {telegramState?.selectedMode ? (
+            {telegramState?.status === "connected" ? (
               <Button
                 size="small"
-                color="inherit"
-                variant="text"
-                onClick={() => void onDisconnectTelegram()}
+                variant="outlined"
+                onClick={() => void onLogoutTelegram().catch(() => undefined)}
                 sx={{
                   textTransform: "none",
                   fontSize: appTokens.typography.fontSizes.bodyCompact,
                 }}
               >
-                {appTokens.copy.actions.disconnect}
+                {appTokens.copy.actions.logout}
               </Button>
             ) : null}
           </Box>
           <Typography
-            variant="body2"
+            variant="caption"
             color="text.secondary"
-            sx={{ fontSize: appTokens.typography.fontSizes.body }}
+            sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
             {telegramState?.message ?? appTokens.copy.emptyStates.noTelegramPacks}
           </Typography>
         </Box>
-        {renderPackList(
-          telegramPacks,
-          "",
-        )}
+        {renderPackList(telegramPacks, appTokens.copy.emptyStates.noTelegramPacks)}
       </List>
 
       <Menu
@@ -395,7 +441,7 @@ export function Sidebar({
             : undefined
         }
         slotProps={{
-          paper: { sx: { minWidth: appTokens.sizes.contextMenuNarrow } },
+          paper: { sx: { minWidth: appTokens.sizes.contextMenuWide } },
         }}
       >
         {contextMenu && (
@@ -413,32 +459,20 @@ export function Sidebar({
           </MenuItem>
         )}
         <Divider />
+        <MenuItem onClick={handleRenameOpen} dense>
+          <EditIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          {appTokens.copy.actions.rename}
+        </MenuItem>
         <MenuItem onClick={handleOpenOutputs} dense>
-          <FolderOpenIcon
-            fontSize="small"
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
+          <FolderOpenIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.openOutputs}
         </MenuItem>
         <MenuItem onClick={handleExportOutputs} dense>
-          <IosShareIcon
-            fontSize="small"
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
+          <IosShareIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.export}
         </MenuItem>
-        <MenuItem onClick={handleRenameOpen} dense>
-          <EditIcon
-            fontSize="small"
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
-          {appTokens.copy.actions.rename}
-        </MenuItem>
         <MenuItem onClick={handleDelete} dense sx={{ color: "error.light" }}>
-          <DeleteIcon
-            fontSize="small"
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
+          <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
           {appTokens.copy.actions.delete}
         </MenuItem>
       </Menu>
@@ -461,6 +495,16 @@ export function Sidebar({
           onClose={() => setRenamePack(null)}
         />
       )}
+
+      <TelegramAuthDialog
+        open={telegramDialogOpen}
+        state={telegramState}
+        onClose={() => setTelegramDialogOpen(false)}
+        onSubmitTdlibParameters={onSubmitTelegramTdlibParameters}
+        onSubmitPhoneNumber={onSubmitTelegramPhoneNumber}
+        onSubmitCode={onSubmitTelegramCode}
+        onSubmitPassword={onSubmitTelegramPassword}
+      />
     </Box>
   );
 }

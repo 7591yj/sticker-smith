@@ -160,6 +160,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                       absolutePath={asset.absolutePath}
                       relativePath={asset.relativePath}
                       kind={asset.kind}
+                      placeholderLabel={`Telegram media ${formatDownloadSummary(asset)}`}
                     />
                   }
                   metadata={
@@ -174,6 +175,9 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                         size="small"
                         sx={emojiMetaChipSx(asset.emojiList.length === 0)}
                       />
+                      {pack.source === "telegram" ? (
+                        <Chip label={formatDownloadSummary(asset)} size="small" sx={fileMetaChipSx} />
+                      ) : null}
                     </Box>
                   }
                 />
@@ -206,6 +210,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                       absolutePath={asset.absolutePath}
                       relativePath={asset.relativePath}
                       kind={asset.kind}
+                      placeholderLabel={`Telegram media ${formatDownloadSummary(asset)}`}
                     />
                   }
                   metadata={
@@ -220,6 +225,9 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                         size="small"
                         sx={emojiMetaChipSx(asset.emojiList.length === 0)}
                       />
+                      {pack.source === "telegram" ? (
+                        <Chip label={formatDownloadSummary(asset)} size="small" sx={fileMetaChipSx} />
+                      ) : null}
                     </Box>
                   }
                 />
@@ -322,6 +330,23 @@ function formatEmojiSummary(asset: SourceAsset) {
   return asset.emojiList.length > 0
     ? asset.emojiList.join(" ")
     : appTokens.copy.labels.stickersNeedEmoji;
+}
+
+function formatDownloadSummary(asset: SourceAsset) {
+  if (asset.absolutePath) {
+    return "ready";
+  }
+
+  switch (asset.downloadState) {
+    case "queued":
+      return "queued";
+    case "downloading":
+      return "downloading";
+    case "failed":
+      return "failed";
+    default:
+      return "missing";
+  }
 }
 
 const fileMetadataRowSx = {
