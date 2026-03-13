@@ -59,6 +59,14 @@ function normalizeRelativePath(input: string) {
   return input.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
+function resolvePackPaths(rootPath: string) {
+  return {
+    packFilePath: path.join(rootPath, "pack.json"),
+    sourceRoot: path.join(rootPath, "source"),
+    outputRoot: path.join(rootPath, "webm"),
+  };
+}
+
 function extToKind(filePath: string): SourceMediaKind | null {
   const extension = path.extname(filePath).slice(1).toLowerCase();
   return supportedMediaKindsSet.has(extension as SourceMediaKind)
@@ -112,7 +120,7 @@ async function syncTelegramThumbnailFile(
   rootPath: string,
   thumbnailPath: string | null,
 ) {
-  const sourceRoot = path.join(rootPath, "source");
+  const { sourceRoot } = resolvePackPaths(rootPath);
   await fs.mkdir(sourceRoot, { recursive: true });
   const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
   await Promise.all(
@@ -143,8 +151,9 @@ async function migrateTelegramAssetFile(
     return;
   }
 
-  const currentAbsolutePath = path.join(rootPath, "source", currentRelativePath);
-  const nextAbsolutePath = path.join(rootPath, "source", nextRelativePath);
+  const { sourceRoot } = resolvePackPaths(rootPath);
+  const currentAbsolutePath = path.join(sourceRoot, currentRelativePath);
+  const nextAbsolutePath = path.join(sourceRoot, nextRelativePath);
   if (!(await pathExists(currentAbsolutePath))) {
     return;
   }
@@ -183,14 +192,14 @@ function resolveAssetAbsolutePath(
     return null;
   }
 
-  return path.join(rootPath, "source", asset.relativePath);
+  return path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath);
 }
 
 function buildStickerPack(
   record: StickerPackRecord,
   rootPath: string,
 ): StickerPack {
-  const outputRoot = path.join(rootPath, "webm");
+  const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
   const iconOutput = record.outputs.find((output) => output.mode === "icon");
   const iconAsset =
     record.iconAssetId === null
@@ -200,7 +209,7 @@ function buildStickerPack(
     record.source === "telegram"
       ? record.telegram?.thumbnailPath ??
         (iconAsset && iconAsset.downloadState === "ready"
-          ? path.join(rootPath, "source", iconAsset.relativePath)
+          ? path.join(sourceRoot, iconAsset.relativePath)
           : null)
       : iconOutput
         ? path.join(outputRoot, iconOutput.relativePath)
@@ -212,7 +221,7 @@ function buildStickerPack(
     name: record.name,
     slug: record.slug,
     rootPath,
-    sourceRoot: path.join(rootPath, "source"),
+    sourceRoot,
     outputRoot,
     iconAssetId: record.iconAssetId,
     thumbnailPath,
@@ -230,6 +239,8 @@ function hydratePackDetails(
   record: StickerPackRecord,
   rootPath: string,
 ): StickerPackDetails {
+  const { outputRoot } = resolvePackPaths(rootPath);
+
   return {
     pack: buildStickerPack(record, rootPath),
     assets: record.assets.map((asset) => ({
@@ -238,7 +249,7 @@ function hydratePackDetails(
     })),
     outputs: record.outputs.map((output) => ({
       ...output,
-      absolutePath: path.join(rootPath, "webm", output.relativePath),
+      absolutePath: path.join(outputRoot, output.relativePath),
     })),
   };
 }
@@ -317,14 +328,19 @@ export class LibraryService {
   }
 
   private async ensurePackDirectories(rootPath: string) {
-    await fs.mkdir(path.join(rootPath, "source"), { recursive: true });
-    await fs.mkdir(path.join(rootPath, "webm"), { recursive: true });
+    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
+    await fs.mkdir(sourceRoot, { recursive: true });
+    await fs.mkdir(outputRoot, { recursive: true });
+  }
+
+  private buildUpdatedPackDetails(record: StickerPackRecord, rootPath: string) {
+    return hydratePackDetails(record, rootPath);
   }
 
   private async readPackRecordFromRoot(
     rootPath: string,
   ): Promise<StickerPackRecord> {
-    const packFilePath = path.join(rootPath, "pack.json");
+    const { packFilePath } = resolvePackPaths(rootPath);
     const backupFilePath = `${packFilePath}.bak`;
     try {
       const raw = await fs.readFile(packFilePath, "utf8");
@@ -353,7 +369,7 @@ export class LibraryService {
     record.schemaVersion = 2;
     record.updatedAt = new Date().toISOString();
     await this.ensurePackDirectories(rootPath);
-    const packFilePath = path.join(rootPath, "pack.json");
+    const { packFilePath } = resolvePackPaths(rootPath);
     const tempFilePath = `${packFilePath}.tmp`;
     const backupFilePath = `${packFilePath}.bak`;
     const serialized = JSON.stringify(record, null, 2);
@@ -488,7 +504,10 @@ export class LibraryService {
       record,
       relativePath,
     );
-    const destination = path.join(rootPath, "source", nextRelativePath);
+    const destination = path.join(
+      resolvePackPaths(rootPath).sourceRoot,
+      nextRelativePath,
+    );
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.copyFile(absolutePath, destination);
 
@@ -518,11 +537,12 @@ export class LibraryService {
     return asset;
   }
 
-  private async removeAssetOutputs(
+  private async deleteOutputsForAsset(
     record: StickerPackRecord,
     rootPath: string,
     assetId: AssetId,
   ) {
+    const { outputRoot } = resolvePackPaths(rootPath);
     const matching = record.outputs.filter(
       (output) => output.sourceAssetId === assetId,
     );
@@ -532,10 +552,115 @@ export class LibraryService {
 
     await Promise.all(
       matching.map(async (output) => {
-        const target = path.join(rootPath, "webm", output.relativePath);
+        const target = path.join(outputRoot, output.relativePath);
         await fs.rm(target, { force: true });
       }),
     );
+  }
+
+  private async clearIconOutput(
+    record: StickerPackRecord,
+    rootPath: string,
+  ) {
+    record.outputs = record.outputs.filter((output) => output.mode !== "icon");
+    await fs.rm(path.join(resolvePackPaths(rootPath).outputRoot, "icon.webm"), {
+      force: true,
+    });
+  }
+
+  private async finalizeAssetMutation(
+    record: StickerPackRecord,
+    rootPath: string,
+    assetIds: AssetId[],
+  ) {
+    if (record.telegram) {
+      record.telegram.syncState = "stale";
+      await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      return;
+    }
+
+    for (const assetId of assetIds) {
+      await this.deleteOutputsForAsset(record, rootPath, assetId);
+    }
+  }
+
+  private async deleteAssetRecord(
+    record: StickerPackRecord,
+    rootPath: string,
+    assetId: AssetId,
+  ) {
+    const assetIndex = record.assets.findIndex((item) => item.id === assetId);
+    if (assetIndex === -1) {
+      throw new Error(`Asset not found: ${assetId}`);
+    }
+
+    const [asset] = record.assets.splice(assetIndex, 1);
+    await fs.rm(
+      path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath),
+      { force: true },
+    );
+    await this.deleteOutputsForAsset(record, rootPath, asset.id);
+
+    if (record.iconAssetId === asset.id) {
+      record.iconAssetId = null;
+      await this.clearIconOutput(record, rootPath);
+    }
+
+    return asset;
+  }
+
+  private async relocateAsset(
+    record: StickerPackRecord,
+    rootPath: string,
+    asset: StickerPackRecord["assets"][number],
+    nextRelativePath: string,
+  ) {
+    const { sourceRoot } = resolvePackPaths(rootPath);
+    const resolvedRelativePath = this.resolveUniqueRelativePath(
+      record,
+      nextRelativePath,
+      asset.id,
+    );
+    const currentAbsolutePath = path.join(sourceRoot, asset.relativePath);
+    const nextAbsolutePath = path.join(sourceRoot, resolvedRelativePath);
+
+    await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+    if (await pathExists(currentAbsolutePath)) {
+      await fs.rename(currentAbsolutePath, nextAbsolutePath);
+    }
+
+    asset.relativePath = resolvedRelativePath;
+    await this.finalizeAssetMutation(record, rootPath, [asset.id]);
+  }
+
+  private async importEntries(
+    record: StickerPackRecord,
+    rootPath: string,
+    files: Array<{ absolutePath: string; relativePath: string }>,
+  ) {
+    const imported: SourceAsset[] = [];
+    const skipped: string[] = [];
+
+    for (const file of files) {
+      const asset = await this.importAbsoluteFile(
+        record,
+        rootPath,
+        file.absolutePath,
+        file.relativePath,
+      );
+      if (asset) {
+        imported.push(asset);
+      } else {
+        skipped.push(file.absolutePath);
+      }
+    }
+
+    if (record.telegram && imported.length > 0) {
+      record.telegram.syncState = "stale";
+    }
+
+    await this.writePackRecord(rootPath, record);
+    return { imported, skipped };
   }
 
   private getStickerOutputForAsset(
@@ -560,6 +685,7 @@ export class LibraryService {
 
     const baselineFallbackByAssetId =
       options.baselineFallbackByAssetId ?? new Map<AssetId, string | null>();
+    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
     const assetById = new Map(record.assets.map((asset) => [asset.id, asset]));
     const nextOutputs: StickerPackRecord["outputs"] = [];
 
@@ -571,7 +697,7 @@ export class LibraryService {
 
       const asset = assetById.get(output.sourceAssetId);
       const sourcePath = asset
-        ? path.join(rootPath, "source", asset.relativePath)
+        ? path.join(sourceRoot, asset.relativePath)
         : null;
       const sourceExists = sourcePath ? await pathExists(sourcePath) : false;
       const eligible =
@@ -589,7 +715,7 @@ export class LibraryService {
         asset.downloadState = "missing";
       }
 
-      await fs.rm(path.join(rootPath, "webm", output.relativePath), {
+      await fs.rm(path.join(outputRoot, output.relativePath), {
         force: true,
       });
     }
@@ -601,7 +727,7 @@ export class LibraryService {
         continue;
       }
 
-      const sourcePath = path.join(rootPath, "source", asset.relativePath);
+      const sourcePath = path.join(sourceRoot, asset.relativePath);
       if (asset.downloadState !== "ready" || !(await pathExists(sourcePath))) {
         if (asset.downloadState === "ready") {
           asset.downloadState = "missing";
@@ -615,7 +741,7 @@ export class LibraryService {
 
       let output = this.getStickerOutputForAsset(record, asset.id);
       if (output) {
-        const outputPath = path.join(rootPath, "webm", output.relativePath);
+        const outputPath = path.join(outputRoot, output.relativePath);
         if (!(await pathExists(outputPath))) {
           record.outputs = record.outputs.filter(
             (item) =>
@@ -641,10 +767,10 @@ export class LibraryService {
       }
 
       const nextRelativePath = asset.relativePath;
-      const nextAbsolutePath = path.join(rootPath, "webm", nextRelativePath);
+      const nextAbsolutePath = path.join(outputRoot, nextRelativePath);
       const previousOutputPath =
         output && output.relativePath !== nextRelativePath
-          ? path.join(rootPath, "webm", output.relativePath)
+          ? path.join(outputRoot, output.relativePath)
           : null;
 
       await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
@@ -733,7 +859,7 @@ export class LibraryService {
       const { record, rootPath } = await this.readPackRecordById(packId);
       await mutate(record, rootPath);
       await this.writePackRecord(rootPath, record);
-      return hydratePackDetails(record, rootPath);
+      return this.buildUpdatedPackDetails(record, rootPath);
     });
   }
 
@@ -773,7 +899,7 @@ export class LibraryService {
     return this.withPackMutationLock(`telegram:${input.stickerSetId}`, async () => {
       const directoryName = `telegram-${input.stickerSetId}`;
       const rootPath = this.settingsService.getPackRoot(directoryName);
-      const existing = (await pathExists(path.join(rootPath, "pack.json")))
+      const existing = (await pathExists(resolvePackPaths(rootPath).packFilePath))
         ? await this.readPackRecordFromRoot(rootPath)
         : null;
       const storedThumbnailPath = await syncTelegramThumbnailFile(
@@ -801,7 +927,7 @@ export class LibraryService {
               relativePath,
             );
             const localFileExists = await pathExists(
-              path.join(rootPath, "source", relativePath),
+              path.join(resolvePackPaths(rootPath).sourceRoot, relativePath),
             );
 
             return {
@@ -863,7 +989,7 @@ export class LibraryService {
 
       await this.reconcileTelegramMirrorOutputs(record, rootPath);
       await this.writePackRecord(rootPath, record);
-      return hydratePackDetails(record, rootPath);
+      return this.buildUpdatedPackDetails(record, rootPath);
     });
   }
 
@@ -905,8 +1031,7 @@ export class LibraryService {
         }
 
         record.iconAssetId = input.assetId;
-        record.outputs = record.outputs.filter((output) => output.mode !== "icon");
-        await fs.rm(path.join(rootPath, "webm", "icon.webm"), { force: true });
+        await this.clearIconOutput(record, rootPath);
         if (record.telegram) {
           record.telegram.syncState = "stale";
         }
@@ -936,29 +1061,16 @@ export class LibraryService {
     filePaths: string[],
   ): Promise<ImportResult> {
     const { record, rootPath } = await this.readPackRecordById(packId);
-    const imported: SourceAsset[] = [];
-    const skipped: string[] = [];
-
-    for (const filePath of [...filePaths].sort()) {
-      const asset = await this.importAbsoluteFile(
-        record,
-        rootPath,
-        filePath,
-        path.basename(filePath),
-      );
-      if (asset) {
-        imported.push(asset);
-      } else {
-        skipped.push(filePath);
-      }
-    }
-
-    if (record.telegram && imported.length > 0) {
-      record.telegram.syncState = "stale";
-    }
-
-    await this.writePackRecord(rootPath, record);
-    return { imported, skipped };
+    return this.importEntries(
+      record,
+      rootPath,
+      [...filePaths]
+        .sort()
+        .map((filePath) => ({
+          absolutePath: filePath,
+          relativePath: path.basename(filePath),
+        })),
+    );
   }
 
   async importDirectory(
@@ -966,33 +1078,15 @@ export class LibraryService {
     directoryPath: string,
   ): Promise<ImportResult> {
     const { record, rootPath } = await this.readPackRecordById(packId);
-    const imported: SourceAsset[] = [];
-    const skipped: string[] = [];
     const files = (await collectFiles(directoryPath)).sort();
-
-    for (const filePath of files) {
-      const relativePath = normalizeRelativePath(
-        path.relative(directoryPath, filePath),
-      );
-      const asset = await this.importAbsoluteFile(
-        record,
-        rootPath,
-        filePath,
-        relativePath,
-      );
-      if (asset) {
-        imported.push(asset);
-      } else {
-        skipped.push(filePath);
-      }
-    }
-
-    if (record.telegram && imported.length > 0) {
-      record.telegram.syncState = "stale";
-    }
-
-    await this.writePackRecord(rootPath, record);
-    return { imported, skipped };
+    return this.importEntries(
+      record,
+      rootPath,
+      files.map((filePath) => ({
+        absolutePath: filePath,
+        relativePath: normalizeRelativePath(path.relative(directoryPath, filePath)),
+      })),
+    );
   }
 
   async renameAsset(input: {
@@ -1007,26 +1101,7 @@ export class LibraryService {
         throw new Error(`Asset not found: ${input.assetId}`);
       }
 
-      const nextRelativePath = this.resolveUniqueRelativePath(
-        record,
-        input.nextRelativePath,
-        asset.id,
-      );
-      const currentAbsolutePath = path.join(rootPath, "source", asset.relativePath);
-      const nextAbsolutePath = path.join(rootPath, "source", nextRelativePath);
-
-      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-      if (await pathExists(currentAbsolutePath)) {
-        await fs.rename(currentAbsolutePath, nextAbsolutePath);
-      }
-
-      asset.relativePath = nextRelativePath;
-      if (record.telegram) {
-        record.telegram.syncState = "stale";
-        await this.reconcileTelegramMirrorOutputs(record, rootPath);
-      } else {
-        await this.removeAssetOutputs(record, rootPath, asset.id);
-      }
+      await this.relocateAsset(record, rootPath, asset, input.nextRelativePath);
     });
   }
 
@@ -1104,16 +1179,11 @@ export class LibraryService {
         stagedMove.asset.relativePath = stagedMove.nextRelativePath;
       }
 
-      if (record.telegram) {
-        record.telegram.syncState = "stale";
-        await this.reconcileTelegramMirrorOutputs(record, rootPath);
-      } else {
-        await Promise.all(
-          stagedMoves.map((stagedMove) =>
-            this.removeAssetOutputs(record, rootPath, stagedMove.asset.id),
-          ),
-        );
-      }
+      await this.finalizeAssetMutation(
+        record,
+        rootPath,
+        stagedMoves.map((stagedMove) => stagedMove.asset.id),
+      );
     });
   }
 
@@ -1173,50 +1243,18 @@ export class LibraryService {
       }
 
       const baseName = path.posix.basename(asset.relativePath);
-      const nextRelativePath = this.resolveUniqueRelativePath(
+      await this.relocateAsset(
         record,
+        rootPath,
+        asset,
         normalizeRelativePath(path.posix.join(input.nextDirectory, baseName)),
-        asset.id,
       );
-
-      const currentAbsolutePath = path.join(rootPath, "source", asset.relativePath);
-      const nextAbsolutePath = path.join(rootPath, "source", nextRelativePath);
-
-      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-      if (await pathExists(currentAbsolutePath)) {
-        await fs.rename(currentAbsolutePath, nextAbsolutePath);
-      }
-
-      asset.relativePath = nextRelativePath;
-      if (record.telegram) {
-        record.telegram.syncState = "stale";
-        await this.reconcileTelegramMirrorOutputs(record, rootPath);
-      } else {
-        await this.removeAssetOutputs(record, rootPath, asset.id);
-      }
     });
   }
 
   async deleteAsset(input: { packId: string; assetId: string }) {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const assetIndex = record.assets.findIndex(
-        (item) => item.id === input.assetId,
-      );
-
-      if (assetIndex === -1) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      const [asset] = record.assets.splice(assetIndex, 1);
-      await fs.rm(path.join(rootPath, "source", asset.relativePath), {
-        force: true,
-      });
-      await this.removeAssetOutputs(record, rootPath, asset.id);
-
-      if (record.iconAssetId === asset.id) {
-        record.iconAssetId = null;
-        await fs.rm(path.join(rootPath, "webm", "icon.webm"), { force: true });
-      }
+      await this.deleteAssetRecord(record, rootPath, input.assetId);
 
       if (record.telegram) {
         record.telegram.syncState = "stale";
@@ -1228,22 +1266,7 @@ export class LibraryService {
   async deleteManyAssets(input: { packId: string; assetIds: string[] }) {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
       for (const assetId of [...new Set(input.assetIds)]) {
-        const assetIndex = record.assets.findIndex((item) => item.id === assetId);
-
-        if (assetIndex === -1) {
-          throw new Error(`Asset not found: ${assetId}`);
-        }
-
-        const [asset] = record.assets.splice(assetIndex, 1);
-        await fs.rm(path.join(rootPath, "source", asset.relativePath), {
-          force: true,
-        });
-        await this.removeAssetOutputs(record, rootPath, asset.id);
-
-        if (record.iconAssetId === asset.id) {
-          record.iconAssetId = null;
-          await fs.rm(path.join(rootPath, "webm", "icon.webm"), { force: true });
-        }
+        await this.deleteAssetRecord(record, rootPath, assetId);
       }
 
       if (record.telegram) {
@@ -1255,7 +1278,7 @@ export class LibraryService {
 
   async listOutputs(packId: string): Promise<OutputArtifact[]> {
     const { record, rootPath } = await this.readPackRecordById(packId);
-    return hydratePackDetails(record, rootPath).outputs;
+    return this.buildUpdatedPackDetails(record, rootPath).outputs;
   }
 
   async recordConversionResult(
@@ -1268,7 +1291,10 @@ export class LibraryService {
     },
   ) {
     const { record, rootPath } = await this.readPackRecordById(packId);
-    const absolutePath = path.join(rootPath, "webm", result.outputFileName);
+    const absolutePath = path.join(
+      resolvePackPaths(rootPath).outputRoot,
+      result.outputFileName,
+    );
     const sha256 = await sha256ForFile(absolutePath);
     record.outputs = record.outputs.filter(
       (output) =>
@@ -1314,7 +1340,10 @@ export class LibraryService {
       const nextRelativePath = input.relativePath
         ? this.resolveUniqueRelativePath(record, input.relativePath, asset.id)
         : asset.relativePath;
-      const destination = path.join(rootPath, "source", nextRelativePath);
+      const destination = path.join(
+        resolvePackPaths(rootPath).sourceRoot,
+        nextRelativePath,
+      );
 
       await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.copyFile(input.sourceFilePath, destination);
