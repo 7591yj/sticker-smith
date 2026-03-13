@@ -8,6 +8,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { unicodeEmojiCatalog } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 
 interface Props {
@@ -17,228 +18,6 @@ interface Props {
   onConfirm: (emojis: string[]) => void | Promise<unknown>;
   onClose: () => void;
 }
-
-interface EmojiEntry {
-  emoji: string;
-  searchText: string;
-}
-
-function createEmojiEntries(
-  groupKeywords: string[],
-  definitions: ReadonlyArray<string | readonly [string, ...string[]]>,
-): EmojiEntry[] {
-  return definitions.map((definition) => {
-    if (typeof definition === "string") {
-      return {
-        emoji: definition,
-        searchText: normalizeSearch([definition, ...groupKeywords].join(" ")),
-      };
-    }
-
-    const [emoji, ...keywords] = definition;
-    return {
-      emoji,
-      searchText: normalizeSearch([emoji, ...groupKeywords, ...keywords].join(" ")),
-    };
-  });
-}
-
-const EMOJI_ENTRIES = [
-  ...createEmojiEntries(["smile", "happy", "face"], [
-    ["😀", "grinning"],
-    ["😃", "smiley"],
-    ["😄", "grin"],
-    ["😁", "beaming"],
-    ["😆", "laughing"],
-    ["😂", "joy", "tears"],
-    ["🤣", "rofl"],
-    ["🙂", "slight"],
-    ["😊", "blush"],
-    ["😉", "wink"],
-    ["😍", "heart eyes", "love"],
-    ["🥰", "smiling hearts", "adore"],
-    ["😘", "kiss"],
-    ["😎", "cool", "sunglasses"],
-    ["🤩", "star struck"],
-    ["🥳", "party"],
-    ["😇", "angel"],
-    ["🤗", "hug"],
-    ["🫡", "salute"],
-    ["🤔", "thinking"],
-    ["🫢", "surprised", "gasp"],
-    ["🤫", "shh", "quiet"],
-    ["🤭", "giggle"],
-    ["🙃", "upside down"],
-    ["😴", "sleep"],
-    ["🥱", "yawn"],
-    ["😮", "wow", "open mouth"],
-    ["😯", "hushed"],
-    ["😲", "astonished"],
-    ["😳", "flushed"],
-    ["🥹", "teary", "please"],
-    ["😭", "cry", "sob"],
-    ["😡", "angry", "mad"],
-    ["🤯", "mind blown"],
-    ["😱", "scream"],
-    ["😈", "devil"],
-    ["👀", "eyes", "look"],
-  ]),
-  ...createEmojiEntries(["spark", "celebration", "energy"], [
-    ["💯", "hundred"],
-    ["✨", "sparkles"],
-    ["🔥", "fire", "lit"],
-    ["⚡", "lightning", "zap"],
-    ["⭐", "star"],
-    ["🌟", "glowing star"],
-    ["💥", "boom", "explosion"],
-    ["🎉", "party popper"],
-    ["🎊", "confetti"],
-    ["🏆", "trophy", "win"],
-    ["🎯", "target", "bullseye"],
-    ["🎵", "music", "note"],
-    ["🎶", "notes"],
-  ]),
-  ...createEmojiEntries(["heart", "love"], [
-    ["❤️", "red"],
-    ["🩷", "pink"],
-    ["🧡", "orange"],
-    ["💛", "yellow"],
-    ["💚", "green"],
-    ["🩵", "light blue", "cyan"],
-    ["💙", "blue"],
-    ["💜", "purple"],
-    ["🤎", "brown"],
-    ["🖤", "black"],
-    ["🤍", "white"],
-    ["💔", "broken"],
-    ["❤️‍🔥", "on fire"],
-    ["❤️‍🩹", "mending", "healing"],
-    ["💕", "two hearts"],
-    ["💖", "sparkling heart"],
-    ["💗", "growing heart"],
-    ["💘", "cupid"],
-    ["💝", "gift heart"],
-    ["💞", "revolving hearts"],
-    ["💓", "beating heart"],
-    ["💌", "love letter"],
-  ]),
-  ...createEmojiEntries(["hand", "gesture"], [
-    ["👍", "thumbs up", "like"],
-    ["👎", "thumbs down", "dislike"],
-    ["👌", "ok"],
-    ["✌️", "peace", "victory"],
-    ["🤞", "crossed fingers", "luck"],
-    ["🤟", "love you"],
-    ["🤘", "rock"],
-    ["🤙", "call me", "hang loose"],
-    ["👋", "wave", "hello"],
-    ["🫶", "heart hands"],
-    ["👏", "clap", "applause"],
-    ["🙌", "raised hands"],
-    ["🙏", "pray", "thanks"],
-    ["💪", "muscle", "strong"],
-    ["🫵", "point at you"],
-    ["👈", "point left"],
-    ["👉", "point right"],
-    ["☝️", "point up"],
-    ["👇", "point down"],
-    ["✍️", "write"],
-    ["🤝", "handshake", "deal"],
-  ]),
-  ...createEmojiEntries(["animal"], [
-    ["🐶", "dog"],
-    ["🐱", "cat"],
-    ["🐭", "mouse"],
-    ["🐹", "hamster"],
-    ["🐰", "rabbit", "bunny"],
-    ["🦊", "fox"],
-    ["🐻", "bear"],
-    ["🐼", "panda"],
-    ["🐨", "koala"],
-    ["🐯", "tiger"],
-    ["🦁", "lion"],
-    ["🐮", "cow"],
-    ["🐷", "pig"],
-    ["🐸", "frog"],
-    ["🐵", "monkey"],
-    ["🐔", "chicken"],
-    ["🐧", "penguin"],
-    ["🐦", "bird"],
-    ["🦄", "unicorn"],
-    ["🐝", "bee"],
-    ["🦋", "butterfly"],
-  ]),
-  ...createEmojiEntries(["weather", "nature"], [
-    ["🌈", "rainbow"],
-    ["☀️", "sun"],
-    ["🌤️", "sun behind cloud"],
-    ["⛅", "cloudy"],
-    ["☁️", "cloud"],
-    ["🌧️", "rain"],
-    ["⛈️", "storm", "thunder"],
-    ["❄️", "snowflake"],
-    ["☃️", "snowman"],
-    ["🌙", "moon"],
-    ["🌸", "cherry blossom"],
-    ["🌹", "rose"],
-    ["🌻", "sunflower"],
-    ["🌼", "flower"],
-    ["🌷", "tulip"],
-    ["🍀", "clover", "luck"],
-    ["🌿", "herb", "leaf"],
-    ["🍁", "maple leaf"],
-  ]),
-  ...createEmojiEntries(["food"], [
-    ["🍎", "apple"],
-    ["🍉", "watermelon"],
-    ["🍓", "strawberry"],
-    ["🍒", "cherries"],
-    ["🍑", "peach"],
-    ["🍍", "pineapple"],
-    ["🥑", "avocado"],
-    ["🍔", "burger"],
-    ["🍕", "pizza"],
-    ["🌮", "taco"],
-    ["🍜", "ramen", "noodles"],
-    ["🍣", "sushi"],
-    ["🍩", "donut"],
-    ["🍪", "cookie"],
-  ]),
-  ...createEmojiEntries(["activity", "travel", "object"], [
-    ["🎮", "game", "controller"],
-    ["🎬", "movie", "film"],
-    ["🎨", "art", "paint"],
-    ["🚀", "rocket"],
-    ["🛸", "ufo", "spaceship"],
-    ["🚗", "car"],
-    ["✈️", "plane", "airplane"],
-    ["🧠", "brain"],
-    ["👑", "crown"],
-    ["💎", "gem", "diamond"],
-    ["🔒", "lock"],
-    ["🔑", "key"],
-    ["📌", "pin"],
-    ["📣", "megaphone"],
-    ["💡", "idea", "lightbulb"],
-    ["📷", "camera"],
-    ["📱", "phone"],
-    ["💻", "computer", "laptop"],
-    ["⌛", "hourglass", "time"],
-  ]),
-  ...createEmojiEntries(["symbol", "status"], [
-    ["✅", "check", "done"],
-    ["❌", "cross", "wrong"],
-    ["❗", "exclamation"],
-    ["❓", "question"],
-    ["⭕", "circle"],
-    ["🔴", "red circle"],
-    ["🟠", "orange circle"],
-    ["🟡", "yellow circle"],
-    ["🟢", "green circle"],
-    ["🔵", "blue circle"],
-    ["🟣", "purple circle"],
-  ]),
-] as const;
 
 export function EmojiPickerDialog({
   open,
@@ -267,10 +46,10 @@ export function EmojiPickerDialog({
       .filter((term) => term.length > 0);
 
     if (queryTerms.length === 0) {
-      return EMOJI_ENTRIES;
+      return unicodeEmojiCatalog;
     }
 
-    return EMOJI_ENTRIES.filter((entry) =>
+    return unicodeEmojiCatalog.filter((entry) =>
       queryTerms.every((term) => entry.searchText.includes(term)),
     );
   }, [searchQuery]);
@@ -342,17 +121,23 @@ export function EmojiPickerDialog({
             label="Search emojis"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search by name, color, or category"
+            placeholder="Search by name, group, or subgroup"
           />
           <Typography
             variant="caption"
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            Pick up to 20 Telegram-compatible emojis.
+            Pick up to 20 emjis from the list.
           </Typography>
           {filteredEntries.length > 0 ? (
-            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+            <Stack
+              direction="row"
+              spacing={0.75}
+              useFlexGap
+              flexWrap="wrap"
+              sx={{ maxHeight: 320, overflowY: "auto", pr: 0.5 }}
+            >
               {filteredEntries.map((entry) => {
                 const selected = selectedEmojis.includes(entry.emoji);
                 return (
@@ -361,6 +146,7 @@ export function EmojiPickerDialog({
                     size="small"
                     variant={selected ? "contained" : "outlined"}
                     onClick={() => toggleEmoji(entry.emoji)}
+                    title={entry.name}
                     sx={{
                       minWidth: 40,
                       px: 0.75,

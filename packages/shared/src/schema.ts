@@ -1,26 +1,11 @@
 import { z } from "zod";
 
+import { unicodeEmojiSet } from "./emojiCatalog";
 import { supportedMediaKinds } from "./types";
-
-const keycapEmojiPattern = /^[#*0-9]\uFE0F?\u20E3$/u;
-const emojiSequencePattern =
-  /^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}\u200D\uFE0F]+$/u;
 
 function isTelegramCompatibleEmoji(value: string) {
   const trimmed = value.trim();
-
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  if (keycapEmojiPattern.test(trimmed)) {
-    return true;
-  }
-
-  return (
-    /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(trimmed) &&
-    emojiSequencePattern.test(trimmed)
-  );
+  return unicodeEmojiSet.has(trimmed);
 }
 
 export const packIdSchema = z.string().min(1);

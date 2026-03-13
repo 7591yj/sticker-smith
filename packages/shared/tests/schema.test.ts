@@ -56,6 +56,16 @@ describe("shared schemas", () => {
     ).toEqual(["1️⃣", "🇺🇸"]);
   });
 
+  it("rejects emoji strings that are not a single Unicode RGI emoji", () => {
+    expect(() =>
+      setAssetEmojisSchema.parse({
+        packId: "pack-1",
+        assetId: "asset-1",
+        emojis: ["😀😀"],
+      }),
+    ).toThrow("Expected a Telegram-compatible emoji.");
+  });
+
   it("allows clearing local emoji edits to an empty list", () => {
     expect(
       setAssetEmojisSchema.parse({
