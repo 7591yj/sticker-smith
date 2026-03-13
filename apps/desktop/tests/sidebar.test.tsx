@@ -53,6 +53,7 @@ describe("Sidebar", () => {
         packs={[createPack()]}
         telegramState={createTelegramState()}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -79,6 +80,7 @@ describe("Sidebar", () => {
         ]}
         telegramState={createTelegramState()}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -103,6 +105,7 @@ describe("Sidebar", () => {
         packs={[]}
         telegramState={createTelegramState()}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -156,6 +159,7 @@ describe("Sidebar", () => {
           message: "Telegram is connected.",
         })}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -230,6 +234,7 @@ describe("Sidebar", () => {
           message: "Telegram is connected.",
         })}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -283,6 +288,7 @@ describe("Sidebar", () => {
           message: "Telegram is connected.",
         })}
         telegramSyncInProgress={false}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -316,6 +322,7 @@ describe("Sidebar", () => {
           message: "Telegram is connected.",
         })}
         telegramSyncInProgress={true}
+        telegramSyncRecommended={false}
         selectedPackId={null}
         onSelect={vi.fn()}
         onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
@@ -331,5 +338,38 @@ describe("Sidebar", () => {
     );
 
     expect(markup).toContain("Sync in progress");
+  });
+
+  it("renders the sync icon in red when a manual sync is needed", () => {
+    const markup = renderToStaticMarkup(
+      <Sidebar
+        packs={[]}
+        telegramState={createTelegramState({
+          status: "connected",
+          authStep: "ready",
+          sessionUser: {
+            id: 1,
+            username: "stickersmith",
+            displayName: "Sticker Smith",
+          },
+        })}
+        telegramSyncInProgress={false}
+        telegramSyncRecommended={true}
+        selectedPackId={null}
+        onSelect={vi.fn()}
+        onSubmitTelegramTdlibParameters={vi.fn(async () => undefined)}
+        onSubmitTelegramPhoneNumber={vi.fn(async () => undefined)}
+        onSubmitTelegramCode={vi.fn(async () => undefined)}
+        onSubmitTelegramPassword={vi.fn(async () => undefined)}
+        onLogoutTelegram={vi.fn(async () => undefined)}
+        onResetTelegram={vi.fn(async () => undefined)}
+        onSyncTelegramPacks={vi.fn(async () => undefined)}
+        refreshPacks={vi.fn(async () => [])}
+        setSelectedPackId={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Sync needed"');
+    expect(markup).toContain("color:error.main");
   });
 });

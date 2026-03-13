@@ -92,6 +92,7 @@ interface Props {
   packs: StickerPack[];
   telegramState: TelegramState | null;
   telegramSyncInProgress: boolean;
+  telegramSyncRecommended: boolean;
   selectedPackId: string | null;
   onSelect: (id: string) => void;
   onSubmitTelegramTdlibParameters: (input: {
@@ -155,6 +156,7 @@ export function Sidebar({
   packs,
   telegramState,
   telegramSyncInProgress,
+  telegramSyncRecommended,
   selectedPackId,
   onSelect,
   onSubmitTelegramTdlibParameters,
@@ -193,6 +195,8 @@ export function Sidebar({
     useState<HTMLElement | null>(null);
   const syncActionLabel = telegramSyncBusy
     ? appTokens.copy.labels.telegramSyncInProgress
+    : telegramSyncRecommended
+      ? "Sync needed"
     : telegramPacks.length > 0
       ? appTokens.copy.actions.resync
       : appTokens.copy.actions.sync;
@@ -376,6 +380,10 @@ export function Sidebar({
               <SyncIcon
                 fontSize="small"
                 sx={{
+                  color:
+                    telegramSyncRecommended && telegramReady && !telegramSyncBusy
+                      ? "error.main"
+                      : "text.secondary",
                   animation: telegramSyncBusy
                     ? "telegram-sync-spin 1s linear infinite"
                     : "none",

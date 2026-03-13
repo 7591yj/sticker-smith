@@ -4,6 +4,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -13,6 +14,7 @@ interface Props {
   open: boolean;
   initialTitle: string;
   initialShortName: string;
+  submitting: boolean;
   onClose: () => void;
   onConfirm: (input: { title: string; shortName: string }) => Promise<unknown>;
 }
@@ -21,6 +23,7 @@ export function TelegramPublishDialog({
   open,
   initialTitle,
   initialShortName,
+  submitting,
   onClose,
   onConfirm,
 }: Props) {
@@ -41,11 +44,16 @@ export function TelegramPublishDialog({
     /^[A-Za-z][A-Za-z0-9_]{4,63}$/.test(shortName.trim());
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={submitting ? undefined : onClose}
+      maxWidth="sm"
+      fullWidth
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (!canSubmit) {
+          if (!canSubmit || submitting) {
             return;
           }
           void onConfirm({
@@ -64,12 +72,25 @@ export function TelegramPublishDialog({
             >
               Telegram creates a separate mirror pack. The local pack stays in the Local section.
             </Typography>
+            {submitting ? (
+              <Stack spacing={0.75}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+                >
+                  Uploading to Telegram. Sync manually after it finishes.
+                </Typography>
+                <LinearProgress />
+              </Stack>
+            ) : null}
             <TextField
               autoFocus
               size="small"
               label={appTokens.copy.labels.telegramTitle}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
+              disabled={submitting}
             />
             <TextField
               size="small"
@@ -77,15 +98,21 @@ export function TelegramPublishDialog({
               value={shortName}
               onChange={(event) => setShortName(event.target.value.replace(/-/g, "_"))}
               helperText="Start with a letter and use only letters, numbers, or underscores."
+              disabled={submitting}
             />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={onClose}>
+          <Button size="small" onClick={onClose} disabled={submitting}>
             {appTokens.copy.actions.cancel}
           </Button>
-          <Button size="small" type="submit" variant="contained" disabled={!canSubmit}>
-            {appTokens.copy.actions.upload}
+          <Button
+            size="small"
+            type="submit"
+            variant="contained"
+            disabled={!canSubmit || submitting}
+          >
+            {submitting ? appTokens.copy.actions.uploading : appTokens.copy.actions.upload}
           </Button>
         </DialogActions>
       </form>

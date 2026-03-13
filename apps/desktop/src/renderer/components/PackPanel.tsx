@@ -72,6 +72,7 @@ export function PackPanel({
 }: Props) {
   const [renaming, setRenaming] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishSubmitting, setPublishSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
   const [view, setView] = useState<BrowserView>("list");
 
@@ -649,8 +650,15 @@ export function PackPanel({
         open={publishDialogOpen}
         initialTitle={pack.name}
         initialShortName={suggestShortName(details)}
-        onClose={() => setPublishDialogOpen(false)}
+        submitting={publishSubmitting || telegramPublishing}
+        onClose={() => {
+          if (publishSubmitting || telegramPublishing) {
+            return;
+          }
+          setPublishDialogOpen(false);
+        }}
         onConfirm={async ({ title, shortName }) => {
+          setPublishSubmitting(true);
           try {
             await window.stickerSmith.packs.setTelegramShortName({
               packId: pack.id,
@@ -665,6 +673,8 @@ export function PackPanel({
             setPublishDialogOpen(false);
           } catch {
             // App-level Telegram failure handling keeps the dialog open for retry.
+          } finally {
+            setPublishSubmitting(false);
           }
         }}
       />

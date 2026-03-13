@@ -41,6 +41,7 @@ export function App() {
   >([]);
   const [converting, setConverting] = useState(false);
   const [telegramSyncInProgress, setTelegramSyncInProgress] = useState(false);
+  const [telegramSyncRecommended, setTelegramSyncRecommended] = useState(false);
   const [telegramPublishingPackIds, setTelegramPublishingPackIds] = useState<
     string[]
   >([]);
@@ -197,6 +198,7 @@ export function App() {
         setTelegramState(event.state);
         if (event.state.status !== "connected") {
           setTelegramSyncInProgress(false);
+          setTelegramSyncRecommended(false);
           setTelegramPublishingPackIds([]);
           setTelegramUpdatingPackIds([]);
         }
@@ -246,6 +248,7 @@ export function App() {
         setTelegramPublishingPackIds((current) =>
           current.filter((packId) => packId !== event.localPackId),
         );
+        setTelegramSyncRecommended(true);
         void refreshPacks().then((nextPacks) => {
           setSelectedPackId(
             nextPacks.find((pack) => pack.id === event.packId)?.id ?? event.packId,
@@ -265,6 +268,7 @@ export function App() {
       ) {
         if (event.type === "sync_finished") {
           setTelegramSyncInProgress(false);
+          setTelegramSyncRecommended(false);
         }
         if (event.type === "update_finished") {
           setTelegramUpdatingPackIds((current) =>
@@ -413,6 +417,7 @@ export function App() {
       const next = await window.stickerSmith.telegram.reset();
       setTelegramState(next);
       setTelegramSyncInProgress(false);
+      setTelegramSyncRecommended(false);
       setTelegramPublishingPackIds([]);
       setTelegramUpdatingPackIds([]);
       await refreshPacks();
@@ -430,6 +435,7 @@ export function App() {
     setTelegramSyncInProgress(true);
     try {
       await window.stickerSmith.telegram.syncOwnedPacks();
+      setTelegramSyncRecommended(false);
       await refreshPacks();
     } catch (error) {
       showTelegramError(
@@ -523,6 +529,7 @@ export function App() {
           packs={packs}
           telegramState={telegramState}
           telegramSyncInProgress={telegramSyncInProgress}
+          telegramSyncRecommended={telegramSyncRecommended}
           selectedPackId={selectedPackId}
           onSelect={setSelectedPackId}
           onSubmitTelegramTdlibParameters={submitTelegramTdlibParameters}

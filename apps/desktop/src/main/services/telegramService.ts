@@ -1144,6 +1144,10 @@ export class TelegramService {
     return details.assets;
   }
 
+  private getPublishStickerAssets(details: StickerPackDetails) {
+    return details.assets.filter((asset) => asset.id !== details.pack.iconAssetId);
+  }
+
   private getStickerOutput(details: StickerPackDetails, assetId: string) {
     return details.outputs.find(
       (output) => output.sourceAssetId === assetId && output.mode === "sticker",
@@ -1163,7 +1167,7 @@ export class TelegramService {
 
   private async preflightPublishPack(input: PublishLocalPackInput) {
     const details = await this.libraryService.getPack(input.packId);
-    const stickerAssets = this.getStickerAssets(details);
+    const stickerAssets = this.getPublishStickerAssets(details);
 
     if (details.pack.source !== "local") {
       throw new Error("Only local packs can be uploaded to Telegram.");
@@ -1262,7 +1266,7 @@ export class TelegramService {
       createdStickerSetId = await this.tdlibService.createNewStickerSet({
         title: input.title,
         shortName: input.shortName,
-        stickers: this.getStickerAssets(details).map((asset) => {
+        stickers: this.getPublishStickerAssets(details).map((asset) => {
           const output = this.getStickerOutput(details, asset.id);
           if (!output) {
             throw new Error(`Missing sticker output for ${asset.relativePath}.`);
@@ -1289,26 +1293,13 @@ export class TelegramService {
         });
       }
 
-      await this.syncOwnedPacks();
-      const mirror = await this.libraryService.findPackByTelegramStickerSetId(
-        createdStickerSetId,
-      );
-      if (mirror) {
-        await this.libraryService.updateTelegramMirrorMetadata({
-          packId: mirror.record.id,
-          publishedFromLocalPackId: input.packId,
-          syncState: "idle",
-        });
-        this.emit({
-          type: "publish_finished",
-          localPackId: input.packId,
-          packId: mirror.record.id,
-          stickerSetId: createdStickerSetId,
-        });
-        return;
-      }
-
-      throw new Error("Telegram pack was created but the local mirror was not found after resync.");
+      this.emit({
+        type: "publish_finished",
+        localPackId: input.packId,
+        packId: input.packId,
+        stickerSetId: createdStickerSetId,
+      });
+      return;
     } catch (error) {
       const errorMessage = describeTdlibError(error);
       if (createdStickerSetId) {

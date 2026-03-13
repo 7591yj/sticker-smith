@@ -425,6 +425,26 @@ async function addIconOutput(
   await fs.writeFile(path.join(input.outputRoot, "icon.webm"), "icon-data");
 }
 
+async function addLocalIconAsset(
+  libraryService: LibraryService,
+  input: {
+    packId: string;
+    outputRoot: string;
+    fileRoot: string;
+  },
+) {
+  const iconPath = path.join(input.fileRoot, "main_img.jpg");
+  await fs.writeFile(iconPath, "icon");
+  const importResult = await libraryService.importFiles(input.packId, [iconPath]);
+  const iconAssetId = importResult.imported[0]!.id;
+  await addIconOutput(libraryService, {
+    packId: input.packId,
+    assetId: iconAssetId,
+    outputRoot: input.outputRoot,
+  });
+  return iconAssetId;
+}
+
 async function waitForCount(getCount: () => number, expected: number) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (getCount() === expected) {
@@ -930,7 +950,68 @@ describe("TelegramService", () => {
     ).rejects.toThrow("Sticker output for sticker.png is missing");
   });
 
-  it("publishes a local pack when its only sticker asset is also the icon", async () => {
+  it("publishes a local pack when the icon asset has no sticker emoji metadata", async () => {
+    const { root, downloadRoot, libraryService, telegramService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
+    cleanup.push(fileRoot);
+    await addLocalIconAsset(libraryService, {
+      packId: pack.id,
+      outputRoot: pack.outputRoot,
+      fileRoot,
+    });
+
+    await telegramService.publishLocalPack({
+      packId: pack.id,
+      title: "Upload Pack",
+      shortName: "upload_pack",
+    });
+
+    const packs = await libraryService.listPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.id).toBe(pack.id);
+  });
+
+  it("does not resync owned packs immediately after a successful publish", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
+    cleanup.push(fileRoot);
+    const beforeCount = tdlibService.getOwnedStickerSetRequestCount();
+
+    await telegramService.publishLocalPack({
+      packId: pack.id,
+      title: "Upload Pack",
+      shortName: "upload_pack",
+    });
+
+    expect(tdlibService.getOwnedStickerSetRequestCount()).toBe(beforeCount);
+    expect(await libraryService.findPackByTelegramStickerSetId("100")).toBeNull();
+  });
+
+  it("rejects telegram publish when the selected icon is the only asset", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -947,22 +1028,23 @@ describe("TelegramService", () => {
     const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
     cleanup.push(fileRoot);
     const details = await libraryService.getPack(pack.id);
+    await libraryService.setPackIcon({
+      packId: pack.id,
+      assetId: details.assets[0]!.id,
+    });
     await addIconOutput(libraryService, {
       packId: pack.id,
       assetId: details.assets[0]!.id,
       outputRoot: pack.outputRoot,
     });
 
-    await telegramService.publishLocalPack({
-      packId: pack.id,
-      title: "Upload Pack",
-      shortName: "upload_pack",
-    });
-
-    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
-    expect(mirror).not.toBeNull();
-    expect(mirror?.record.telegram?.publishedFromLocalPackId).toBe(pack.id);
-    expect(mirror?.record.iconAssetId).not.toBeNull();
+    await expect(
+      telegramService.publishLocalPack({
+        packId: pack.id,
+        title: "Upload Pack",
+        shortName: "upload_pack",
+      }),
+    ).rejects.toThrow("The pack needs at least one sticker asset before upload.");
   });
 
   it("recovers a published telegram mirror when a later publish step fails", async () => {
