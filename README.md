@@ -1,6 +1,19 @@
-# Sticker Smith
+<h1 align="center">
+ Sticker Smith
+</h1>
 
-Sticker Smith is an Electron desktop app for building Telegram sticker packs from local image and video assets and converting them to WebM.
+<p align="center">
+   Video-sticker fiirst Telegram Sticker management
+</p>
+
+<p align="center">
+  <a href="https://github.com/7591yj/sticker-smith/releases/latest">
+    <img src="https://img.shields.io/github/v/release/7591yj/sticker-smith?display_name=tag" alt="Latest Release" />
+  </a>
+</p>
+
+Sticker Smith is an Electron desktop app for building Telegram sticker packs
+from local image and video assets and converting them to WebM.
 
 ## Workspace
 
@@ -21,7 +34,9 @@ Outside Nix, install:
 - `ffmpeg`
 - `ffprobe`
 
-Packaged desktop builds bundle the backend plus `ffmpeg` and `ffprobe`. Development mode prefers the bundled backend in `tg-webm-converter/dist/backend` and falls back to Python source mode if that bundle is missing.
+Packaged desktop builds bundle the backend plus `ffmpeg` and `ffprobe`.
+Development mode prefers the bundled backend in `tg-webm-converter/dist/backend`
+and falls back to Python source mode if that bundle is missing.
 
 ## Common Commands
 
@@ -42,6 +57,11 @@ The desktop app persists data under:
 - macOS: `~/Library/Application Support/StickerSmith`
 - Windows: `%APPDATA%/StickerSmith`
 
+Telegram secrets prefer the OS keychain. If the keychain and Electron
+`safeStorage` are both unavailable, Sticker Smith falls back to plaintext
+storage in `telegram/secrets.json` under the library root. This is a common
+Linux/Nix development-shell case when no desktop secret service is available.
+
 Pack data layout:
 
 - Source assets live under `packs/<slug>-<uuid>/source`
@@ -50,8 +70,10 @@ Pack data layout:
 
 ## Architecture
 
-- `apps/desktop/src/main`: Electron main process, IPC handlers, filesystem services, converter orchestration
-- `apps/desktop/src/preload`: `window.stickerSmith` bridge exposed to the renderer
+- `apps/desktop/src/main`: Electron main process, IPC handlers, filesystem
+  services, converter orchestration
+- `apps/desktop/src/preload`: `window.stickerSmith` bridge exposed to the
+  renderer
 - `apps/desktop/src/renderer`: React UI
 - `packages/shared/src/bridge.ts`: preload contract
 - `packages/shared/src/types.ts`: shared domain types
@@ -61,5 +83,6 @@ Pack data layout:
 
 - Development mode prefers `tg-webm-converter/dist/backend/gui-api`
 - Packaged builds use the bundled backend from Electron resources
-- The backend reads a JSON job from stdin and emits newline-delimited JSON events on stdout
+- The backend reads a JSON job from stdin and emits newline-delimited JSON
+  events on stdout
 - Conversion completion updates pack metadata through `LibraryService`

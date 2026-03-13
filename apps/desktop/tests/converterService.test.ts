@@ -34,6 +34,8 @@ import { ConverterService } from "../src/main/services/converterService";
 const originalResourcesPath = process.resourcesPath;
 const originalPathEnv = process.env.PATH;
 const originalAppDir = process.env.APPDIR;
+const originalStickerSmithRoot = process.env.STICKER_SMITH_ROOT;
+const originalBackendDir = process.env.STICKER_SMITH_BACKEND_DIR;
 const originalFfmpegEnv = process.env.STICKER_SMITH_FFMPEG;
 const originalFfprobeEnv = process.env.STICKER_SMITH_FFPROBE;
 const tempDirectories: string[] = [];
@@ -115,6 +117,7 @@ function createDetails(): StickerPackDetails {
   return {
     pack: {
       id: "pack-1",
+      source: "local",
       name: "Sample Pack",
       slug: "sample-pack",
       rootPath: "/tmp/sample-pack",
@@ -131,6 +134,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "one.png",
         absolutePath: "/tmp/sample-pack/source/one.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/one.png",
@@ -140,6 +144,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "two.png",
         absolutePath: "/tmp/sample-pack/source/two.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/two.png",
@@ -149,6 +154,7 @@ function createDetails(): StickerPackDetails {
         packId: "pack-1",
         relativePath: "icon.png",
         absolutePath: "/tmp/sample-pack/source/icon.png",
+        emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/icon.png",
@@ -181,6 +187,16 @@ afterEach(() => {
     delete process.env.APPDIR;
   } else {
     process.env.APPDIR = originalAppDir;
+  }
+  if (originalStickerSmithRoot === undefined) {
+    delete process.env.STICKER_SMITH_ROOT;
+  } else {
+    process.env.STICKER_SMITH_ROOT = originalStickerSmithRoot;
+  }
+  if (originalBackendDir === undefined) {
+    delete process.env.STICKER_SMITH_BACKEND_DIR;
+  } else {
+    process.env.STICKER_SMITH_BACKEND_DIR = originalBackendDir;
   }
   if (originalFfmpegEnv === undefined) {
     delete process.env.STICKER_SMITH_FFMPEG;
@@ -332,6 +348,52 @@ describe("ConverterService", () => {
     ]);
   });
 
+  it("handles partial NDJSON chunks before flushing the final buffer", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+    const emitSpy = vi.fn();
+
+    service.setEventSink(emitSpy);
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    const payload = `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`;
+    child.stdout.emit("data", Buffer.from(payload.slice(0, 20)));
+    child.stdout.emit("data", Buffer.from(payload.slice(20)));
+    child.emit("close", 0);
+
+    await conversion;
+
+    expect(libraryService.recordConversionResult).toHaveBeenCalledTimes(1);
+    expect(emitSpy).toHaveBeenCalledWith(
+      createEvent("asset-1", "/tmp/out/one.webm"),
+    );
+  });
+
   it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {
     appMock.isPackaged = true;
     const { resourcesPath, backendDirectory } = await createBundledBackend();
@@ -412,6 +474,56 @@ describe("ConverterService", () => {
     );
     expect(backend.env.STICKER_SMITH_FFPROBE).toBe(
       path.join(backendDirectory, "ffprobe"),
+    );
+  });
+
+  it("prefers the workspace Python backend over dist/backend during development", async () => {
+    const workspaceRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-workspace-"),
+    );
+    tempDirectories.push(workspaceRoot);
+    await fs.mkdir(
+      path.join(workspaceRoot, "tg-webm-converter", "dist", "backend"),
+      { recursive: true },
+    );
+    await fs.mkdir(path.join(workspaceRoot, "tg-webm-converter", "src"), {
+      recursive: true,
+    });
+    process.env.STICKER_SMITH_ROOT = workspaceRoot;
+    delete process.env.STICKER_SMITH_BACKEND_DIR;
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.command).toBe(process.platform === "win32" ? "python" : "python3");
+    expect(backend.args).toEqual(["-m", "tg_webm_converter.gui_api"]);
+    expect(backend.cwd).toBe(path.join(workspaceRoot, "tg-webm-converter"));
+    expect(backend.env.PYTHONPATH).toBe(
+      path.join(workspaceRoot, "tg-webm-converter", "src"),
+    );
+  });
+
+  it("prepends the workspace source root to PYTHONPATH for the Python backend", async () => {
+    const workspaceRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-pythonpath-"),
+    );
+    tempDirectories.push(workspaceRoot);
+    await fs.mkdir(path.join(workspaceRoot, "tg-webm-converter", "src"), {
+      recursive: true,
+    });
+    process.env.STICKER_SMITH_ROOT = workspaceRoot;
+    process.env.STICKER_SMITH_PYTHONPATH = "/tmp/custom-a";
+    process.env.PYTHONPATH = "/tmp/custom-b";
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.env.PYTHONPATH).toBe(
+      [
+        path.join(workspaceRoot, "tg-webm-converter", "src"),
+        "/tmp/custom-a",
+        "/tmp/custom-b",
+      ].join(path.delimiter),
     );
   });
 });

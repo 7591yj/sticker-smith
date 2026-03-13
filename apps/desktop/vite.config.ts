@@ -6,6 +6,8 @@ import tailwindcss from "@tailwindcss/vite";
 import electron from "vite-plugin-electron/simple";
 import { defineConfig } from "vitest/config";
 
+const electronMainExternal = ["keytar", "prebuilt-tdlib", "tdl"];
+
 function getManualChunk(id: string) {
   const normalizedId = id.replace(/\\/g, "/");
 
@@ -52,6 +54,13 @@ export default defineConfig(({ mode }) => ({
           electron({
             main: {
               entry: "src/main/index.ts",
+              vite: {
+                build: {
+                  rollupOptions: {
+                    external: electronMainExternal,
+                  },
+                },
+              },
               onstart(args) {
                 return args.startup(
                   [".", "--no-sandbox"],

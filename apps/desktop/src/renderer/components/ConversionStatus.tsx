@@ -55,8 +55,8 @@ export function ConversionStatus({ events, converting }: Props) {
           value={progress}
           sx={{
             mb: 0.5,
-            borderRadius: appTokens.radii.panel / 8,
-            height: appTokens.sizes.progressHeight,
+            borderRadius: appTokens.shape.radius.panel,
+            height: appTokens.sizes.progress.height,
           }}
         />
       )}

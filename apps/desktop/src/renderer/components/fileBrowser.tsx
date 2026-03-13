@@ -8,7 +8,9 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { appTokens } from "../../theme/appTokens";
+import { getFileExtension, getLeafName } from "../utils/pathDisplay";
 import { toFileUrl } from "../utils/fileUrl";
+import { browserMetadataRowSx } from "./browserStyles";
 
 export type BrowserView = "gallery" | "list";
 
@@ -24,9 +26,10 @@ const IMAGE_EXTENSIONS = new Set([
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm"]);
 
 interface PreviewProps {
-  absolutePath: string;
+  absolutePath: string | null;
   relativePath: string;
   kind?: string;
+  placeholderLabel?: string;
 }
 
 interface BrowserViewToggleProps {
@@ -40,8 +43,11 @@ interface BrowserGalleryCardProps {
   title: string;
   filename: string;
   isPinned?: boolean;
+  selected?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -49,8 +55,11 @@ interface BrowserListRowProps {
   title: string;
   filename: string;
   isPinned?: boolean;
+  selected?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -58,10 +67,6 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-export function getFileExtension(relativePath: string) {
-  return relativePath.split(".").pop()?.toLowerCase() ?? "";
 }
 
 export function sortItemsWithPinnedFirst<T>(
@@ -89,9 +94,42 @@ export function sortItemsWithPinnedFirst<T>(
   return [...pinned.sort(byLabel), ...rest.sort(byLabel)];
 }
 
-export function FilePreview({ absolutePath, relativePath, kind }: PreviewProps) {
-  const filename = relativePath.split("/").pop() ?? relativePath;
+export function FilePreview({
+  absolutePath,
+  relativePath,
+  kind,
+  placeholderLabel,
+}: PreviewProps) {
+  const filename = getLeafName(relativePath);
   const extension = (kind ?? getFileExtension(relativePath)).toLowerCase();
+
+  if (!absolutePath) {
+    return (
+      <Box
+        sx={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "action.hover",
+          color: "text.secondary",
+          textAlign: "center",
+          px: 1,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: appTokens.typography.fontSizes.caption,
+          }}
+        >
+          {placeholderLabel ?? "Waiting for Telegram media"}
+        </Typography>
+      </Box>
+    );
+  }
+
   const fileUrl = toFileUrl(absolutePath);
 
   if (IMAGE_EXTENSIONS.has(extension)) {
@@ -140,7 +178,10 @@ export function FilePreview({ absolutePath, relativePath, kind }: PreviewProps) 
       }}
     >
       <InsertDriveFileIcon
-        sx={{ fontSize: appTokens.sizes.fileTypeIcon, color: "text.disabled" }}
+        sx={{
+          fontSize: appTokens.sizes.preview.fileTypeIcon,
+          color: "text.disabled",
+        }}
       />
       <Typography
         variant="caption"
@@ -183,16 +224,16 @@ export function BrowserViewToggle({
           }
         }}
         aria-label={ariaLabel}
-        sx={{ height: appTokens.sizes.toggleHeight }}
+        sx={{ height: appTokens.sizes.controls.toggleHeight }}
       >
         <ToggleButton
           value="gallery"
           aria-label={appTokens.copy.labels.galleryView}
         >
-          <ViewModuleIcon sx={{ fontSize: appTokens.sizes.actionIcon }} />
+          <ViewModuleIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
         </ToggleButton>
         <ToggleButton value="list" aria-label={appTokens.copy.labels.listView}>
-          <ViewListIcon sx={{ fontSize: appTokens.sizes.actionIcon }} />
+          <ViewListIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
         </ToggleButton>
       </ToggleButtonGroup>
     </Box>
@@ -203,33 +244,41 @@ export function BrowserGalleryCard({
   title,
   filename,
   isPinned = false,
+  selected = false,
   preview,
   metadata,
+  onClick,
+  onDoubleClick,
   onContextMenu,
 }: BrowserGalleryCardProps) {
   return (
     <Box
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
         position: "relative",
-        borderRadius: appTokens.radii.card / 8,
+        borderRadius: appTokens.shape.radius.card,
         overflow: "hidden",
         border: "1px solid",
-        borderColor: isPinned ? "primary.main" : "divider",
-        bgcolor: "action.hover",
+        borderColor: selected || isPinned ? "primary.main" : "divider",
+        bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
-        transition: "border-color 0.15s, background-color 0.15s",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+        boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
           bgcolor: "action.selected",
-          borderColor: isPinned ? "primary.light" : "action.selected",
+          borderColor: selected || isPinned ? "primary.light" : "action.selected",
         },
       }}
     >
       {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
-          aspectRatio: appTokens.layout.squareAspectRatio,
+          aspectRatio: appTokens.sizes.preview.aspectRatio,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -252,12 +301,7 @@ export function BrowserGalleryCard({
           {filename}
         </Typography>
         <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            flexWrap: "wrap",
-          }}
+          sx={browserMetadataRowSx}
         >
           {metadata}
         </Box>
@@ -270,12 +314,17 @@ export function BrowserListRow({
   title,
   filename,
   isPinned = false,
+  selected = false,
   preview,
   metadata,
+  onClick,
+  onDoubleClick,
   onContextMenu,
 }: BrowserListRowProps) {
   return (
     <Box
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
@@ -285,30 +334,30 @@ export function BrowserListRow({
         gap: 1.25,
         px: 1,
         py: 0.85,
-        borderRadius: appTokens.radii.panel / 8,
+        borderRadius: appTokens.shape.radius.panel,
         border: "1px solid",
-        borderColor: isPinned ? "primary.main" : "divider",
-        bgcolor: "action.hover",
+        borderColor: selected || isPinned ? "primary.main" : "divider",
+        bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
-        transition: "border-color 0.15s, background-color 0.15s",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+        boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
           bgcolor: "action.selected",
-          borderColor: isPinned ? "primary.light" : "action.selected",
+          borderColor: selected || isPinned ? "primary.light" : "action.selected",
         },
       }}
     >
       {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
-          width: 54,
-          minWidth: 54,
-          aspectRatio: appTokens.layout.squareAspectRatio,
-          borderRadius: appTokens.radii.control,
+          width: appTokens.sizes.preview.listRow,
+          minWidth: appTokens.sizes.preview.listRow,
+          height: appTokens.sizes.preview.listRow,
           overflow: "hidden",
           bgcolor: "background.paper",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          display: "block",
         }}
       >
         {preview}
@@ -326,12 +375,7 @@ export function BrowserListRow({
           {filename}
         </Typography>
         <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            flexWrap: "wrap",
-          }}
+          sx={browserMetadataRowSx}
         >
           {metadata}
         </Box>
@@ -349,9 +393,9 @@ function PinnedBadge() {
         right: 4,
         zIndex: 1,
         bgcolor: "primary.main",
-        borderRadius: appTokens.radii.round,
-        width: appTokens.sizes.badge,
-        height: appTokens.sizes.badge,
+        borderRadius: appTokens.shape.radius.round,
+        width: appTokens.sizes.preview.badge,
+        height: appTokens.sizes.preview.badge,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -359,7 +403,7 @@ function PinnedBadge() {
     >
       <StarIcon
         sx={{
-          fontSize: appTokens.sizes.badgeIcon,
+          fontSize: appTokens.sizes.preview.badgeIcon,
           color: appTokens.colors.text.contrast,
         }}
       />

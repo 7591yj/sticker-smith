@@ -60,6 +60,22 @@ async function revealWithLinuxFileManager(
 export class ShellService {
   constructor(private readonly libraryService: LibraryService) {}
 
+  private async revealFolder(folderPath: string) {
+    await fs.mkdir(folderPath, { recursive: true });
+
+    if (
+      process.platform === "linux" &&
+      (await revealWithLinuxFileManager(folderPath, false).catch(() => false))
+    ) {
+      return;
+    }
+
+    const openError = await shell.openPath(folderPath);
+    if (openError) {
+      throw new Error(openError);
+    }
+  }
+
   async revealOutput(input: { packId: string; relativePath?: string }) {
     const details = await this.libraryService.getPack(input.packId);
     if (input.relativePath) {
@@ -77,21 +93,12 @@ export class ShellService {
       return;
     }
 
-    await fs.mkdir(details.pack.outputRoot, { recursive: true });
+    await this.revealFolder(details.pack.outputRoot);
+  }
 
-    if (
-      process.platform === "linux" &&
-      (await revealWithLinuxFileManager(details.pack.outputRoot, false).catch(
-        () => false,
-      ))
-    ) {
-      return;
-    }
-
-    const openError = await shell.openPath(details.pack.outputRoot);
-    if (openError) {
-      throw new Error(openError);
-    }
+  async revealSourceFolder(input: { packId: string }) {
+    const details = await this.libraryService.getPack(input.packId);
+    await this.revealFolder(details.pack.sourceRoot);
   }
 
   async exportOutputFolder(input: {

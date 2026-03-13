@@ -18,12 +18,24 @@ const GUI_API_BINARY = process.platform === "win32" ? "gui-api.exe" : "gui-api";
 const FFMPEG_BINARY = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 const FFPROBE_BINARY = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
 const CURRENT_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const COMMAND_HEALTH_CHECK_TIMEOUT_MS = 5_000;
+
+function parseNdjsonLines(lines: string[]) {
+  return lines
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as ConversionJobEvent);
+}
 
 function parseNdjsonChunk(buffer: string) {
-  return buffer
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as ConversionJobEvent);
+  return parseNdjsonLines(buffer.split("\n"));
+}
+
+function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
+  const lines = `${buffer}${chunk.toString()}`.split("\n");
+  return {
+    buffer: lines.pop() ?? "",
+    events: parseNdjsonLines(lines),
+  };
 }
 
 async function pathExists(targetPath: string) {
@@ -47,7 +59,7 @@ async function commandIsHealthy(command: string, cwd?: string) {
         child.kill();
       }
       resolve(false);
-    }, 5_000);
+    }, COMMAND_HEALTH_CHECK_TIMEOUT_MS);
 
     child.once("error", () => {
       clearTimeout(timeout);
@@ -92,6 +104,24 @@ async function resolveSystemCommand(
   }
 
   return commandName;
+}
+
+function joinPythonPathEntries(...entries: Array<string | undefined>) {
+  const uniqueEntries: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry) {
+      continue;
+    }
+
+    for (const part of entry.split(path.delimiter).filter(Boolean)) {
+      if (!uniqueEntries.includes(part)) {
+        uniqueEntries.push(part);
+      }
+    }
+  }
+
+  return uniqueEntries.join(path.delimiter);
 }
 
 async function findWorkspaceRoot() {
@@ -211,6 +241,15 @@ export class ConverterService {
     }
   }
 
+  private async handleQueuedJobEvents(
+    packId: string,
+    events: ConversionJobEvent[],
+  ) {
+    for (const event of events) {
+      await this.handleJobEvent(packId, event);
+    }
+  }
+
   private async resolveBackendCommand() {
     const backendOverride = process.env.STICKER_SMITH_BACKEND_DIR;
 
@@ -229,15 +268,9 @@ export class ConverterService {
     }
 
     const workspaceRoot = await findWorkspaceRoot();
-    const developmentBackendDirectory =
-      backendOverride ??
-      (workspaceRoot
-        ? path.join(workspaceRoot, "tg-webm-converter", "dist", "backend")
-        : null);
-
-    if (developmentBackendDirectory) {
+    if (backendOverride) {
       const bundledBackend = await resolveBundledBackend(
-        developmentBackendDirectory,
+        backendOverride,
       );
       if (bundledBackend) {
         return bundledBackend;
@@ -250,6 +283,9 @@ export class ConverterService {
       );
     }
 
+    // In development, prefer the live Python backend so source changes are used
+    // immediately instead of a potentially stale bundled dist/backend.
+    const pythonSourceRoot = path.join(workspaceRoot, "tg-webm-converter", "src");
     return {
       command:
         process.env.PYTHON ??
@@ -259,8 +295,11 @@ export class ConverterService {
       env: {
         ...process.env,
         PYTHONPATH:
-          process.env.STICKER_SMITH_PYTHONPATH ??
-          path.join(workspaceRoot, "tg-webm-converter", "src"),
+          joinPythonPathEntries(
+            pythonSourceRoot,
+            process.env.STICKER_SMITH_PYTHONPATH,
+            process.env.PYTHONPATH,
+          ) || pythonSourceRoot,
       },
     };
   }
@@ -272,6 +311,9 @@ export class ConverterService {
 
     for (const asset of details.assets) {
       if (selectedAssetIds && !selectedAssetIds.has(asset.id)) {
+        continue;
+      }
+      if (!asset.absolutePath) {
         continue;
       }
 
@@ -351,23 +393,16 @@ export class ConverterService {
           return;
         }
 
-        eventQueue = eventQueue.then(async () => {
-          for (const event of events) {
-            await this.handleJobEvent(packId, event);
-          }
-        });
+        eventQueue = eventQueue.then(() =>
+          this.handleQueuedJobEvents(packId, events),
+        );
         eventQueue.catch(rejectOnce);
       };
 
       child.stdout.on("data", (chunk: Buffer) => {
-        stdoutBuffer += chunk.toString();
-        const lines = stdoutBuffer.split("\n");
-        stdoutBuffer = lines.pop() ?? "";
-        enqueueEvents(
-          lines
-            .filter((line) => line.trim())
-            .map((line) => JSON.parse(line) as ConversionJobEvent),
-        );
+        const parsed = consumeNdjsonChunk(stdoutBuffer, chunk);
+        stdoutBuffer = parsed.buffer;
+        enqueueEvents(parsed.events);
       });
 
       child.stderr.on("data", (chunk: Buffer) => {

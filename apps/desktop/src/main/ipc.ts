@@ -6,16 +6,29 @@ import {
   convertSelectionSchema,
   createPackSchema,
   deleteAssetSchema,
+  deleteManyAssetsSchema,
   deletePackSchema,
+  downloadTelegramPackMediaSchema,
   exportOutputFolderSchema,
   importDirectorySchema,
   importFilesSchema,
   listOutputsSchema,
   moveAssetSchema,
+  publishLocalPackSchema,
   renameAssetSchema,
+  renameManyAssetsSchema,
   renamePackSchema,
+  revealPackSourceFolderSchema,
   revealOutputSchema,
+  setAssetEmojisSchema,
+  setPackTelegramShortNameSchema,
+  setManyAssetEmojisSchema,
+  submitTelegramCodeSchema,
+  submitTelegramPasswordSchema,
+  setTelegramPhoneNumberSchema,
+  setTelegramTdlibParametersSchema,
   setPackIconSchema,
+  updateTelegramPackSchema,
 } from "@sticker-smith/shared";
 import { appTokens } from "../theme/appTokens";
 
@@ -23,11 +36,13 @@ import { ConverterService } from "./services/converterService";
 import { LibraryService } from "./services/libraryService";
 import { SettingsService } from "./services/settingsService";
 import { ShellService } from "./services/shellService";
+import { TelegramService } from "./services/telegramService";
 
 const settingsService = new SettingsService();
 const libraryService = new LibraryService(settingsService);
 const shellService = new ShellService(libraryService);
 const converterService = new ConverterService(libraryService);
+const telegramService = new TelegramService(settingsService, libraryService);
 
 function emitConversionEvent(payload: unknown) {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -35,10 +50,50 @@ function emitConversionEvent(payload: unknown) {
   }
 }
 
+function emitTelegramEvent(payload: unknown) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("telegram.event", payload);
+  }
+}
+
 export function registerIpc() {
   converterService.setEventSink(emitConversionEvent);
+  telegramService.subscribe(emitTelegramEvent);
 
   ipcMain.handle("settings.getConfig", async () => settingsService.getConfig());
+  ipcMain.handle("telegram.getState", async () => telegramService.getState());
+  ipcMain.handle(
+    "telegram.submitTdlibParameters",
+    async (_event, input: unknown) =>
+      telegramService.submitTdlibParameters(
+        setTelegramTdlibParametersSchema.parse(input),
+      ),
+  );
+  ipcMain.handle("telegram.submitPhoneNumber", async (_event, input: unknown) =>
+    telegramService.submitPhoneNumber(setTelegramPhoneNumberSchema.parse(input)),
+  );
+  ipcMain.handle("telegram.submitCode", async (_event, input: unknown) =>
+    telegramService.submitCode(submitTelegramCodeSchema.parse(input)),
+  );
+  ipcMain.handle("telegram.submitPassword", async (_event, input: unknown) =>
+    telegramService.submitPassword(submitTelegramPasswordSchema.parse(input)),
+  );
+  ipcMain.handle("telegram.logout", async () => telegramService.logout());
+  ipcMain.handle("telegram.reset", async () => telegramService.reset());
+  ipcMain.handle("telegram.syncOwnedPacks", async () =>
+    telegramService.syncOwnedPacks(),
+  );
+  ipcMain.handle("telegram.downloadPackMedia", async (_event, input: unknown) =>
+    telegramService.downloadPackMedia(
+      downloadTelegramPackMediaSchema.parse(input),
+    ),
+  );
+  ipcMain.handle("telegram.publishLocalPack", async (_event, input: unknown) =>
+    telegramService.publishLocalPack(publishLocalPackSchema.parse(input)),
+  );
+  ipcMain.handle("telegram.updateTelegramPack", async (_event, input: unknown) =>
+    telegramService.updateTelegramPack(updateTelegramPackSchema.parse(input)),
+  );
 
   ipcMain.handle("packs.list", async () => libraryService.listPacks());
   ipcMain.handle("packs.get", async (_event, input: { packId: string }) =>
@@ -69,6 +124,14 @@ export function registerIpc() {
   );
   ipcMain.handle("packs.delete", async (_event, input: unknown) =>
     libraryService.deletePack(deletePackSchema.parse(input)),
+  );
+  ipcMain.handle("packs.revealSourceFolder", async (_event, input: unknown) =>
+    shellService.revealSourceFolder(revealPackSourceFolderSchema.parse(input)),
+  );
+  ipcMain.handle("packs.setTelegramShortName", async (_event, input: unknown) =>
+    libraryService.setPackTelegramShortName(
+      setPackTelegramShortNameSchema.parse(input),
+    ),
   );
   ipcMain.handle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
@@ -105,11 +168,23 @@ export function registerIpc() {
   ipcMain.handle("assets.rename", async (_event, input: unknown) =>
     libraryService.renameAsset(renameAssetSchema.parse(input)),
   );
+  ipcMain.handle("assets.renameMany", async (_event, input: unknown) =>
+    libraryService.renameManyAssets(renameManyAssetsSchema.parse(input)),
+  );
+  ipcMain.handle("assets.setEmojis", async (_event, input: unknown) =>
+    libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
+  );
+  ipcMain.handle("assets.setEmojisMany", async (_event, input: unknown) =>
+    libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
+  );
   ipcMain.handle("assets.move", async (_event, input: unknown) =>
     libraryService.moveAsset(moveAssetSchema.parse(input)),
   );
   ipcMain.handle("assets.delete", async (_event, input: unknown) =>
     libraryService.deleteAsset(deleteAssetSchema.parse(input)),
+  );
+  ipcMain.handle("assets.deleteMany", async (_event, input: unknown) =>
+    libraryService.deleteManyAssets(deleteManyAssetsSchema.parse(input)),
   );
 
   ipcMain.handle("outputs.list", async (_event, input: unknown) =>

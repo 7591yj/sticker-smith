@@ -22,6 +22,7 @@ describe("conversion failure dialog", () => {
     const details: StickerPackDetails = {
       pack: {
         id: "pack-1",
+        source: "local",
         name: "Sample Pack",
         slug: "sample-pack",
         rootPath: "/tmp/sample-pack",
@@ -38,9 +39,11 @@ describe("conversion failure dialog", () => {
           packId: "pack-1",
           relativePath: "broken.png",
           absolutePath: "/tmp/sample-pack/source/broken.png",
+          emojiList: [],
           kind: "png",
           importedAt: "2026-03-12T00:00:00.000Z",
           originalImportPath: null,
+          downloadState: "ready",
         },
       ],
       outputs: [],
@@ -49,6 +52,27 @@ describe("conversion failure dialog", () => {
 
     Object.assign(window, {
       stickerSmith: {
+        telegram: {
+          getState: vi.fn(async () => ({
+            backend: "tdlib",
+            status: "disconnected",
+            authStep: "wait_tdlib_parameters",
+            selectedMode: "user",
+            recommendedMode: "user",
+            message: "Telegram is not connected.",
+            tdlib: {
+              apiId: null,
+              apiHashConfigured: false,
+            },
+            user: {
+              phoneNumber: null,
+            },
+            sessionUser: null,
+            lastError: null,
+            updatedAt: "2026-03-12T00:00:00.000Z",
+          })),
+          subscribe: vi.fn(() => () => undefined),
+        },
         packs: {
           list: vi.fn(async () => [details.pack]),
           get: vi.fn(async () => details),

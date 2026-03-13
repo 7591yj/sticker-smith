@@ -1,167 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import CssBaseline from "@mui/material/CssBaseline";
 import Box from "@mui/material/Box";
+import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
-import type {
-  ConversionJobEvent,
-  StickerPack,
-  StickerPackDetails,
-} from "@sticker-smith/shared";
 import { ConversionFailureDialog } from "./components/ConversionFailureDialog";
 import { ConversionStatus } from "./components/ConversionStatus";
 import { PackPanel } from "./components/PackPanel";
 import { Sidebar } from "./components/Sidebar";
+import { TelegramErrorDialog } from "./components/TelegramErrorDialog";
+import { useDesktopAppState } from "./hooks/useDesktopAppState";
 import { appTheme } from "./theme";
 
-interface ConversionFailureDialogState {
-  packName: string | null;
-  successCount: number;
-  failureCount: number;
-  failures: Array<{
-    assetLabel: string;
-    error: string;
-    mode?: ConversionJobEvent["mode"];
-  }>;
-}
-
 export function App() {
-  const [packs, setPacks] = useState<StickerPack[]>([]);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [details, setDetails] = useState<StickerPackDetails | null>(null);
-  const [conversionEvents, setConversionEvents] = useState<
-    ConversionJobEvent[]
-  >([]);
-  const [converting, setConverting] = useState(false);
-  const [failureDialog, setFailureDialog] =
-    useState<ConversionFailureDialogState | null>(null);
-  const latestDetailsRef = useRef<StickerPackDetails | null>(null);
-  const jobFailuresRef = useRef<
-    Record<string, ConversionFailureDialogState["failures"]>
-  >({});
-  const jobPackNamesRef = useRef<Record<string, string | null>>({});
-  const jobAssetNamesRef = useRef<Record<string, Record<string, string>>>({});
-
-  useEffect(() => {
-    latestDetailsRef.current = details;
-  }, [details]);
-
-  useEffect(() => {
-    let active = true;
-
-    void window.stickerSmith.packs.list().then((nextPacks) => {
-      if (!active) {
-        return;
-      }
-
-      setPacks(nextPacks);
-      setSelectedPackId(nextPacks[0]?.id ?? null);
-    });
-
-    const unsub = window.stickerSmith.conversion.subscribe((event) => {
-      setConversionEvents((cur) => [event, ...cur].slice(0, 50));
-
-      if (event.type === "job_started") {
-        const assetNames = Object.fromEntries(
-          (latestDetailsRef.current?.assets ?? []).map((asset) => [
-            asset.id,
-            asset.relativePath.split("/").pop() ?? asset.relativePath,
-          ]),
-        );
-        setFailureDialog(null);
-        jobFailuresRef.current[event.jobId] = [];
-        jobPackNamesRef.current[event.jobId] =
-          latestDetailsRef.current?.pack.name ?? null;
-        jobAssetNamesRef.current[event.jobId] = assetNames;
-        setConverting(true);
-        return;
-      }
-
-      if (event.type === "asset_failed") {
-        const assetLabel =
-          (event.assetId
-            ? jobAssetNamesRef.current[event.jobId]?.[event.assetId]
-            : null) ??
-          event.assetId ??
-          "Unknown asset";
-        jobFailuresRef.current[event.jobId] = [
-          ...(jobFailuresRef.current[event.jobId] ?? []),
-          {
-            assetLabel,
-            error: event.error ?? "Conversion failed for an unknown reason.",
-            mode: event.mode,
-          },
-        ];
-        return;
-      }
-
-      if (event.type === "job_finished") {
-        const failures = jobFailuresRef.current[event.jobId] ?? [];
-        const failureCount = event.failureCount ?? failures.length;
-        setConverting(false);
-
-        if (failureCount > 0) {
-          setFailureDialog({
-            packName:
-              jobPackNamesRef.current[event.jobId] ??
-              latestDetailsRef.current?.pack.name ??
-              null,
-            successCount: event.successCount ?? 0,
-            failureCount,
-            failures:
-              failures.length > 0
-                ? failures
-                : [
-                    {
-                      assetLabel: "Conversion job",
-                      error:
-                        "One or more assets failed while the conversion ran in the background.",
-                    },
-                  ],
-          });
-        }
-
-        delete jobFailuresRef.current[event.jobId];
-        delete jobPackNamesRef.current[event.jobId];
-        delete jobAssetNamesRef.current[event.jobId];
-      }
-    });
-
-    return () => {
-      active = false;
-      unsub();
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    if (!selectedPackId) {
-      setDetails(null);
-      return;
-    }
-
-    void window.stickerSmith.packs.get(selectedPackId).then((nextDetails) => {
-      if (active) {
-        setDetails(nextDetails);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [selectedPackId]);
-
-  const refreshPacks = useCallback(async () => {
-    const next = await window.stickerSmith.packs.list();
-    setPacks(next);
-    return next;
-  }, []);
-
-  const refreshDetails = useCallback(async (packId: string) => {
-    const next = await window.stickerSmith.packs.get(packId);
-    setDetails(next);
-    return next;
-  }, []);
+  const {
+    conversionEvents,
+    converting,
+    details,
+    dismissFailureDialog,
+    dismissTelegramErrorDialog,
+    downloadTelegramPackMedia,
+    failureDialog,
+    logoutTelegram,
+    packs,
+    publishLocalPack,
+    refreshDetails,
+    refreshPacks,
+    resetTelegram,
+    selectedPackId,
+    setDetails,
+    setSelectedPackId,
+    submitTelegramCode,
+    submitTelegramPassword,
+    submitTelegramPhoneNumber,
+    submitTelegramTdlibParameters,
+    syncTelegramPacks,
+    telegramConnected,
+    telegramErrorDialog,
+    telegramPublishingPackIds,
+    telegramState,
+    telegramSyncInProgress,
+    telegramSyncRecommended,
+    telegramUpdatingPackIds,
+    updateTelegramPack,
+  } = useDesktopAppState();
 
   return (
     <ThemeProvider theme={appTheme}>
@@ -176,8 +55,18 @@ export function App() {
       >
         <Sidebar
           packs={packs}
+          telegramState={telegramState}
+          telegramSyncInProgress={telegramSyncInProgress}
+          telegramSyncRecommended={telegramSyncRecommended}
           selectedPackId={selectedPackId}
           onSelect={setSelectedPackId}
+          onSubmitTelegramTdlibParameters={submitTelegramTdlibParameters}
+          onSubmitTelegramPhoneNumber={submitTelegramPhoneNumber}
+          onSubmitTelegramCode={submitTelegramCode}
+          onSubmitTelegramPassword={submitTelegramPassword}
+          onLogoutTelegram={logoutTelegram}
+          onResetTelegram={resetTelegram}
+          onSyncTelegramPacks={syncTelegramPacks}
           refreshPacks={refreshPacks}
           setSelectedPackId={setSelectedPackId}
         />
@@ -192,10 +81,24 @@ export function App() {
           <PackPanel
             details={details}
             converting={converting}
+            telegramConnected={telegramConnected}
+            telegramPublishing={
+              details?.pack.source === "local"
+                ? telegramPublishingPackIds.includes(details.pack.id)
+                : false
+            }
+            telegramUpdating={
+              details?.pack.source === "telegram"
+                ? telegramUpdatingPackIds.includes(details.pack.id)
+                : false
+            }
             setDetails={setDetails}
             refreshDetails={refreshDetails}
             refreshPacks={refreshPacks}
             setSelectedPackId={setSelectedPackId}
+            onPublishLocalPack={publishLocalPack}
+            onDownloadTelegramPackMedia={downloadTelegramPackMedia}
+            onUpdateTelegramPack={updateTelegramPack}
           />
           <ConversionStatus events={conversionEvents} converting={converting} />
         </Box>
@@ -206,7 +109,13 @@ export function App() {
         successCount={failureDialog?.successCount ?? 0}
         failureCount={failureDialog?.failureCount ?? 0}
         failures={failureDialog?.failures ?? []}
-        onClose={() => setFailureDialog(null)}
+        onClose={dismissFailureDialog}
+      />
+      <TelegramErrorDialog
+        open={telegramErrorDialog !== null}
+        title={telegramErrorDialog?.title ?? "Telegram request failed"}
+        message={telegramErrorDialog?.message ?? "Telegram request failed."}
+        onClose={dismissTelegramErrorDialog}
       />
     </ThemeProvider>
   );

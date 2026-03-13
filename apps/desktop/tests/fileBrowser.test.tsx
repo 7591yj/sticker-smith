@@ -1,5 +1,7 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   OutputArtifact,
   SourceAsset,
@@ -7,6 +9,7 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { AssetGrid } from "../src/renderer/components/AssetGrid";
+import { EmojiPickerDialog } from "../src/renderer/components/EmojiPickerDialog";
 import { OutputsList } from "../src/renderer/components/OutputsList";
 import {
   FilePreview,
@@ -16,6 +19,7 @@ import {
 function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
   return {
     id: "pack-1",
+    source: "local",
     name: "Sample Pack",
     slug: "sample-pack",
     rootPath: "/tmp/sample-pack",
@@ -33,15 +37,19 @@ function createAsset(
   id: string,
   relativePath: string,
   kind: SourceAsset["kind"] = "png",
+  overrides: Partial<SourceAsset> = {},
 ): SourceAsset {
   return {
     id,
     packId: "pack-1",
     relativePath,
     absolutePath: `/tmp/sample-pack/source/${relativePath}`,
+    emojiList: [],
     kind,
     importedAt: "2026-03-11T00:00:00.000Z",
     originalImportPath: null,
+    downloadState: "ready",
+    ...overrides,
   };
 }
 
@@ -56,11 +64,24 @@ function createOutput(
     relativePath,
     absolutePath: `/tmp/sample-pack/webm/${relativePath}`,
     sizeBytes: 32_768,
+    sha256: null,
     updatedAt: "2026-03-11T00:00:00.000Z",
   };
 }
 
 describe("fileBrowser", () => {
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & {
+        IS_REACT_ACT_ENVIRONMENT?: boolean;
+      }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
   it("keeps pinned items first before sorting the rest", () => {
     const sorted = sortItemsWithPinnedFirst(
       [
@@ -113,22 +134,170 @@ describe("AssetGrid", () => {
 
     expect(markup.indexOf("icon.png")).toBeLessThan(markup.indexOf("alpha.png"));
   });
+
+  it("does not render emoji metadata in the assets grid", () => {
+    const markup = renderToStaticMarkup(
+      <AssetGrid
+        assets={[createAsset("asset-1", "needs-emoji.png")]}
+        pack={createPack()}
+        view="gallery"
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [createAsset("asset-1", "needs-emoji.png")],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).not.toContain("No emoji");
+  });
+
+  it("renders a standalone telegram pack icon preview in the assets grid", () => {
+    const markup = renderToStaticMarkup(
+      <AssetGrid
+        assets={[]}
+        pack={createPack({
+          source: "telegram",
+          thumbnailPath: "/tmp/sample-pack/source/telegram-pack-icon.webp",
+          telegram: {
+            stickerSetId: "100",
+            shortName: "sample_pack",
+            title: "Sample Pack",
+            format: "video",
+            syncState: "idle",
+            lastSyncedAt: "2026-03-12T00:00:00.000Z",
+            lastSyncError: null,
+            publishedFromLocalPackId: null,
+          },
+        })}
+        view="gallery"
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack({
+            source: "telegram",
+            thumbnailPath: "/tmp/sample-pack/source/telegram-pack-icon.webp",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "sample_pack",
+              title: "Sample Pack",
+              format: "video",
+              syncState: "idle",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).toContain("telegram-pack-icon.webp");
+    expect(markup).toContain("icon");
+    expect(markup).toContain("ready");
+  });
 });
 
 describe("OutputsList", () => {
   it("uses preview cards without per-file open controls and keeps icon output first", () => {
     const markup = renderToStaticMarkup(
       <OutputsList
+        packId="pack-1"
         view="gallery"
+        assets={[
+          createAsset("asset-for-zeta.webm", "zeta.png", "png", {
+            emojiList: ["🙂"],
+          }),
+          createAsset("asset-for-alpha.webm", "alpha.png"),
+        ]}
         outputs={[
           createOutput("zeta.webm"),
           createOutput("icon.webm", "icon"),
           createOutput("alpha.webm"),
         ]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
       />,
     );
 
     expect(markup).not.toContain("Open containing folder");
     expect(markup.indexOf("icon.webm")).toBeLessThan(markup.indexOf("alpha.webm"));
+    expect(markup).toContain("🙂");
+    expect(markup).toContain("No emoji");
+  });
+
+  it("shows leaf filenames for nested output paths", () => {
+    const markup = renderToStaticMarkup(
+      <OutputsList
+        packId="pack-1"
+        view="list"
+        assets={[createAsset("asset-for-nested/alpha.webm", "alpha.png")]}
+        outputs={[
+          {
+            ...createOutput("nested/alpha.webm"),
+            sourceAssetId: "asset-for-nested/alpha.webm",
+          },
+        ]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).toContain("alpha.webm");
+    expect(markup).not.toContain(">nested/alpha.webm<");
+  });
+
+  it("does not render no-emoji metadata for icon outputs", () => {
+    const markup = renderToStaticMarkup(
+      <OutputsList
+        packId="pack-1"
+        view="gallery"
+        assets={[createAsset("asset-for-icon.webm", "icon.png")]}
+        outputs={[createOutput("icon.webm", "icon")]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).not.toContain("No emoji");
+  });
+});
+
+describe("EmojiPickerDialog", () => {
+  it("renders an expanded Telegram emoji catalog", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <EmojiPickerDialog
+          open
+          title="Edit Emojis"
+          initialEmojis={[]}
+          onConfirm={vi.fn(async () => undefined)}
+          onClose={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Search emojis");
+    expect(document.body.textContent).toContain("🫶");
+    expect(document.body.textContent).toContain("🩷");
+    expect(document.body.textContent).toContain("🌮");
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });
