@@ -17,7 +17,20 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
+import { getLeafName } from "../utils/pathDisplay";
 import { RenameDialog } from "./RenameDialog";
+import {
+  browserCountLabelSx,
+  browserGridContainerSx,
+  browserListContainerSx,
+  browserMenuIconSx,
+  browserMenuPaperSx,
+  browserMenuTitleSx,
+  browserMetaChipSx,
+  browserMetadataRowSx,
+  browserToolbarSx,
+  formatCountLabel,
+} from "./browserStyles";
 import {
   BrowserGalleryCard,
   BrowserListRow,
@@ -287,24 +300,16 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   return (
     <>
       <Box
-        sx={{
-          px: 2.5,
-          pt: 1.25,
-          pb: 1,
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          flexWrap: "wrap",
-        }}
+        sx={browserToolbarSx}
       >
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+          sx={browserCountLabelSx}
         >
           {selectedAssetIds.length > 0
-            ? `${selectedAssetIds.length} selected asset${selectedAssetIds.length !== 1 ? "s" : ""}`
-            : `${sortedAssets.length} asset${sortedAssets.length !== 1 ? "s" : ""}`}
+            ? `${formatCountLabel(selectedAssetIds.length, "selected asset")}`
+            : formatCountLabel(sortedAssets.length, "asset")}
         </Typography>
         <Button
           size="small"
@@ -357,7 +362,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       <Box sx={{ pb: 2.5 }}>
         {view === "list" ? (
           <Box
-            sx={{ display: "flex", flexDirection: "column", gap: 0.75, px: 2.5 }}
+            sx={browserListContainerSx}
           >
             {standaloneTelegramIconPath ? (
               <BrowserListRow
@@ -372,17 +377,16 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   />
                 }
                 metadata={
-                  <Box sx={fileMetadataRowSx}>
-                    <Chip label="icon" size="small" sx={fileMetaChipSx} />
-                    <Chip label="ready" size="small" sx={fileMetaChipSx} />
+                  <Box sx={browserMetadataRowSx}>
+                    <Chip label="icon" size="small" sx={browserMetaChipSx} />
+                    <Chip label="ready" size="small" sx={browserMetaChipSx} />
                   </Box>
                 }
               />
             ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
-              const filename =
-                asset.relativePath.split("/").pop() ?? asset.relativePath;
+              const filename = getLeafName(asset.relativePath);
 
               return (
                 <BrowserListRow
@@ -402,13 +406,13 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                     />
                   }
                   metadata={
-                    <Box sx={fileMetadataRowSx}>
-                      <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
+                    <Box sx={browserMetadataRowSx}>
+                      <Chip label={asset.kind} size="small" sx={browserMetaChipSx} />
                       {pack.source === "telegram" ? (
                         <Chip
                           label={formatDownloadSummary(asset)}
                           size="small"
-                          sx={fileMetaChipSx}
+                          sx={browserMetaChipSx}
                         />
                       ) : null}
                     </Box>
@@ -419,12 +423,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           </Box>
         ) : (
           <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: `repeat(auto-fill, minmax(${appTokens.layout.fileGridMinWidth}px, 1fr))`,
-              gap: 1.5,
-              px: 2.5,
-            }}
+            sx={browserGridContainerSx}
           >
             {standaloneTelegramIconPath ? (
               <BrowserGalleryCard
@@ -439,17 +438,16 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                   />
                 }
                 metadata={
-                  <Box sx={fileMetadataRowSx}>
-                    <Chip label="icon" size="small" sx={fileMetaChipSx} />
-                    <Chip label="ready" size="small" sx={fileMetaChipSx} />
+                  <Box sx={browserMetadataRowSx}>
+                    <Chip label="icon" size="small" sx={browserMetaChipSx} />
+                    <Chip label="ready" size="small" sx={browserMetaChipSx} />
                   </Box>
                 }
               />
             ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
-              const filename =
-                asset.relativePath.split("/").pop() ?? asset.relativePath;
+              const filename = getLeafName(asset.relativePath);
 
               return (
                 <BrowserGalleryCard
@@ -469,13 +467,13 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
                     />
                   }
                   metadata={
-                    <Box sx={fileMetadataRowSx}>
-                      <Chip label={asset.kind} size="small" sx={fileMetaChipSx} />
+                    <Box sx={browserMetadataRowSx}>
+                      <Chip label={asset.kind} size="small" sx={browserMetaChipSx} />
                       {pack.source === "telegram" ? (
                         <Chip
                           label={formatDownloadSummary(asset)}
                           size="small"
-                          sx={fileMetaChipSx}
+                          sx={browserMetaChipSx}
                         />
                       ) : null}
                     </Box>
@@ -497,23 +495,18 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             : undefined
         }
         slotProps={{
-          paper: { sx: { minWidth: appTokens.sizes.contextMenuWide } },
+          paper: { sx: browserMenuPaperSx },
         }}
       >
         {contextAssets.length > 0 ? (
           <MenuItem
             disabled
             dense
-            sx={{
-              opacity: "1 !important",
-              fontSize: appTokens.typography.fontSizes.caption,
-              color: "text.secondary",
-              fontWeight: appTokens.typography.fontWeights.medium,
-            }}
+            sx={browserMenuTitleSx}
           >
             {contextAssets.length === 1
-              ? contextAssets[0]!.relativePath.split("/").pop()
-              : `${contextAssets.length} selected asset${contextAssets.length !== 1 ? "s" : ""}`}
+              ? getLeafName(contextAssets[0]!.relativePath)
+              : formatCountLabel(contextAssets.length, "selected asset")}
           </MenuItem>
         ) : null}
         <Divider />
@@ -521,16 +514,12 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           <MenuItem onClick={handleSetIcon} dense>
             {contextPrimaryAsset && pack.iconAssetId === contextPrimaryAsset.id ? (
               <>
-                <StarBorderIcon
-                  sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-                />
+                <StarBorderIcon sx={browserMenuIconSx} />
                 {appTokens.copy.actions.removeIcon}
               </>
             ) : (
               <>
-                <StarIcon
-                  sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-                />
+                <StarIcon sx={browserMenuIconSx} />
                 {appTokens.copy.actions.setAsIcon}
               </>
             )}
@@ -544,13 +533,13 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           }
           dense
         >
-          <EditIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <EditIcon sx={browserMenuIconSx} />
           {contextAssets.length === 1
             ? appTokens.copy.actions.rename
             : appTokens.copy.actions.batchRename}
         </MenuItem>
         <MenuItem onClick={() => void handleDelete()} dense sx={{ color: "error.light" }}>
-          <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <DeleteIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.delete}
         </MenuItem>
       </Menu>
@@ -595,17 +584,3 @@ function formatDownloadSummary(asset: SourceAsset) {
       return "missing";
   }
 }
-
-const fileMetadataRowSx = {
-  display: "flex",
-  alignItems: "center",
-  gap: 0.75,
-  flexWrap: "wrap",
-} as const;
-
-const fileMetaChipSx = {
-  height: 18,
-  fontSize: appTokens.typography.fontSizes.assetKind,
-  textTransform: "uppercase",
-  letterSpacing: appTokens.typography.letterSpacing.chip,
-} as const;

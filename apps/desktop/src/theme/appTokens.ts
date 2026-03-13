@@ -17,6 +17,44 @@ const APP_FONT_FAMILY = [
   "monospace",
 ].join(", ");
 
+const shapeRadiusPx = {
+  small: 4,
+  control: 6,
+  panel: 8,
+  card: 12,
+  thumbnail: 6,
+} as const;
+
+const shapeRadius = {
+  small: shapeRadiusPx.small / shapeRadiusPx.panel,
+  control: shapeRadiusPx.control / shapeRadiusPx.panel,
+  panel: 1,
+  card: shapeRadiusPx.card / shapeRadiusPx.panel,
+  thumbnail: shapeRadiusPx.thumbnail / shapeRadiusPx.panel,
+  round: "50%",
+} as const;
+
+const layoutSpacing = {
+  panelPaddingX: 2.5,
+  panelPaddingY: 1,
+  controlGap: 1,
+  compactGap: 0.5,
+  metadataGap: 0.75,
+  browserPaddingX: 2.5,
+  browserListGap: 0.75,
+  browserGridGap: 1.5,
+  browserToolbarTop: 1.25,
+  browserToolbarBottom: 1,
+  menuIconGap: 1.5,
+  sidebarPaddingX: 1.5,
+  sectionLabelTop: 0.75,
+  sectionLabelCompactTop: 0.5,
+  sectionLabelBottom: 0.25,
+  failureCardX: 1.25,
+  failureCardY: 1,
+  toolbarButtonX: 1.5,
+} as const;
+
 export const appTokens = {
   colorScheme: "dark",
   colors: {
@@ -66,20 +104,15 @@ export const appTokens = {
       chip: "0.04em",
     },
   },
-  radii: {
-    control: 6,
-    panel: 8,
-    card: 12,
-    small: 4,
-    thumbnail: 6,
-    round: "50%",
+  shape: {
+    radiusPx: shapeRadiusPx,
+    radius: shapeRadius,
   },
   layout: {
     sidebarWidth: 240,
     panelHeaderMinHeight: 48,
     tabsMinHeight: 40,
-    fileGridMinWidth: 96,
-    squareAspectRatio: "1 / 1",
+    spacing: layoutSpacing,
     window: {
       width: 1600,
       height: 980,
@@ -88,18 +121,36 @@ export const appTokens = {
     },
   },
   sizes: {
-    thumbnail: 20,
-    fileTypeIcon: 28,
-    sidebarBrandIcon: 18,
-    panelActionIcon: 17,
-    actionIcon: 16,
-    compactActionIcon: 15,
-    badge: 16,
-    badgeIcon: 10,
-    toggleHeight: 28,
-    progressHeight: 3,
-    contextMenuWide: 170,
-    contextMenuNarrow: 160,
+    preview: {
+      thumbnail: 20,
+      fallbackIcon: 16,
+      fileTypeIcon: 28,
+      listRow: 56,
+      gridMinWidth: 96,
+      aspectRatio: "1 / 1",
+      badge: 16,
+      badgeIcon: 10,
+    },
+    icon: {
+      sidebarBrand: 18,
+      panelAction: 17,
+      action: 16,
+      compactAction: 15,
+    },
+    controls: {
+      toggleHeight: 28,
+    },
+    progress: {
+      height: 3,
+    },
+    chip: {
+      compactHeight: 18,
+    },
+    menu: {
+      contextWide: 170,
+      contextNarrow: 160,
+      telegram: 240,
+    },
   },
   copy: {
     appName: "Sticker Smith",

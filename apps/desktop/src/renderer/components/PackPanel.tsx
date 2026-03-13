@@ -24,6 +24,7 @@ import {
   formatTelegramSyncStateLabel,
   telegramSyncStateChipSx,
 } from "../utils/telegramSyncState";
+import { actionIconSx, formatCountLabel } from "./browserStyles";
 import { AssetGrid } from "./AssetGrid";
 import { BrowserViewToggle, type BrowserView } from "./fileBrowser";
 import { OutputsList } from "./OutputsList";
@@ -56,6 +57,18 @@ function suggestShortName(details: StickerPackDetails) {
   );
 }
 
+const panelPrimaryButtonSx = {
+  textTransform: "none",
+  fontWeight: appTokens.typography.fontWeights.medium,
+  fontSize: appTokens.typography.fontSizes.body,
+  px: appTokens.layout.spacing.toolbarButtonX,
+} as const;
+
+const panelSecondaryButtonSx = {
+  textTransform: "none",
+  fontSize: appTokens.typography.fontSizes.bodyCompact,
+} as const;
+
 export function PackPanel({
   details,
   converting,
@@ -75,6 +88,24 @@ export function PackPanel({
   const [publishSubmitting, setPublishSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
   const [view, setView] = useState<BrowserView>("list");
+  const packId = details?.pack.id ?? null;
+
+  const runPackAction = useCallback(
+    async (
+      action: (currentPackId: string) => Promise<unknown>,
+      options: { refreshDetails?: boolean } = {},
+    ) => {
+      if (!packId) {
+        return;
+      }
+
+      await action(packId);
+      if (options.refreshDetails) {
+        await refreshDetails(packId);
+      }
+    },
+    [packId, refreshDetails],
+  );
 
   const handleConvert = useCallback(async () => {
     if (!details) return;
@@ -85,39 +116,38 @@ export function PackPanel({
   }, [details, setDetails]);
 
   const handleImportFiles = useCallback(async () => {
-    if (!details) return;
-    await window.stickerSmith.assets.importFiles({ packId: details.pack.id });
-    await refreshDetails(details.pack.id);
-  }, [details, refreshDetails]);
+    await runPackAction(
+      (currentPackId) =>
+        window.stickerSmith.assets.importFiles({ packId: currentPackId }),
+      { refreshDetails: true },
+    );
+  }, [runPackAction]);
 
   const handleImportDir = useCallback(async () => {
-    if (!details) return;
-    await window.stickerSmith.assets.importDirectory({
-      packId: details.pack.id,
-    });
-    await refreshDetails(details.pack.id);
-  }, [details, refreshDetails]);
+    await runPackAction(
+      (currentPackId) =>
+        window.stickerSmith.assets.importDirectory({ packId: currentPackId }),
+      { refreshDetails: true },
+    );
+  }, [runPackAction]);
 
   const handleOpenOutputs = useCallback(async () => {
-    if (!details) return;
-    await window.stickerSmith.outputs.revealInFolder({
-      packId: details.pack.id,
-    });
-  }, [details]);
+    await runPackAction((currentPackId) =>
+      window.stickerSmith.outputs.revealInFolder({ packId: currentPackId }),
+    );
+  }, [runPackAction]);
 
   const handleOpenAssets = useCallback(async () => {
-    if (!details) return;
-    await window.stickerSmith.packs.revealSourceFolder({
-      packId: details.pack.id,
-    });
-  }, [details]);
+    await runPackAction((currentPackId) =>
+      window.stickerSmith.packs.revealSourceFolder({ packId: currentPackId }),
+    );
+  }, [runPackAction]);
 
   const handleExportOutputs = useCallback(async () => {
-    if (!details) return;
-    await window.stickerSmith.outputs.exportFolder({
-      packId: details.pack.id,
-    });
-  }, [details]);
+    await runPackAction((currentPackId) =>
+      window.stickerSmith.outputs.exportFolder({ packId: currentPackId }),
+    );
+  }, [runPackAction]);
 
   const handleDelete = useCallback(async () => {
     if (!details || details.pack.source === "telegram") return;
@@ -209,11 +239,11 @@ export function PackPanel({
     >
       <Box
         sx={{
-          px: 2.5,
-          py: 1,
+          px: appTokens.layout.spacing.panelPaddingX,
+          py: appTokens.layout.spacing.panelPaddingY,
           display: "flex",
           alignItems: "center",
-          gap: 0.5,
+          gap: appTokens.layout.spacing.compactGap,
           borderBottom: 1,
           borderColor: "divider",
           minHeight: appTokens.layout.panelHeaderMinHeight,
@@ -233,7 +263,7 @@ export function PackPanel({
               sx={{
                 display: "flex",
                 alignItems: "center",
-                gap: 0.75,
+                gap: appTokens.layout.spacing.metadataGap,
                 flexWrap: "wrap",
                 mt: 0.375,
               }}
@@ -264,7 +294,7 @@ export function PackPanel({
             onClick={() => setRenaming(true)}
             aria-label={appTokens.copy.tooltips.rename}
           >
-            <EditIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
+            <EditIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
           </IconButton>
         </Tooltip>
         {pack.source === "local" ? (
@@ -275,7 +305,7 @@ export function PackPanel({
               color="error"
               aria-label={appTokens.copy.tooltips.deletePack}
             >
-              <DeleteIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
+              <DeleteIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
             </IconButton>
           </Tooltip>
         ) : (
@@ -287,7 +317,7 @@ export function PackPanel({
                 disabled
                 aria-label={appTokens.copy.tooltips.deleteTelegramPack}
               >
-                <DeleteIcon sx={{ fontSize: appTokens.sizes.panelActionIcon }} />
+                <DeleteIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
               </IconButton>
             </span>
           </Tooltip>
@@ -308,18 +338,11 @@ export function PackPanel({
                 size="small"
                 variant="outlined"
                 startIcon={
-                  <PublishIcon
-                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
-                  />
+                  <PublishIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
                 }
                 disabled={!telegramConnected || telegramPublishing}
                 onClick={() => setPublishDialogOpen(true)}
-                sx={{
-                  textTransform: "none",
-                  fontWeight: appTokens.typography.fontWeights.medium,
-                  fontSize: appTokens.typography.fontSizes.body,
-                  px: 1.5,
-                }}
+                sx={panelPrimaryButtonSx}
               >
                 {primaryActionLabel}
               </Button>
@@ -340,9 +363,7 @@ export function PackPanel({
                 size="small"
                 variant="outlined"
                 startIcon={
-                  <UpdateIcon
-                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
-                  />
+                  <UpdateIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
                 }
                 disabled={!telegramConnected || telegramMirrorBusy || telegramUnsupported}
                 onClick={() =>
@@ -350,12 +371,7 @@ export function PackPanel({
                     () => undefined,
                   )
                 }
-                sx={{
-                  textTransform: "none",
-                  fontWeight: appTokens.typography.fontWeights.medium,
-                  fontSize: appTokens.typography.fontSizes.body,
-                  px: 1.5,
-                }}
+                sx={panelPrimaryButtonSx}
               >
                 {primaryActionLabel}
               </Button>
@@ -377,19 +393,12 @@ export function PackPanel({
               size="small"
               variant="contained"
               startIcon={
-                <PlayArrowIcon
-                  sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
-                />
+                <PlayArrowIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
               }
               onClick={handleConvert}
               disabled={converting || assets.length === 0}
               disableElevation
-              sx={{
-                textTransform: "none",
-                fontWeight: appTokens.typography.fontWeights.medium,
-                fontSize: appTokens.typography.fontSizes.body,
-                px: 1.5,
-              }}
+              sx={panelPrimaryButtonSx}
             >
               {appTokens.copy.actions.convert}
             </Button>
@@ -410,9 +419,7 @@ export function PackPanel({
                 size="small"
                 variant="outlined"
                 startIcon={
-                  <DownloadIcon
-                    sx={{ fontSize: `${appTokens.sizes.actionIcon}px !important` }}
-                  />
+                  <DownloadIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
                 }
                 disabled={telegramMirrorBusy || telegramMediaBusy}
                 onClick={() =>
@@ -420,12 +427,7 @@ export function PackPanel({
                     packId: details.pack.id,
                   }).catch(() => undefined)
                 }
-                sx={{
-                  textTransform: "none",
-                  fontWeight: appTokens.typography.fontWeights.medium,
-                  fontSize: appTokens.typography.fontSizes.body,
-                  px: 1.5,
-                }}
+                sx={panelPrimaryButtonSx}
               >
                 {telegramMediaActionLabel}
               </Button>
@@ -437,8 +439,8 @@ export function PackPanel({
       {pack.telegram?.lastSyncError ? (
         <Box
           sx={{
-            px: 2.5,
-            py: 1,
+            px: appTokens.layout.spacing.panelPaddingX,
+            py: appTokens.layout.spacing.panelPaddingY,
             borderBottom: 1,
             borderColor: "divider",
             bgcolor: "error.dark",
@@ -456,7 +458,7 @@ export function PackPanel({
 
       <Box
         sx={{
-          px: 2.5,
+          px: appTokens.layout.spacing.panelPaddingX,
           py: 0.75,
           display: "flex",
           alignItems: "center",
@@ -470,15 +472,10 @@ export function PackPanel({
           size="small"
           variant="outlined"
           startIcon={
-            <AddIcon
-              sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
-            />
+            <AddIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
           }
           onClick={handleImportFiles}
-          sx={{
-            textTransform: "none",
-            fontSize: appTokens.typography.fontSizes.bodyCompact,
-          }}
+          sx={panelSecondaryButtonSx}
         >
           {appTokens.copy.actions.addFiles}
         </Button>
@@ -486,15 +483,10 @@ export function PackPanel({
           size="small"
           variant="outlined"
           startIcon={
-            <CreateNewFolderIcon
-              sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
-            />
+            <CreateNewFolderIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
           }
           onClick={handleImportDir}
-          sx={{
-            textTransform: "none",
-            fontSize: appTokens.typography.fontSizes.bodyCompact,
-          }}
+          sx={panelSecondaryButtonSx}
         >
           {appTokens.copy.actions.addFolder}
         </Button>
@@ -513,23 +505,20 @@ export function PackPanel({
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            {assets.length} asset{assets.length !== 1 ? "s" : ""}
+            {formatCountLabel(assets.length, "asset")}
             {outputs.length > 0
-              ? ` · ${outputs.length} output${outputs.length !== 1 ? "s" : ""}`
+              ? ` · ${formatCountLabel(outputs.length, "output")}`
               : ""}
           </Typography>
           <Button
             size="small"
             variant="outlined"
             startIcon={
-              <FolderOpenIcon
-                sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
-              />
+              <FolderOpenIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
             }
             onClick={handleOpenAssets}
             sx={{
-              textTransform: "none",
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
+              ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
             }}
           >
@@ -539,14 +528,11 @@ export function PackPanel({
             size="small"
             variant="outlined"
             startIcon={
-              <FolderOpenIcon
-                sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
-              />
+              <FolderOpenIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
             }
             onClick={handleOpenOutputs}
             sx={{
-              textTransform: "none",
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
+              ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
             }}
           >
@@ -556,15 +542,12 @@ export function PackPanel({
             size="small"
             variant="outlined"
             startIcon={
-              <IosShareIcon
-                sx={{ fontSize: `${appTokens.sizes.compactActionIcon}px !important` }}
-              />
+              <IosShareIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
             }
             onClick={handleExportOutputs}
             disabled={outputs.length === 0}
             sx={{
-              textTransform: "none",
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
+              ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
             }}
           >

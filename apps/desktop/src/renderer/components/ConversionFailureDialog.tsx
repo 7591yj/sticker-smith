@@ -77,9 +77,9 @@ export function ConversionFailureDialog({
             <Box
               key={`${failure.assetLabel}-${index}`}
               sx={{
-                px: 1.25,
-                py: 1,
-                borderRadius: appTokens.radii.panel / 8,
+                px: appTokens.layout.spacing.failureCardX,
+                py: appTokens.layout.spacing.failureCardY,
+                borderRadius: appTokens.shape.radius.panel,
                 border: "1px solid",
                 borderColor: "divider",
                 bgcolor: "action.hover",

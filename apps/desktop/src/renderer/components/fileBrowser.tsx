@@ -8,7 +8,9 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { appTokens } from "../../theme/appTokens";
+import { getFileExtension, getLeafName } from "../utils/pathDisplay";
 import { toFileUrl } from "../utils/fileUrl";
+import { browserMetadataRowSx } from "./browserStyles";
 
 export type BrowserView = "gallery" | "list";
 
@@ -67,10 +69,6 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function getFileExtension(relativePath: string) {
-  return relativePath.split(".").pop()?.toLowerCase() ?? "";
-}
-
 export function sortItemsWithPinnedFirst<T>(
   items: readonly T[],
   options: {
@@ -102,7 +100,7 @@ export function FilePreview({
   kind,
   placeholderLabel,
 }: PreviewProps) {
-  const filename = relativePath.split("/").pop() ?? relativePath;
+  const filename = getLeafName(relativePath);
   const extension = (kind ?? getFileExtension(relativePath)).toLowerCase();
 
   if (!absolutePath) {
@@ -180,7 +178,10 @@ export function FilePreview({
       }}
     >
       <InsertDriveFileIcon
-        sx={{ fontSize: appTokens.sizes.fileTypeIcon, color: "text.disabled" }}
+        sx={{
+          fontSize: appTokens.sizes.preview.fileTypeIcon,
+          color: "text.disabled",
+        }}
       />
       <Typography
         variant="caption"
@@ -223,16 +224,16 @@ export function BrowserViewToggle({
           }
         }}
         aria-label={ariaLabel}
-        sx={{ height: appTokens.sizes.toggleHeight }}
+        sx={{ height: appTokens.sizes.controls.toggleHeight }}
       >
         <ToggleButton
           value="gallery"
           aria-label={appTokens.copy.labels.galleryView}
         >
-          <ViewModuleIcon sx={{ fontSize: appTokens.sizes.actionIcon }} />
+          <ViewModuleIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
         </ToggleButton>
         <ToggleButton value="list" aria-label={appTokens.copy.labels.listView}>
-          <ViewListIcon sx={{ fontSize: appTokens.sizes.actionIcon }} />
+          <ViewListIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
         </ToggleButton>
       </ToggleButtonGroup>
     </Box>
@@ -258,7 +259,7 @@ export function BrowserGalleryCard({
       title={title}
       sx={{
         position: "relative",
-        borderRadius: appTokens.radii.card / 8,
+        borderRadius: appTokens.shape.radius.card,
         overflow: "hidden",
         border: "1px solid",
         borderColor: selected || isPinned ? "primary.main" : "divider",
@@ -277,7 +278,7 @@ export function BrowserGalleryCard({
       {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
-          aspectRatio: appTokens.layout.squareAspectRatio,
+          aspectRatio: appTokens.sizes.preview.aspectRatio,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -300,12 +301,7 @@ export function BrowserGalleryCard({
           {filename}
         </Typography>
         <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            flexWrap: "wrap",
-          }}
+          sx={browserMetadataRowSx}
         >
           {metadata}
         </Box>
@@ -338,7 +334,7 @@ export function BrowserListRow({
         gap: 1.25,
         px: 1,
         py: 0.85,
-        borderRadius: appTokens.radii.panel / 8,
+        borderRadius: appTokens.shape.radius.panel,
         border: "1px solid",
         borderColor: selected || isPinned ? "primary.main" : "divider",
         bgcolor: selected ? "action.selected" : "action.hover",
@@ -356,9 +352,9 @@ export function BrowserListRow({
       {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
-          width: 56,
-          minWidth: 56,
-          height: 56,
+          width: appTokens.sizes.preview.listRow,
+          minWidth: appTokens.sizes.preview.listRow,
+          height: appTokens.sizes.preview.listRow,
           overflow: "hidden",
           bgcolor: "background.paper",
           display: "block",
@@ -379,12 +375,7 @@ export function BrowserListRow({
           {filename}
         </Typography>
         <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            flexWrap: "wrap",
-          }}
+          sx={browserMetadataRowSx}
         >
           {metadata}
         </Box>
@@ -402,9 +393,9 @@ function PinnedBadge() {
         right: 4,
         zIndex: 1,
         bgcolor: "primary.main",
-        borderRadius: appTokens.radii.round,
-        width: appTokens.sizes.badge,
-        height: appTokens.sizes.badge,
+        borderRadius: appTokens.shape.radius.round,
+        width: appTokens.sizes.preview.badge,
+        height: appTokens.sizes.preview.badge,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -412,7 +403,7 @@ function PinnedBadge() {
     >
       <StarIcon
         sx={{
-          fontSize: appTokens.sizes.badgeIcon,
+          fontSize: appTokens.sizes.preview.badgeIcon,
           color: appTokens.colors.text.contrast,
         }}
       />

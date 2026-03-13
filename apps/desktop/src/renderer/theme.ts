@@ -20,7 +20,7 @@ export const appTheme = createTheme({
     fontFamily: appTokens.typography.fontFamily,
     fontSize: appTokens.typography.fontSize,
   },
-  shape: { borderRadius: appTokens.radii.panel },
+  shape: { borderRadius: appTokens.shape.radiusPx.panel },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
@@ -39,12 +39,12 @@ export const appTheme = createTheme({
     },
     MuiIconButton: {
       styleOverrides: {
-        sizeSmall: { padding: appTokens.radii.small },
+        sizeSmall: { padding: appTokens.shape.radiusPx.small },
       },
     },
     MuiListItemButton: {
       styleOverrides: {
-        root: { borderRadius: appTokens.radii.control },
+        root: { borderRadius: appTokens.shape.radius.control },
       },
     },
     MuiMenuItem: {

@@ -14,7 +14,19 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
+import { getLeafName } from "../utils/pathDisplay";
 import { EmojiPickerDialog } from "./EmojiPickerDialog";
+import {
+  browserCountLabelSx,
+  browserGridContainerSx,
+  browserListContainerSx,
+  browserMenuIconSx,
+  browserMenuPaperSx,
+  browserMenuTitleSx,
+  browserMetaChipSx,
+  browserToolbarSx,
+  formatCountLabel,
+} from "./browserStyles";
 import {
   BrowserGalleryCard,
   BrowserListRow,
@@ -222,24 +234,16 @@ export function OutputsList({
   return (
     <>
       <Box
-        sx={{
-          px: 2.5,
-          pt: 1.25,
-          pb: 1,
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          flexWrap: "wrap",
-        }}
+        sx={browserToolbarSx}
       >
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+          sx={browserCountLabelSx}
         >
           {selectedAssetIds.length > 0
-            ? `${selectedAssetIds.length} selected output${selectedAssetIds.length !== 1 ? "s" : ""}`
-            : `${sortedOutputs.length} output${sortedOutputs.length !== 1 ? "s" : ""}`}
+            ? formatCountLabel(selectedAssetIds.length, "selected output")
+            : formatCountLabel(sortedOutputs.length, "output")}
         </Typography>
         <Button
           size="small"
@@ -273,7 +277,7 @@ export function OutputsList({
 
       <Box sx={{ pb: 2.5 }}>
         {view === "list" ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, px: 2.5 }}>
+          <Box sx={browserListContainerSx}>
             {sortedOutputs.map((out) => {
               const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
               const selectable = out.mode === "sticker" && sourceAsset !== null;
@@ -284,7 +288,7 @@ export function OutputsList({
                 <BrowserListRow
                   key={out.relativePath}
                   title={out.relativePath}
-                  filename={out.relativePath.split("/").pop() ?? out.relativePath}
+                  filename={getLeafName(out.relativePath)}
                   isPinned={out.mode === "icon"}
                   selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
                   onClick={
@@ -309,7 +313,7 @@ export function OutputsList({
                       <Chip
                         label={out.mode}
                         size="small"
-                        sx={fileMetaChipSx}
+                        sx={browserMetaChipSx}
                       />
                       {showEmojiMetadata ? (
                         <Chip
@@ -334,17 +338,9 @@ export function OutputsList({
             })}
           </Box>
         ) : (
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: `repeat(auto-fill, minmax(${appTokens.layout.fileGridMinWidth}px, 1fr))`,
-              gap: 1.5,
-              px: 2.5,
-            }}
-          >
+          <Box sx={browserGridContainerSx}>
             {sortedOutputs.map((out) => {
-              const filename =
-                out.relativePath.split("/").pop() ?? out.relativePath;
+              const filename = getLeafName(out.relativePath);
               const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
               const selectable = out.mode === "sticker" && sourceAsset !== null;
               const showEmojiMetadata =
@@ -376,7 +372,11 @@ export function OutputsList({
                   }
                   metadata={
                     <>
-                      <Chip label={out.mode} size="small" sx={fileMetaChipSx} />
+                      <Chip
+                        label={out.mode}
+                        size="small"
+                        sx={browserMetaChipSx}
+                      />
                       {showEmojiMetadata ? (
                         <Chip
                           label={formatEmojiSummary(sourceAsset)}
@@ -412,30 +412,23 @@ export function OutputsList({
             : undefined
         }
         slotProps={{
-          paper: { sx: { minWidth: appTokens.sizes.contextMenuWide } },
+          paper: { sx: browserMenuPaperSx },
         }}
       >
         {contextAssets.length > 0 ? (
           <MenuItem
             disabled
             dense
-            sx={{
-              opacity: "1 !important",
-              fontSize: appTokens.typography.fontSizes.caption,
-              color: "text.secondary",
-              fontWeight: appTokens.typography.fontWeights.medium,
-            }}
+            sx={browserMenuTitleSx}
           >
             {contextAssets.length === 1
-              ? contextAssets[0]!.relativePath.split("/").pop()
-              : `${contextAssets.length} selected output${contextAssets.length !== 1 ? "s" : ""}`}
+              ? getLeafName(contextAssets[0]!.relativePath)
+              : formatCountLabel(contextAssets.length, "selected output")}
           </MenuItem>
         ) : null}
         <Divider />
         <MenuItem onClick={openContextEmojiEditor} dense>
-          <InsertEmoticonIcon
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
-          />
+          <InsertEmoticonIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.editEmojis}
         </MenuItem>
       </Menu>
@@ -482,16 +475,9 @@ function formatEmojiSummary(asset: SourceAsset) {
     : appTokens.copy.labels.noEmoji;
 }
 
-const fileMetaChipSx = {
-  height: 18,
-  fontSize: appTokens.typography.fontSizes.assetKind,
-  textTransform: "uppercase",
-  letterSpacing: appTokens.typography.letterSpacing.chip,
-} as const;
-
 const emojiMetaChipSx = (missingEmoji: boolean) =>
   ({
-    height: 18,
+    height: appTokens.sizes.chip.compactHeight,
     fontSize: appTokens.typography.fontSizes.assetKind,
     letterSpacing: appTokens.typography.letterSpacing.chip,
     color: missingEmoji ? "error.main" : "text.secondary",

@@ -22,14 +22,16 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerPack, TelegramState } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import { RenameDialog } from "./RenameDialog";
-import { TelegramAuthDialog } from "./TelegramAuthDialog";
+import { isVideoPath } from "../utils/pathDisplay";
 import { toFileUrl } from "../utils/fileUrl";
 import { formatTelegramSyncStateLabel } from "../utils/telegramSyncState";
-
-function isVideoThumbnail(filePath: string) {
-  return filePath.toLowerCase().endsWith(".webm");
-}
+import {
+  browserMenuIconSx,
+  browserMenuPaperSx,
+  browserMenuTitleSx,
+} from "./browserStyles";
+import { RenameDialog } from "./RenameDialog";
+import { TelegramAuthDialog } from "./TelegramAuthDialog";
 
 function PackThumbnail({
   name,
@@ -38,15 +40,15 @@ function PackThumbnail({
   name: string;
   thumbnailPath: string | null;
 }) {
-  const isVideo = thumbnailPath ? isVideoThumbnail(thumbnailPath) : false;
+  const isVideo = thumbnailPath ? isVideoPath(thumbnailPath) : false;
 
   return (
     <ListItemAvatar sx={{ minWidth: 32 }}>
       <Box
         sx={{
-          width: appTokens.sizes.thumbnail,
-          height: appTokens.sizes.thumbnail,
-          borderRadius: appTokens.radii.thumbnail / 8,
+          width: appTokens.sizes.preview.thumbnail,
+          height: appTokens.sizes.preview.thumbnail,
+          borderRadius: appTokens.shape.radius.thumbnail,
           bgcolor: "action.hover",
           border: "1px solid",
           borderColor: "divider",
@@ -78,7 +80,7 @@ function PackThumbnail({
           <Inventory2OutlinedIcon
             aria-label={`${name} fallback pack icon`}
             sx={{
-              fontSize: appTokens.sizes.thumbnail - 4,
+              fontSize: appTokens.sizes.preview.fallbackIcon,
               color: "text.secondary",
             }}
           />
@@ -150,6 +152,16 @@ function secondaryLabelForPack(pack: StickerPack) {
   }
 
   return shortNameLabel;
+}
+
+function emptyTelegramStateLabel(options: {
+  telegramSyncBusy: boolean;
+}) {
+  if (options.telegramSyncBusy) {
+    return appTokens.copy.labels.telegramSyncInProgress;
+  }
+
+  return appTokens.copy.emptyStates.noTelegramPacks;
 }
 
 export function Sidebar({
@@ -246,36 +258,46 @@ export function Sidebar({
     setRenamePack(null);
   };
 
-  const handleDelete = useCallback(async () => {
-    if (!contextMenu) return;
-    const { pack } = contextMenu;
-    handleCloseMenu();
-    await window.stickerSmith.packs.delete({ packId: pack.id });
-    const next = await refreshPacks();
-    if (selectedPackId === pack.id) {
-      setSelectedPackId(next[0]?.id ?? null);
-    }
-  }, [
-    contextMenu,
-    handleCloseMenu,
-    refreshPacks,
-    selectedPackId,
-    setSelectedPackId,
-  ]);
+  const runContextPackAction = useCallback(
+    async (action: (pack: StickerPack) => Promise<void>) => {
+      if (!contextMenu) {
+        return;
+      }
 
-  const handleOpenOutputs = useCallback(async () => {
-    if (!contextMenu) return;
-    const { pack } = contextMenu;
-    handleCloseMenu();
-    await window.stickerSmith.outputs.revealInFolder({ packId: pack.id });
-  }, [contextMenu, handleCloseMenu]);
+      const { pack } = contextMenu;
+      handleCloseMenu();
+      await action(pack);
+    },
+    [contextMenu, handleCloseMenu],
+  );
 
-  const handleExportOutputs = useCallback(async () => {
-    if (!contextMenu) return;
-    const { pack } = contextMenu;
-    handleCloseMenu();
-    await window.stickerSmith.outputs.exportFolder({ packId: pack.id });
-  }, [contextMenu, handleCloseMenu]);
+  const handleDelete = useCallback(
+    async () =>
+      runContextPackAction(async (pack) => {
+        await window.stickerSmith.packs.delete({ packId: pack.id });
+        const next = await refreshPacks();
+        if (selectedPackId === pack.id) {
+          setSelectedPackId(next[0]?.id ?? null);
+        }
+      }),
+    [refreshPacks, runContextPackAction, selectedPackId, setSelectedPackId],
+  );
+
+  const handleOpenOutputs = useCallback(
+    async () =>
+      runContextPackAction(async (pack) => {
+        await window.stickerSmith.outputs.revealInFolder({ packId: pack.id });
+      }),
+    [runContextPackAction],
+  );
+
+  const handleExportOutputs = useCallback(
+    async () =>
+      runContextPackAction(async (pack) => {
+        await window.stickerSmith.outputs.exportFolder({ packId: pack.id });
+      }),
+    [runContextPackAction],
+  );
 
   const renderPackList = (sectionPacks: StickerPack[], emptyState: string) => {
     if (sectionPacks.length === 0) {
@@ -301,7 +323,7 @@ export function Sidebar({
         onClick={() => onSelect(pack.id)}
         onContextMenu={(e) => handleContextMenu(e, pack)}
         dense
-        sx={{ borderRadius: appTokens.radii.panel / 8 }}
+        sx={{ borderRadius: appTokens.shape.radius.panel }}
       >
         <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
         <ListItemText
@@ -337,10 +359,20 @@ export function Sidebar({
       }}
     >
       <Box
-        sx={{ px: 1.5, py: 1, display: "flex", alignItems: "center", gap: 0.5 }}
+        sx={{
+          px: appTokens.layout.spacing.sidebarPaddingX,
+          py: appTokens.layout.spacing.panelPaddingY,
+          display: "flex",
+          alignItems: "center",
+          gap: appTokens.layout.spacing.compactGap,
+        }}
       >
         <LayersIcon
-          sx={{ color: "primary.main", fontSize: appTokens.sizes.sidebarBrandIcon, mr: 0.5 }}
+          sx={{
+            color: "primary.main",
+            fontSize: appTokens.sizes.icon.sidebarBrand,
+            mr: appTokens.layout.spacing.compactGap,
+          }}
         />
         <Typography
           variant="subtitle2"
@@ -410,9 +442,9 @@ export function Sidebar({
           color="text.secondary"
           sx={{
             display: "block",
-            px: 1.5,
-            pt: 0.75,
-            pb: 0.25,
+            px: appTokens.layout.spacing.sidebarPaddingX,
+            pt: appTokens.layout.spacing.sectionLabelTop,
+            pb: appTokens.layout.spacing.sectionLabelBottom,
             letterSpacing: appTokens.typography.letterSpacing.overline,
             fontSize: appTokens.typography.fontSizes.overline,
           }}
@@ -428,9 +460,9 @@ export function Sidebar({
           color="text.secondary"
           sx={{
             display: "block",
-            px: 1.5,
-            pt: 0.5,
-            pb: 0.25,
+            px: appTokens.layout.spacing.sidebarPaddingX,
+            pt: appTokens.layout.spacing.sectionLabelCompactTop,
+            pb: appTokens.layout.spacing.sectionLabelBottom,
             letterSpacing: appTokens.typography.letterSpacing.overline,
             fontSize: appTokens.typography.fontSizes.overline,
           }}
@@ -439,12 +471,15 @@ export function Sidebar({
         </Typography>
         <Box
           sx={{
-            px: 1.5,
+            px: appTokens.layout.spacing.sidebarPaddingX,
             pb: 1,
             minHeight: 4,
           }}
         />
-        {renderPackList(telegramPacks, appTokens.copy.emptyStates.noTelegramPacks)}
+        {renderPackList(
+          telegramPacks,
+          emptyTelegramStateLabel({ telegramSyncBusy }),
+        )}
 
         {unsupportedTelegramPacks.length > 0 ? (
           <>
@@ -454,9 +489,9 @@ export function Sidebar({
               color="text.secondary"
               sx={{
                 display: "block",
-                px: 1.5,
-                pt: 0.5,
-                pb: 0.25,
+                px: appTokens.layout.spacing.sidebarPaddingX,
+                pt: appTokens.layout.spacing.sectionLabelCompactTop,
+                pb: appTokens.layout.spacing.sectionLabelBottom,
                 letterSpacing: appTokens.typography.letterSpacing.overline,
                 fontSize: appTokens.typography.fontSizes.overline,
               }}
@@ -478,38 +513,33 @@ export function Sidebar({
             : undefined
         }
         slotProps={{
-          paper: { sx: { minWidth: appTokens.sizes.contextMenuWide } },
+          paper: { sx: browserMenuPaperSx },
         }}
       >
         {contextMenu && (
           <MenuItem
             disabled
             dense
-            sx={{
-              opacity: "1 !important",
-              fontSize: appTokens.typography.fontSizes.caption,
-              color: "text.secondary",
-              fontWeight: appTokens.typography.fontWeights.medium,
-            }}
+            sx={browserMenuTitleSx}
           >
             {contextMenu.pack.name}
           </MenuItem>
         )}
         <Divider />
         <MenuItem onClick={handleRenameOpen} dense>
-          <EditIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <EditIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.rename}
         </MenuItem>
         <MenuItem onClick={handleOpenOutputs} dense>
-          <FolderOpenIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <FolderOpenIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.openOutputs}
         </MenuItem>
         <MenuItem onClick={handleExportOutputs} dense>
-          <IosShareIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <IosShareIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.export}
         </MenuItem>
         <MenuItem onClick={handleDelete} dense sx={{ color: "error.light" }}>
-          <DeleteIcon sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }} />
+          <DeleteIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.delete}
         </MenuItem>
       </Menu>
@@ -519,18 +549,13 @@ export function Sidebar({
         open={Boolean(telegramMenuAnchor)}
         onClose={() => setTelegramMenuAnchor(null)}
         slotProps={{
-          paper: { sx: { minWidth: 240 } },
+          paper: { sx: { minWidth: appTokens.sizes.menu.telegram } },
         }}
       >
         <MenuItem
           disabled
           dense
-          sx={{
-            opacity: "1 !important",
-            fontSize: appTokens.typography.fontSizes.caption,
-            color: "text.secondary",
-            fontWeight: appTokens.typography.fontWeights.medium,
-          }}
+          sx={browserMenuTitleSx}
         >
           {statusLabelForTelegram(telegramState)}
         </MenuItem>
@@ -558,7 +583,7 @@ export function Sidebar({
           dense
         >
           <ManageAccountsIcon
-            sx={{ mr: 1.5, fontSize: appTokens.sizes.actionIcon }}
+            sx={browserMenuIconSx}
           />
           {telegramManageLabel}
         </MenuItem>
