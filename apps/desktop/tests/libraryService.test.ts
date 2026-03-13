@@ -151,6 +151,52 @@ describe("LibraryService", () => {
     expect(updatedPack.thumbnailPath).toBeNull();
   });
 
+  it("preserves telegram thumbnails across metadata syncs and normalizes video thumbnails to .webm", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const thumbnailSourcePath = path.join(root, "telegram-thumbnail-cache");
+    await fs.writeFile(thumbnailSourcePath, "thumb-data");
+
+    let details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "100",
+      title: "Remote Pack",
+      shortName: "remote_pack",
+      format: "video",
+      thumbnailPath: thumbnailSourcePath,
+      hasThumbnail: true,
+      thumbnailExtension: ".webm",
+      syncState: "idle",
+      publishedFromLocalPackId: null,
+      lastSyncedAt: null,
+      assets: [],
+    });
+
+    expect(details.pack.thumbnailPath).toContain("/source/telegram-pack-icon.webm");
+    await expect(fs.readFile(details.pack.thumbnailPath!, "utf8")).resolves.toBe(
+      "thumb-data",
+    );
+
+    details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "100",
+      title: "Remote Pack",
+      shortName: "remote_pack",
+      format: "video",
+      thumbnailPath: null,
+      hasThumbnail: true,
+      thumbnailExtension: ".webm",
+      syncState: "idle",
+      publishedFromLocalPackId: null,
+      lastSyncedAt: null,
+      assets: [],
+    });
+
+    expect(details.pack.thumbnailPath).toContain("/source/telegram-pack-icon.webm");
+    await expect(fs.readFile(details.pack.thumbnailPath!, "utf8")).resolves.toBe(
+      "thumb-data",
+    );
+  });
+
   it("persists emoji lists per asset", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);

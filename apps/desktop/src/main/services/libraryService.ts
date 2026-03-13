@@ -37,6 +37,8 @@ export interface TelegramMirrorUpsertInput {
   shortName: string;
   format: TelegramPackSummary["format"];
   thumbnailPath: string | null;
+  hasThumbnail?: boolean;
+  thumbnailExtension?: string | null;
   syncState: TelegramPackSummary["syncState"];
   lastSyncError?: string | null;
   publishedFromLocalPackId: string | null;
@@ -119,26 +121,60 @@ async function sha256ForFile(filePath: string): Promise<string | null> {
 async function syncTelegramThumbnailFile(
   rootPath: string,
   thumbnailPath: string | null,
+  options: {
+    hasThumbnail?: boolean;
+    preferredExtension?: string | null;
+  } = {},
 ) {
   const { sourceRoot } = resolvePackPaths(rootPath);
   await fs.mkdir(sourceRoot, { recursive: true });
   const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
-  await Promise.all(
-    entries
-      .filter(
-        (entry) =>
-          entry.isFile() && entry.name.startsWith("telegram-pack-icon."),
-      )
-      .map((entry) => fs.rm(path.join(sourceRoot, entry.name), { force: true })),
-  );
+  const existingIconPaths = entries
+    .filter(
+      (entry) => entry.isFile() && entry.name.startsWith("telegram-pack-icon."),
+    )
+    .map((entry) => path.join(sourceRoot, entry.name));
+
+  const removeExistingIcons = async (excludedPath?: string) =>
+    Promise.all(
+      existingIconPaths
+        .filter((existingPath) => existingPath !== excludedPath)
+        .map((existingPath) => fs.rm(existingPath, { force: true })),
+    );
+
+  const resolveThumbnailExtension = (sourcePath: string | null) =>
+    path.extname(sourcePath ?? "") || options.preferredExtension || ".bin";
 
   if (!thumbnailPath) {
+    if (options.hasThumbnail && existingIconPaths.length > 0) {
+      const existingPath = existingIconPaths[0]!;
+      const expectedExtension =
+        options.preferredExtension || path.extname(existingPath) || ".bin";
+      const expectedPath = path.join(
+        sourceRoot,
+        `telegram-pack-icon${expectedExtension}`,
+      );
+
+      if (existingPath !== expectedPath) {
+        await fs.copyFile(existingPath, expectedPath);
+        await removeExistingIcons(expectedPath);
+        return expectedPath;
+      }
+
+      await removeExistingIcons(existingPath);
+      return existingPath;
+    }
+
+    await removeExistingIcons();
     return null;
   }
 
-  const extension = path.extname(thumbnailPath) || ".bin";
+  const extension = resolveThumbnailExtension(thumbnailPath);
   const destination = path.join(sourceRoot, `telegram-pack-icon${extension}`);
-  await fs.copyFile(thumbnailPath, destination);
+  if (thumbnailPath !== destination) {
+    await fs.copyFile(thumbnailPath, destination);
+  }
+  await removeExistingIcons(destination);
   return destination;
 }
 
@@ -797,6 +833,86 @@ export class LibraryService {
     }
   }
 
+  private async pruneDuplicateLocalTelegramAssets(
+    record: StickerPackRecord,
+    rootPath: string,
+  ) {
+    if (record.source !== "telegram") {
+      return;
+    }
+
+    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
+    const remoteSignatures = new Set<string>();
+    const duplicateAssetIds = new Set<AssetId>();
+
+    const signatureFor = (sha256: string | null, emojis: string[]) =>
+      sha256 ? `${sha256}\u0000${emojis.join(" ")}` : null;
+
+    for (const asset of record.assets) {
+      if (!asset.telegram || asset.id === record.iconAssetId) {
+        continue;
+      }
+
+      const output = this.getStickerOutputForAsset(record, asset.id);
+      const sourcePath = path.join(sourceRoot, asset.relativePath);
+      const sourceSha256 =
+        asset.telegram.baselineOutputHash ?? (await sha256ForFile(sourcePath));
+
+      for (const signature of [
+        signatureFor(sourceSha256, asset.emojiList),
+        signatureFor(output?.sha256 ?? null, asset.emojiList),
+      ]) {
+        if (signature) {
+          remoteSignatures.add(signature);
+        }
+      }
+    }
+
+    for (const asset of record.assets) {
+      if (asset.telegram || asset.id === record.iconAssetId) {
+        continue;
+      }
+
+      const output = this.getStickerOutputForAsset(record, asset.id);
+      const signature = signatureFor(output?.sha256 ?? null, asset.emojiList);
+      if (!signature || !remoteSignatures.has(signature)) {
+        continue;
+      }
+
+      duplicateAssetIds.add(asset.id);
+    }
+
+    if (duplicateAssetIds.size === 0) {
+      return;
+    }
+
+    const removedAssets = record.assets.filter((asset) => duplicateAssetIds.has(asset.id));
+    const removedOutputs = record.outputs.filter((output) =>
+      duplicateAssetIds.has(output.sourceAssetId),
+    );
+
+    record.assets = record.assets.filter((asset) => !duplicateAssetIds.has(asset.id));
+    record.outputs = record.outputs.filter(
+      (output) => !duplicateAssetIds.has(output.sourceAssetId),
+    );
+
+    for (const asset of removedAssets) {
+      if (record.assets.some((candidate) => candidate.relativePath === asset.relativePath)) {
+        continue;
+      }
+
+      await fs.rm(path.join(sourceRoot, asset.relativePath), { force: true });
+    }
+
+    for (const output of removedOutputs) {
+      if (record.outputs.some((candidate) => candidate.relativePath === output.relativePath)) {
+        continue;
+      }
+
+      await fs.rm(path.join(outputRoot, output.relativePath), { force: true });
+    }
+  }
+
   async listPacks(): Promise<StickerPack[]> {
     await this.ensureReady();
     const packsRoot = this.getPacksRoot();
@@ -847,7 +963,6 @@ export class LibraryService {
 
     return null;
   }
-
   async mutatePackRecord(
     packId: string,
     mutate: (
@@ -905,6 +1020,10 @@ export class LibraryService {
       const storedThumbnailPath = await syncTelegramThumbnailFile(
         rootPath,
         input.thumbnailPath,
+        {
+          hasThumbnail: input.hasThumbnail,
+          preferredExtension: input.thumbnailExtension,
+        },
       );
       const existingByStickerId = new Map(
         (existing?.assets ?? [])
@@ -988,6 +1107,7 @@ export class LibraryService {
       };
 
       await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      await this.pruneDuplicateLocalTelegramAssets(record, rootPath);
       await this.writePackRecord(rootPath, record);
       return this.buildUpdatedPackDetails(record, rootPath);
     });
@@ -1358,6 +1478,7 @@ export class LibraryService {
       await this.reconcileTelegramMirrorOutputs(record, rootPath, {
         baselineFallbackByAssetId,
       });
+      await this.pruneDuplicateLocalTelegramAssets(record, rootPath);
     });
   }
 

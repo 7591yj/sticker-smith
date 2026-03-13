@@ -17,6 +17,8 @@ export class TelegramMirrorService {
   async upsertStickerSet(input: {
     stickerSet: TelegramRemoteStickerSet;
     thumbnailPath: string | null;
+    hasThumbnail?: boolean;
+    thumbnailExtension?: string | null;
     publishedFromLocalPackId?: string | null;
     syncState?: "idle" | "syncing" | "stale" | "error" | "unsupported";
     lastSyncError?: string | null;
@@ -31,6 +33,8 @@ export class TelegramMirrorService {
       shortName: stickerSet.shortName,
       format: stickerSet.format,
       thumbnailPath: input.thumbnailPath,
+      hasThumbnail: input.hasThumbnail,
+      thumbnailExtension: input.thumbnailExtension,
       syncState: input.syncState ?? "idle",
       lastSyncedAt: new Date().toISOString(),
       lastSyncError: input.lastSyncError ?? null,

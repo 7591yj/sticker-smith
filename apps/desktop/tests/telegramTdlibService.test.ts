@@ -413,4 +413,141 @@ describe("TelegramTdlibService", () => {
       "The Telegram sticker short name is invalid.",
     );
   });
+
+  it("updates sticker set titles by short name", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+    };
+
+    service.client = {
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        return { _: "ok" };
+      },
+    };
+
+    await service.setStickerSetTitle({
+      shortName: "sample_pack",
+      title: "Renamed Pack",
+    });
+
+    expect(requests).toEqual([
+      {
+        _: "setStickerSetTitle",
+        name: "sample_pack",
+        title: "Renamed Pack",
+      },
+    ]);
+  });
+
+  it("replaces stickers in a set by short name", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+      getSessionUser: () => Promise<{ id: number }>;
+    };
+
+    service.client = {
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        return { _: "ok" };
+      },
+    };
+    service.getSessionUser = async () => ({ id: 123 });
+
+    await service.replaceStickerInSet({
+      shortName: "sample_pack",
+      oldFileId: "remote-file-id",
+      newStickerPath: "/tmp/sticker.webm",
+      emojis: ["🙂"],
+    });
+
+    expect(requests).toEqual([
+      {
+        _: "replaceStickerInSet",
+        user_id: 123,
+        name: "sample_pack",
+        old_sticker: {
+          _: "inputFileRemote",
+          id: "remote-file-id",
+        },
+        new_sticker: {
+          _: "inputSticker",
+          sticker: {
+            _: "inputFileLocal",
+            path: "/tmp/sticker.webm",
+          },
+          format: {
+            _: "stickerFormatWebm",
+          },
+          emojis: "🙂",
+          keywords: "",
+        },
+      },
+    ]);
+  });
+
+  it("sends sticker set thumbnails as input files", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+      getSessionUser: () => Promise<{ id: number }>;
+    };
+
+    service.client = {
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        return { _: "ok" };
+      },
+    };
+    service.getSessionUser = async () => ({ id: 123 });
+
+    await service.setStickerSetThumbnail({
+      shortName: "sample_pack",
+      thumbnailPath: "/tmp/icon.webm",
+      format: "video",
+    });
+
+    expect(requests).toEqual([
+      {
+        _: "setStickerSetThumbnail",
+        user_id: 123,
+        name: "sample_pack",
+        thumbnail: {
+          _: "inputFileLocal",
+          path: "/tmp/icon.webm",
+        },
+        format: { _: "stickerFormatWebm" },
+      },
+    ]);
+  });
+
+  it("rejects empty sticker set thumbnail names before invoking TDLib", async () => {
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+      getSessionUser: () => Promise<{ id: number }>;
+    };
+
+    service.client = {
+      invoke: async () => ({ _: "ok" }),
+    };
+    service.getSessionUser = async () => ({ id: 123 });
+
+    await expect(
+      service.setStickerSetThumbnail({
+        shortName: "   ",
+        thumbnailPath: "/tmp/icon.webm",
+        format: "video",
+      }),
+    ).rejects.toThrow("Telegram sticker set short name must be non-empty.");
+  });
 });

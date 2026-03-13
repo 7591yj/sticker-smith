@@ -675,7 +675,7 @@ export class TelegramTdlibService {
   }
 
   async replaceStickerInSet(input: {
-    stickerSetId: string;
+    shortName: string;
     oldFileId: string;
     newStickerPath: string;
     emojis: string[];
@@ -684,11 +684,22 @@ export class TelegramTdlibService {
       throw new Error("TDLib client is not started.");
     }
 
+    const me = await this.getSessionUser();
+    if (!me) {
+      throw new Error("Telegram user session is not ready.");
+    }
+
+    const shortName = input.shortName.trim();
+    if (!shortName) {
+      throw new Error("Telegram sticker set short name must be non-empty.");
+    }
+
     await this.client.invoke({
       _: "replaceStickerInSet",
-      sticker_set_id: input.stickerSetId,
+      user_id: me.id,
+      name: shortName,
       old_sticker: { _: "inputFileRemote", id: input.oldFileId },
-      sticker: this.toInputSticker({
+      new_sticker: this.toInputSticker({
         stickerPath: input.newStickerPath,
         emojis: input.emojis,
         format: "video",
@@ -710,10 +721,15 @@ export class TelegramTdlibService {
       throw new Error("Telegram user session is not ready.");
     }
 
+    const shortName = input.shortName.trim();
+    if (!shortName) {
+      throw new Error("Telegram sticker set short name must be non-empty.");
+    }
+
     await this.client.invoke({
       _: "addStickerToSet",
       user_id: me.id,
-      name: input.shortName,
+      name: shortName,
       sticker: this.toInputSticker({
         stickerPath: input.stickerPath,
         emojis: input.emojis,
@@ -749,14 +765,19 @@ export class TelegramTdlibService {
     });
   }
 
-  async setStickerSetTitle(input: { stickerSetId: string; title: string }) {
+  async setStickerSetTitle(input: { shortName: string; title: string }) {
     if (!this.client) {
       throw new Error("TDLib client is not started.");
     }
 
+    const shortName = input.shortName.trim();
+    if (!shortName) {
+      throw new Error("Telegram sticker set short name must be non-empty.");
+    }
+
     await this.client.invoke({
       _: "setStickerSetTitle",
-      sticker_set_id: input.stickerSetId,
+      name: shortName,
       title: input.title,
     });
   }
@@ -770,18 +791,24 @@ export class TelegramTdlibService {
       throw new Error("TDLib client is not started.");
     }
 
+    const shortName = input.shortName.trim();
+    if (!shortName) {
+      throw new Error("Telegram sticker set short name must be non-empty.");
+    }
+
+    const me = await this.getSessionUser();
+    if (!me) {
+      throw new Error("Telegram user session is not ready.");
+    }
+
     await this.client.invoke({
       _: "setStickerSetThumbnail",
-      name: input.shortName,
+      user_id: me.id,
+      name: shortName,
       thumbnail:
         input.thumbnailPath === null
           ? null
-          : {
-              _: "inputSticker",
-              sticker: { _: "inputFileLocal", path: input.thumbnailPath },
-              format: { _: "stickerFormatWebm" },
-              emojis: "",
-            },
+          : { _: "inputFileLocal", path: path.resolve(input.thumbnailPath) },
       format: input.format === null ? null : { _: "stickerFormatWebm" },
     });
   }
