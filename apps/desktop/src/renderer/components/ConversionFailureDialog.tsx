@@ -14,6 +14,13 @@ export interface ConversionFailureItem {
   mode?: ConversionMode;
 }
 
+export interface ConversionFailureDialogState {
+  packName: string | null;
+  successCount: number;
+  failureCount: number;
+  failures: ConversionFailureItem[];
+}
+
 interface Props {
   open: boolean;
   packName: string | null;
