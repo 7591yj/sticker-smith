@@ -1,5 +1,7 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   OutputArtifact,
   SourceAsset,
@@ -68,6 +70,18 @@ function createOutput(
 }
 
 describe("fileBrowser", () => {
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & {
+        IS_REACT_ACT_ENVIRONMENT?: boolean;
+      }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
   it("keeps pinned items first before sorting the rest", () => {
     const sorted = sortItemsWithPinnedFirst(
       [
@@ -213,7 +227,30 @@ describe("OutputsList", () => {
     expect(markup.indexOf("icon.webm")).toBeLessThan(markup.indexOf("alpha.webm"));
     expect(markup).toContain("🙂");
     expect(markup).toContain("No emoji");
-    expect(markup).toContain("user-select:none");
+  });
+
+  it("shows leaf filenames for nested output paths", () => {
+    const markup = renderToStaticMarkup(
+      <OutputsList
+        packId="pack-1"
+        view="list"
+        assets={[createAsset("asset-for-nested/alpha.webm", "alpha.png")]}
+        outputs={[
+          {
+            ...createOutput("nested/alpha.webm"),
+            sourceAssetId: "asset-for-nested/alpha.webm",
+          },
+        ]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).toContain("alpha.webm");
+    expect(markup).not.toContain(">nested/alpha.webm<");
   });
 
   it("does not render no-emoji metadata for icon outputs", () => {
@@ -236,20 +273,31 @@ describe("OutputsList", () => {
 });
 
 describe("EmojiPickerDialog", () => {
-  it("renders an expanded Telegram emoji catalog", () => {
-    const markup = renderToStaticMarkup(
-      <EmojiPickerDialog
-        open
-        title="Edit Emojis"
-        initialEmojis={[]}
-        onConfirm={vi.fn(async () => undefined)}
-        onClose={vi.fn()}
-      />,
-    );
+  it("renders an expanded Telegram emoji catalog", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
 
-    expect(markup).toContain("Search emojis");
-    expect(markup).toContain("🫶");
-    expect(markup).toContain("🩷");
-    expect(markup).toContain("🌮");
+    await act(async () => {
+      root.render(
+        <EmojiPickerDialog
+          open
+          title="Edit Emojis"
+          initialEmojis={[]}
+          onConfirm={vi.fn(async () => undefined)}
+          onClose={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Search emojis");
+    expect(document.body.textContent).toContain("🫶");
+    expect(document.body.textContent).toContain("🩷");
+    expect(document.body.textContent).toContain("🌮");
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });

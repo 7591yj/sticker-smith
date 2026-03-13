@@ -336,6 +336,52 @@ describe("ConverterService", () => {
     ]);
   });
 
+  it("handles partial NDJSON chunks before flushing the final buffer", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+    const emitSpy = vi.fn();
+
+    service.setEventSink(emitSpy);
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    const payload = `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`;
+    child.stdout.emit("data", Buffer.from(payload.slice(0, 20)));
+    child.stdout.emit("data", Buffer.from(payload.slice(20)));
+    child.emit("close", 0);
+
+    await conversion;
+
+    expect(libraryService.recordConversionResult).toHaveBeenCalledTimes(1);
+    expect(emitSpy).toHaveBeenCalledWith(
+      createEvent("asset-1", "/tmp/out/one.webm"),
+    );
+  });
+
   it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {
     appMock.isPackaged = true;
     const { resourcesPath, backendDirectory } = await createBundledBackend();

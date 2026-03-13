@@ -188,8 +188,18 @@ describe("telegram error dialog", () => {
       await Promise.resolve();
     });
 
-    const logoutButton = [...document.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Logout"),
+    const accountButton = [...document.querySelectorAll("button")].find(
+      (button) => button.getAttribute("aria-label") === "Telegram account",
+    );
+    expect(accountButton).toBeDefined();
+
+    await act(async () => {
+      accountButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const logoutButton = [...document.querySelectorAll("li")].find((item) =>
+      item.textContent?.includes("Logout"),
     );
     expect(logoutButton).toBeDefined();
 

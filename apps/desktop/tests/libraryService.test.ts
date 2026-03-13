@@ -174,6 +174,110 @@ describe("LibraryService", () => {
     expect(updated.assets[0]?.emojiList).toEqual(["👋", "✨"]);
   });
 
+  it("renaming an asset clears sticker outputs and updates the manifest path", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Rename Pack" });
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-rename-file-"),
+    );
+    cleanup.push(fileRoot);
+
+    const filePath = path.join(fileRoot, "cat.png");
+    await fs.writeFile(filePath, "cat");
+
+    const imported = await libraryService.importFiles(pack.id, [filePath]);
+    await libraryService.recordConversionResult(pack.id, {
+      assetId: imported.imported[0]!.id,
+      mode: "sticker",
+      outputFileName: "cat.webm",
+      sizeBytes: 32,
+    });
+    await fs.writeFile(path.join(pack.outputRoot, "cat.webm"), "converted");
+
+    const renamed = await libraryService.renameAsset({
+      packId: pack.id,
+      assetId: imported.imported[0]!.id,
+      nextRelativePath: "renamed/cat.png",
+    });
+    const manifest = await fs.readFile(path.join(pack.rootPath, "pack.json"), "utf8");
+
+    expect(renamed.assets[0]?.relativePath).toBe("renamed/cat.png");
+    expect(renamed.outputs).toEqual([]);
+    expect(manifest).toContain('"relativePath": "renamed/cat.png"');
+    await expect(fs.access(path.join(pack.outputRoot, "cat.webm"))).rejects.toThrow();
+  });
+
+  it("moving an asset clears sticker outputs and preserves the base filename", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Move Pack" });
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-move-file-"),
+    );
+    cleanup.push(fileRoot);
+
+    const filePath = path.join(fileRoot, "cat.png");
+    await fs.writeFile(filePath, "cat");
+
+    const imported = await libraryService.importFiles(pack.id, [filePath]);
+    await libraryService.recordConversionResult(pack.id, {
+      assetId: imported.imported[0]!.id,
+      mode: "sticker",
+      outputFileName: "cat.webm",
+      sizeBytes: 32,
+    });
+    await fs.writeFile(path.join(pack.outputRoot, "cat.webm"), "converted");
+
+    const moved = await libraryService.moveAsset({
+      packId: pack.id,
+      assetId: imported.imported[0]!.id,
+      nextDirectory: "nested",
+    });
+
+    expect(moved.assets[0]?.relativePath).toBe("nested/cat.png");
+    expect(moved.outputs).toEqual([]);
+    await expect(fs.access(path.join(pack.outputRoot, "cat.webm"))).rejects.toThrow();
+  });
+
+  it("deleting an icon asset clears iconAssetId and icon.webm", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Icon Pack" });
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-icon-file-"),
+    );
+    cleanup.push(fileRoot);
+
+    const filePath = path.join(fileRoot, "icon.png");
+    await fs.writeFile(filePath, "icon");
+
+    const imported = await libraryService.importFiles(pack.id, [filePath]);
+    await libraryService.setPackIcon({
+      packId: pack.id,
+      assetId: imported.imported[0]!.id,
+    });
+    await libraryService.recordConversionResult(pack.id, {
+      assetId: imported.imported[0]!.id,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: 16,
+    });
+    await fs.writeFile(path.join(pack.outputRoot, "icon.webm"), "icon-output");
+
+    const updated = await libraryService.deleteAsset({
+      packId: pack.id,
+      assetId: imported.imported[0]!.id,
+    });
+
+    expect(updated.pack.iconAssetId).toBeNull();
+    expect(updated.outputs).toEqual([]);
+    await expect(fs.access(path.join(pack.outputRoot, "icon.webm"))).rejects.toThrow();
+  });
+
   it("stores a local pack telegram short name for reuse", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);

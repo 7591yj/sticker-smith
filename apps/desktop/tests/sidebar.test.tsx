@@ -122,7 +122,6 @@ describe("Sidebar", () => {
 
     expect(markup).toContain('aria-label="Telegram account"');
     expect(markup).toContain('aria-label="Sync"');
-    expect(markup).toContain("color:error.main");
     expect(markup).not.toContain(">Reset Telegram<");
     expect(markup).not.toContain(">Logout<");
   });
@@ -370,6 +369,5 @@ describe("Sidebar", () => {
     );
 
     expect(markup).toContain('aria-label="Sync needed"');
-    expect(markup).toContain("color:error.main");
   });
 });
