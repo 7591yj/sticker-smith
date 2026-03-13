@@ -34,6 +34,8 @@ import { ConverterService } from "../src/main/services/converterService";
 const originalResourcesPath = process.resourcesPath;
 const originalPathEnv = process.env.PATH;
 const originalAppDir = process.env.APPDIR;
+const originalStickerSmithRoot = process.env.STICKER_SMITH_ROOT;
+const originalBackendDir = process.env.STICKER_SMITH_BACKEND_DIR;
 const originalFfmpegEnv = process.env.STICKER_SMITH_FFMPEG;
 const originalFfprobeEnv = process.env.STICKER_SMITH_FFPROBE;
 const tempDirectories: string[] = [];
@@ -185,6 +187,16 @@ afterEach(() => {
     delete process.env.APPDIR;
   } else {
     process.env.APPDIR = originalAppDir;
+  }
+  if (originalStickerSmithRoot === undefined) {
+    delete process.env.STICKER_SMITH_ROOT;
+  } else {
+    process.env.STICKER_SMITH_ROOT = originalStickerSmithRoot;
+  }
+  if (originalBackendDir === undefined) {
+    delete process.env.STICKER_SMITH_BACKEND_DIR;
+  } else {
+    process.env.STICKER_SMITH_BACKEND_DIR = originalBackendDir;
   }
   if (originalFfmpegEnv === undefined) {
     delete process.env.STICKER_SMITH_FFMPEG;
@@ -462,6 +474,56 @@ describe("ConverterService", () => {
     );
     expect(backend.env.STICKER_SMITH_FFPROBE).toBe(
       path.join(backendDirectory, "ffprobe"),
+    );
+  });
+
+  it("prefers the workspace Python backend over dist/backend during development", async () => {
+    const workspaceRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-workspace-"),
+    );
+    tempDirectories.push(workspaceRoot);
+    await fs.mkdir(
+      path.join(workspaceRoot, "tg-webm-converter", "dist", "backend"),
+      { recursive: true },
+    );
+    await fs.mkdir(path.join(workspaceRoot, "tg-webm-converter", "src"), {
+      recursive: true,
+    });
+    process.env.STICKER_SMITH_ROOT = workspaceRoot;
+    delete process.env.STICKER_SMITH_BACKEND_DIR;
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.command).toBe(process.platform === "win32" ? "python" : "python3");
+    expect(backend.args).toEqual(["-m", "tg_webm_converter.gui_api"]);
+    expect(backend.cwd).toBe(path.join(workspaceRoot, "tg-webm-converter"));
+    expect(backend.env.PYTHONPATH).toBe(
+      path.join(workspaceRoot, "tg-webm-converter", "src"),
+    );
+  });
+
+  it("prepends the workspace source root to PYTHONPATH for the Python backend", async () => {
+    const workspaceRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-pythonpath-"),
+    );
+    tempDirectories.push(workspaceRoot);
+    await fs.mkdir(path.join(workspaceRoot, "tg-webm-converter", "src"), {
+      recursive: true,
+    });
+    process.env.STICKER_SMITH_ROOT = workspaceRoot;
+    process.env.STICKER_SMITH_PYTHONPATH = "/tmp/custom-a";
+    process.env.PYTHONPATH = "/tmp/custom-b";
+
+    const service = new ConverterService({} as never);
+    const backend = await getResolveBackendCommand(service);
+
+    expect(backend.env.PYTHONPATH).toBe(
+      [
+        path.join(workspaceRoot, "tg-webm-converter", "src"),
+        "/tmp/custom-a",
+        "/tmp/custom-b",
+      ].join(path.delimiter),
     );
   });
 });

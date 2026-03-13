@@ -106,6 +106,24 @@ async function resolveSystemCommand(
   return commandName;
 }
 
+function joinPythonPathEntries(...entries: Array<string | undefined>) {
+  const uniqueEntries: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry) {
+      continue;
+    }
+
+    for (const part of entry.split(path.delimiter).filter(Boolean)) {
+      if (!uniqueEntries.includes(part)) {
+        uniqueEntries.push(part);
+      }
+    }
+  }
+
+  return uniqueEntries.join(path.delimiter);
+}
+
 async function findWorkspaceRoot() {
   const explicitRoot = process.env.STICKER_SMITH_ROOT;
   if (
@@ -250,15 +268,9 @@ export class ConverterService {
     }
 
     const workspaceRoot = await findWorkspaceRoot();
-    const developmentBackendDirectory =
-      backendOverride ??
-      (workspaceRoot
-        ? path.join(workspaceRoot, "tg-webm-converter", "dist", "backend")
-        : null);
-
-    if (developmentBackendDirectory) {
+    if (backendOverride) {
       const bundledBackend = await resolveBundledBackend(
-        developmentBackendDirectory,
+        backendOverride,
       );
       if (bundledBackend) {
         return bundledBackend;
@@ -271,6 +283,9 @@ export class ConverterService {
       );
     }
 
+    // In development, prefer the live Python backend so source changes are used
+    // immediately instead of a potentially stale bundled dist/backend.
+    const pythonSourceRoot = path.join(workspaceRoot, "tg-webm-converter", "src");
     return {
       command:
         process.env.PYTHON ??
@@ -280,8 +295,11 @@ export class ConverterService {
       env: {
         ...process.env,
         PYTHONPATH:
-          process.env.STICKER_SMITH_PYTHONPATH ??
-          path.join(workspaceRoot, "tg-webm-converter", "src"),
+          joinPythonPathEntries(
+            pythonSourceRoot,
+            process.env.STICKER_SMITH_PYTHONPATH,
+            process.env.PYTHONPATH,
+          ) || pythonSourceRoot,
       },
     };
   }
