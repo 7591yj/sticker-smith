@@ -7,6 +7,7 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { AssetGrid } from "../src/renderer/components/AssetGrid";
+import { EmojiPickerDialog } from "../src/renderer/components/EmojiPickerDialog";
 import { OutputsList } from "../src/renderer/components/OutputsList";
 import {
   FilePreview,
@@ -212,5 +213,43 @@ describe("OutputsList", () => {
     expect(markup.indexOf("icon.webm")).toBeLessThan(markup.indexOf("alpha.webm"));
     expect(markup).toContain("🙂");
     expect(markup).toContain("No emoji");
+    expect(markup).toContain("user-select:none");
+  });
+
+  it("does not render no-emoji metadata for icon outputs", () => {
+    const markup = renderToStaticMarkup(
+      <OutputsList
+        packId="pack-1"
+        view="gallery"
+        assets={[createAsset("asset-for-icon.webm", "icon.png")]}
+        outputs={[createOutput("icon.webm", "icon")]}
+        refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
+          pack: createPack(),
+          assets: [],
+          outputs: [],
+        }))}
+      />,
+    );
+
+    expect(markup).not.toContain("No emoji");
+  });
+});
+
+describe("EmojiPickerDialog", () => {
+  it("renders an expanded Telegram emoji catalog", () => {
+    const markup = renderToStaticMarkup(
+      <EmojiPickerDialog
+        open
+        title="Edit Emojis"
+        initialEmojis={[]}
+        onConfirm={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Search emojis");
+    expect(markup).toContain("🫶");
+    expect(markup).toContain("🩷");
+    expect(markup).toContain("🌮");
   });
 });

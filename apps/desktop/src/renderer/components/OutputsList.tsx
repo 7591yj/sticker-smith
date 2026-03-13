@@ -131,6 +131,19 @@ export function OutputsList({
     [assetById, selectableAssetIds, selectOnly, selectionAnchorId],
   );
 
+  const handleOutputDoubleClick = useCallback(
+    (_event: MouseEvent<HTMLDivElement>, output: OutputArtifact) => {
+      if (output.mode !== "sticker" || !assetById.has(output.sourceAssetId)) {
+        return;
+      }
+
+      const assetId = output.sourceAssetId;
+      selectOnly(assetId);
+      setEmojiEditAssetIds([assetId]);
+    },
+    [assetById, selectOnly],
+  );
+
   const handleContextMenu = useCallback(
     (event: MouseEvent, output: OutputArtifact) => {
       if (output.mode !== "sticker" || !assetById.has(output.sourceAssetId)) {
@@ -264,6 +277,8 @@ export function OutputsList({
             {sortedOutputs.map((out) => {
               const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
               const selectable = out.mode === "sticker" && sourceAsset !== null;
+              const showEmojiMetadata =
+                out.mode === "sticker" && sourceAsset !== null;
 
               return (
                 <BrowserListRow
@@ -274,6 +289,11 @@ export function OutputsList({
                   selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
                   onClick={
                     selectable ? (event) => handleOutputClick(event, out) : undefined
+                  }
+                  onDoubleClick={
+                    selectable
+                      ? (event) => handleOutputDoubleClick(event, out)
+                      : undefined
                   }
                   onContextMenu={
                     selectable ? (event) => handleContextMenu(event, out) : undefined
@@ -291,7 +311,7 @@ export function OutputsList({
                         size="small"
                         sx={fileMetaChipSx}
                       />
-                      {sourceAsset ? (
+                      {showEmojiMetadata ? (
                         <Chip
                           label={formatEmojiSummary(sourceAsset)}
                           size="small"
@@ -327,6 +347,8 @@ export function OutputsList({
                 out.relativePath.split("/").pop() ?? out.relativePath;
               const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
               const selectable = out.mode === "sticker" && sourceAsset !== null;
+              const showEmojiMetadata =
+                out.mode === "sticker" && sourceAsset !== null;
 
               return (
                 <BrowserGalleryCard
@@ -337,6 +359,11 @@ export function OutputsList({
                   selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
                   onClick={
                     selectable ? (event) => handleOutputClick(event, out) : undefined
+                  }
+                  onDoubleClick={
+                    selectable
+                      ? (event) => handleOutputDoubleClick(event, out)
+                      : undefined
                   }
                   onContextMenu={
                     selectable ? (event) => handleContextMenu(event, out) : undefined
@@ -350,7 +377,7 @@ export function OutputsList({
                   metadata={
                     <>
                       <Chip label={out.mode} size="small" sx={fileMetaChipSx} />
-                      {sourceAsset ? (
+                      {showEmojiMetadata ? (
                         <Chip
                           label={formatEmojiSummary(sourceAsset)}
                           size="small"

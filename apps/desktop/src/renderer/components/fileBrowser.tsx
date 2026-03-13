@@ -45,6 +45,7 @@ interface BrowserGalleryCardProps {
   preview: ReactNode;
   metadata: ReactNode;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -56,6 +57,7 @@ interface BrowserListRowProps {
   preview: ReactNode;
   metadata: ReactNode;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -245,11 +247,13 @@ export function BrowserGalleryCard({
   preview,
   metadata,
   onClick,
+  onDoubleClick,
   onContextMenu,
 }: BrowserGalleryCardProps) {
   return (
     <Box
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
@@ -260,6 +264,8 @@ export function BrowserGalleryCard({
         borderColor: selected || isPinned ? "primary.main" : "divider",
         bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
         boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
@@ -316,11 +322,13 @@ export function BrowserListRow({
   preview,
   metadata,
   onClick,
+  onDoubleClick,
   onContextMenu,
 }: BrowserListRowProps) {
   return (
     <Box
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       title={title}
       sx={{
@@ -335,6 +343,8 @@ export function BrowserListRow({
         borderColor: selected || isPinned ? "primary.main" : "divider",
         bgcolor: selected ? "action.selected" : "action.hover",
         cursor: "default",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
         boxShadow: selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
         "&:hover": {
