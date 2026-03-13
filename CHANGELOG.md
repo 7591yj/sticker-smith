@@ -2,6 +2,16 @@
 
 All notable project releases are documented here.
 
+## 0.2.0-beta.1 - 2026-03-13
+
+- Add Telegram authentication, owned-pack sync, and sticker publish workflows
+  directly in the desktop app.
+- Surface Telegram mirror state, pack short names, and clearer sync error
+  handling across the library and pack views.
+- Move emoji assignment into the outputs workflow, adopt the Unicode RGI emoji
+  catalog, and accept `.webm` source inputs through the bundled converter
+  backend.
+
 ## 0.1.1-beta.2 - 2026-03-12
 
 - Fix AppImage conversion fallback so packaged builds resolve healthy host
