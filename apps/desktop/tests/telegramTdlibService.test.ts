@@ -1,8 +1,43 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { TelegramTdlibService } from "../src/main/services/telegramTdlibService";
+import {
+  TelegramTdlibService,
+  resolvePackagedTdjsonPath,
+} from "../src/main/services/telegramTdlibService";
 
 describe("TelegramTdlibService", () => {
+  it("rewrites packaged tdjson paths to app.asar.unpacked when present", async () => {
+    const accessMock = vi
+      .spyOn(await import("node:fs/promises"), "access")
+      .mockResolvedValue(undefined);
+
+    await expect(
+      resolvePackagedTdjsonPath(
+        "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+      ),
+    ).resolves.toBe(
+      "/tmp/Sticker Smith/resources/app.asar.unpacked/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+    );
+
+    accessMock.mockRestore();
+  });
+
+  it("keeps packaged tdjson paths unchanged when no unpacked file exists", async () => {
+    const accessMock = vi
+      .spyOn(await import("node:fs/promises"), "access")
+      .mockRejectedValue(new Error("ENOENT"));
+
+    await expect(
+      resolvePackagedTdjsonPath(
+        "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+      ),
+    ).resolves.toBe(
+      "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+    );
+
+    accessMock.mockRestore();
+  });
+
   it("sends the required tdlib parameter defaults during initialization", async () => {
     const requests: Array<Record<string, unknown>> = [];
     const service = new TelegramTdlibService() as TelegramTdlibService & {

@@ -57,8 +57,13 @@
       "dist/**/*",
       "dist-electron/**/*",
       "node_modules/keytar/**/*",
+      "node_modules/@prebuilt-tdlib/**/*",
       "node_modules/prebuilt-tdlib/**/*",
       "node_modules/tdl/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@prebuilt-tdlib/**/*",
+      "node_modules/prebuilt-tdlib/**/*"
     ],
     "extraResources": [
       {

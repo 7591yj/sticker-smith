@@ -170,6 +170,27 @@ function describeAuthState(authState: string) {
 
 let tdlibConfigured = false;
 
+export async function resolvePackagedTdjsonPath(tdjson: string) {
+  const normalizedTdjson = path.normalize(tdjson);
+  const asarSegment = `${path.sep}app.asar${path.sep}`;
+
+  if (!normalizedTdjson.includes(asarSegment)) {
+    return normalizedTdjson;
+  }
+
+  const unpackedTdjson = normalizedTdjson.replace(
+    asarSegment,
+    `${path.sep}app.asar.unpacked${path.sep}`,
+  );
+
+  try {
+    await fs.access(unpackedTdjson);
+    return unpackedTdjson;
+  } catch {
+    return normalizedTdjson;
+  }
+}
+
 function configureTdlibOnce(
   configure: (options: {
     tdjson: string;
@@ -270,10 +291,11 @@ export class TelegramTdlibService {
   private async loadTdlibModules() {
     const tdl = await import("tdl");
     const prebuiltTdlib = await import("prebuilt-tdlib");
+    const tdjson = await resolvePackagedTdjsonPath(prebuiltTdlib.getTdjson());
     return {
       createBareClient: tdl.createBareClient,
       configure: tdl.configure,
-      tdjson: prebuiltTdlib.getTdjson(),
+      tdjson,
     };
   }
 
