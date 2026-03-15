@@ -2,6 +2,13 @@
 
 All notable project releases are documented here.
 
+## 0.2.0-beta.2 - 2026-03-15
+
+- Fix packaged Linux builds so TDLib resolves `libtdjson.so` from the deployed
+  application layout instead of a broken runtime path.
+- Avoid bundling the shared workspace package as a desktop dependency during
+  packaging.
+
 ## 0.2.0-beta.1 - 2026-03-13
 
 - Add Telegram authentication, owned-pack sync, and sticker publish workflows
