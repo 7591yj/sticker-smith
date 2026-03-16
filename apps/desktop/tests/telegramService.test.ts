@@ -1996,6 +1996,125 @@ describe("TelegramService", () => {
     });
   });
 
+  it("refreshes only the updated telegram pack after update", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: "sticker-1",
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+      {
+        stickerSetId: "200",
+        shortName: "sample_pack_two",
+        title: "Sample Pack Two",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-2",
+            fileId: "remote-2",
+            fileUniqueId: "unique-2",
+            numericFileId: 202,
+            position: 0,
+            emojiList: ["😎"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+
+    const updatedMirror = await libraryService.findPackByTelegramStickerSetId("100");
+    const untouchedMirror =
+      await libraryService.findPackByTelegramStickerSetId("200");
+    expect(updatedMirror).toBeTruthy();
+    expect(untouchedMirror).toBeTruthy();
+
+    const updatedDetails = await libraryService.getPack(updatedMirror!.record.id);
+    const untouchedDetails = await libraryService.getPack(untouchedMirror!.record.id);
+    await libraryService.setTelegramAssetDownloadState({
+      packId: untouchedMirror!.record.id,
+      assetId: untouchedDetails.assets[0]!.id,
+      downloadState: "missing",
+    });
+
+    const originalDownloadFile = tdlibService.downloadFile.bind(tdlibService);
+    let downloadCount = 0;
+    tdlibService.downloadFile = async (...args: [number?]) => {
+      downloadCount += 1;
+      return originalDownloadFile(...args);
+    };
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-update-targeted-sync-"),
+    );
+    cleanup.push(fileRoot);
+    const stickerPath = path.join(fileRoot, "new-sticker.png");
+    await fs.writeFile(stickerPath, "new-sticker");
+
+    const imported = await libraryService.importFiles(updatedMirror!.record.id, [
+      stickerPath,
+    ]);
+    const newStickerAssetId = imported.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: updatedMirror!.record.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(updatedDetails.pack.outputRoot, `${newStickerAssetId}.webm`),
+      "new-sticker-output",
+    );
+    await libraryService.recordConversionResult(updatedMirror!.record.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "new-sticker-output".length,
+    });
+
+    downloadCount = 0;
+    await telegramService.updateTelegramPack({ packId: updatedMirror!.record.id });
+
+    expect(downloadCount).toBe(0);
+  });
+
   it("updates telegram mirrors after converting a local icon asset without excluding the remote thumbnail sticker", async () => {
     const { root, downloadRoot, libraryService, telegramService, tdlibService } =
       await createTelegramService();

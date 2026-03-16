@@ -1715,7 +1715,10 @@ export class TelegramService {
         });
       }
 
-      await this.syncOwnedPacks();
+      const refreshedRemoteSet = await this.getRemoteStickerSetOrThrow(
+        telegram.stickerSetId,
+      );
+      await this.syncOneStickerSet(refreshedRemoteSet);
       await this.mirrorService.markPackSyncState(input.packId, "idle", null);
       this.emit({
         type: "update_finished",
