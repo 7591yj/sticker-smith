@@ -1907,6 +1907,95 @@ describe("TelegramService", () => {
     );
   });
 
+  it("keeps a separate remote telegram thumbnail when updating stickers without a local icon", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.iconAssetId).toBeNull();
+    expect(mirrorPack?.thumbnailPath).toContain("/source/telegram-pack-icon");
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-keep-remote-icon-"),
+    );
+    cleanup.push(fileRoot);
+    const stickerPath = path.join(fileRoot, "new-sticker.png");
+    await fs.writeFile(stickerPath, "new-sticker");
+
+    const imported = await libraryService.importFiles(mirrorPack!.id, [stickerPath]);
+    const newStickerAssetId = imported.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      "new-sticker-output",
+    );
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "new-sticker-output".length,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.iconAssetId).toBeNull();
+    expect(updated.pack.thumbnailPath).toContain("/source/telegram-pack-icon");
+    expect(tdlibService.getClearedStickerSetThumbnails()).not.toContain(
+      "sample_pack",
+    );
+    expect(tdlibService.getAddedStickers()).toContainEqual({
+      shortName: "sample_pack",
+      stickerPath: path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      emojis: ["✨"],
+    });
+  });
+
   it("updates telegram mirrors after converting a local icon asset without excluding the remote thumbnail sticker", async () => {
     const { root, downloadRoot, libraryService, telegramService, tdlibService } =
       await createTelegramService();

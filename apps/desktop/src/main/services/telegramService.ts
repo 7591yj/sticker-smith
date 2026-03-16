@@ -1704,7 +1704,10 @@ export class TelegramService {
           thumbnailPath: iconOutput.absolutePath,
           format: "video",
         });
-      } else if (details.pack.iconAssetId === null) {
+      } else if (
+        details.pack.iconAssetId === null &&
+        details.pack.telegram?.thumbnailPath === null
+      ) {
         await this.tdlibService.setStickerSetThumbnail({
           shortName: telegramShortName,
           thumbnailPath: null,
