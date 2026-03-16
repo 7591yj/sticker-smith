@@ -776,6 +776,18 @@ export class TelegramTdlibService {
     });
   }
 
+  async setStickerPositionInSet(input: { fileId: string; position: number }) {
+    if (!this.client) {
+      throw new Error("TDLib client is not started.");
+    }
+
+    await this.client.invoke({
+      _: "setStickerPositionInSet",
+      sticker: { _: "inputFileRemote", id: input.fileId },
+      position: input.position,
+    });
+  }
+
   async removeStickerFromSet(input: { stickerSetId: string; fileId: string }) {
     if (!this.client) {
       throw new Error("TDLib client is not started.");

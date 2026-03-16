@@ -91,6 +91,7 @@ class FakeTdlibService {
     emojis: string[];
   }> = [];
   private stickerEmojiUpdates: Array<{ fileId: string; emojis: string[] }> = [];
+  private stickerPositionUpdates: Array<{ fileId: string; position: number }> = [];
   private ownedStickerSets: Array<{
     stickerSetId: string;
     shortName: string;
@@ -168,6 +169,10 @@ class FakeTdlibService {
 
   getStickerEmojiUpdates() {
     return [...this.stickerEmojiUpdates];
+  }
+
+  getStickerPositionUpdates() {
+    return [...this.stickerPositionUpdates];
   }
 
   getOwnedStickerSetRequestCount() {
@@ -344,11 +349,54 @@ class FakeTdlibService {
         stickerPath: input.stickerPath,
         emojis: [...input.emojis],
       });
+
+      const stickerSet = this.ownedStickerSets.find(
+        (set) => set.shortName === input.shortName,
+      );
+      if (stickerSet) {
+        const nextIndex = stickerSet.stickers.length + 1;
+        stickerSet.stickers.push({
+          stickerId: `sticker-added-${nextIndex}`,
+          fileId: `remote-added-${nextIndex}`,
+          fileUniqueId: `unique-added-${nextIndex}`,
+          numericFileId: 1_000 + nextIndex,
+          position: stickerSet.stickers.length,
+          emojiList: [...input.emojis],
+          format: "video",
+        });
+      }
     }
     return;
   }
 
-  async replaceStickerInSet() {
+  async replaceStickerInSet(input?: {
+    shortName: string;
+    oldFileId: string;
+    newStickerPath: string;
+    emojis: string[];
+  }) {
+    const stickerSet = this.ownedStickerSets.find(
+      (set) => set.shortName === input?.shortName,
+    );
+    if (!stickerSet || !input) {
+      return;
+    }
+
+    const index = stickerSet.stickers.findIndex(
+      (sticker) => sticker.fileId === input.oldFileId,
+    );
+    if (index === -1) {
+      return;
+    }
+
+    const current = stickerSet.stickers[index]!;
+    stickerSet.stickers[index] = {
+      ...current,
+      fileId: `${current.fileId}-replaced`,
+      fileUniqueId: `${current.fileUniqueId}-replaced`,
+      numericFileId: current.numericFileId + 10_000,
+      emojiList: [...input.emojis],
+    };
     return;
   }
 
@@ -358,11 +406,70 @@ class FakeTdlibService {
         fileId: input.fileId,
         emojis: [...input.emojis],
       });
+
+      for (const stickerSet of this.ownedStickerSets) {
+        const sticker = stickerSet.stickers.find(
+          (candidate) => candidate.fileId === input.fileId,
+        );
+        if (sticker) {
+          sticker.emojiList = [...input.emojis];
+          break;
+        }
+      }
     }
     return;
   }
 
-  async removeStickerFromSet() {
+  async setStickerPositionInSet(input?: { fileId: string; position: number }) {
+    if (!input) {
+      return;
+    }
+
+    this.stickerPositionUpdates.push({
+      fileId: input.fileId,
+      position: input.position,
+    });
+
+    for (const stickerSet of this.ownedStickerSets) {
+      const currentIndex = stickerSet.stickers.findIndex(
+        (sticker) => sticker.fileId === input.fileId,
+      );
+      if (currentIndex === -1) {
+        continue;
+      }
+
+      const [movedSticker] = stickerSet.stickers.splice(currentIndex, 1);
+      if (!movedSticker) {
+        return;
+      }
+
+      stickerSet.stickers.splice(input.position, 0, movedSticker);
+      stickerSet.stickers.forEach((sticker, index) => {
+        sticker.position = index;
+      });
+      return;
+    }
+  }
+
+  async removeStickerFromSet(input?: { fileId: string }) {
+    if (!input) {
+      return;
+    }
+
+    for (const stickerSet of this.ownedStickerSets) {
+      const currentIndex = stickerSet.stickers.findIndex(
+        (sticker) => sticker.fileId === input.fileId,
+      );
+      if (currentIndex === -1) {
+        continue;
+      }
+
+      stickerSet.stickers.splice(currentIndex, 1);
+      stickerSet.stickers.forEach((sticker, index) => {
+        sticker.position = index;
+      });
+      return;
+    }
     return;
   }
 
@@ -1775,6 +1882,80 @@ describe("TelegramService", () => {
     expect(tdlibService.getAddedStickers()).toHaveLength(0);
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.assets.filter((asset) => !asset.telegram)).toHaveLength(0);
+  });
+
+  it("persists reordered telegram stickers during update by reordering the remote set first", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+          {
+            stickerId: "sticker-2",
+            fileId: "remote-2",
+            fileUniqueId: "unique-2",
+            numericFileId: 102,
+            position: 1,
+            emojiList: ["😎"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    const before = await libraryService.getPack(mirrorPack!.id);
+    expect(before.assets.map((asset) => asset.telegram?.stickerId)).toEqual([
+      "sticker-1",
+      "sticker-2",
+    ]);
+
+    await libraryService.reorderAsset({
+      packId: mirrorPack!.id,
+      assetId: before.assets[1]!.id,
+      beforeAssetId: before.assets[0]!.id,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    expect(tdlibService.getStickerPositionUpdates()).toContainEqual({
+      fileId: "remote-2",
+      position: 0,
+    });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.assets.map((asset) => asset.telegram?.stickerId)).toEqual([
+      "sticker-2",
+      "sticker-1",
+    ]);
+    expect(updated.assets.map((asset) => asset.order)).toEqual([0, 1]);
   });
 
   it("updates a single-sticker telegram mirror while keeping its thumbnail sticker as a normal sticker", async () => {

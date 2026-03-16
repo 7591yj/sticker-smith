@@ -527,6 +527,38 @@ describe("TelegramTdlibService", () => {
     ]);
   });
 
+  it("moves stickers within a set by remote file id", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+    };
+
+    service.client = {
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        return { _: "ok" };
+      },
+    };
+
+    await service.setStickerPositionInSet({
+      fileId: "remote-file-id",
+      position: 0,
+    });
+
+    expect(requests).toEqual([
+      {
+        _: "setStickerPositionInSet",
+        sticker: {
+          _: "inputFileRemote",
+          id: "remote-file-id",
+        },
+        position: 0,
+      },
+    ]);
+  });
+
   it("sends sticker set thumbnails as input files", async () => {
     const requests: Array<Record<string, unknown>> = [];
     const service = new TelegramTdlibService() as TelegramTdlibService & {
