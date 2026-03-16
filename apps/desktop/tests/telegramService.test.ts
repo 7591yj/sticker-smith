@@ -1983,6 +1983,81 @@ describe("TelegramService", () => {
     });
   });
 
+  it("keeps the separate local icon while updating with newly added stickers", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-add-sticker-keep-icon-"),
+    );
+    cleanup.push(fileRoot);
+
+    const stickerPath = path.join(fileRoot, "fresh-sticker.webm");
+    await fs.writeFile(stickerPath, "fresh-sticker-data");
+    const importedSticker = await libraryService.importFiles(mirrorPack!.id, [stickerPath]);
+    const newStickerAssetId = importedSticker.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      "fresh-sticker-output",
+    );
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "fresh-sticker-output".length,
+    });
+
+    const iconPath = path.join(fileRoot, "separate-icon.webm");
+    await fs.writeFile(iconPath, "icon-data");
+    const importedIcon = await libraryService.importFiles(mirrorPack!.id, [iconPath]);
+    const iconAssetId = importedIcon.imported[0]!.id;
+    await libraryService.setPackIcon({
+      packId: mirrorPack!.id,
+      assetId: iconAssetId,
+    });
+    await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-output");
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: "icon-output".length,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.iconAssetId).toBe(iconAssetId);
+    expect(updated.pack.thumbnailPath).toBe(
+      path.join(mirrorPack!.outputRoot, "icon.webm"),
+    );
+    expect(
+      updated.outputs.find((output) => output.mode === "icon")?.sourceAssetId,
+    ).toBe(iconAssetId);
+    expect(tdlibService.getAddedStickers()).toContainEqual({
+      shortName: "sample_pack",
+      stickerPath: path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      emojis: ["✨"],
+    });
+  });
+
   it("preserves the explicit local icon thumbnail after a later telegram resync", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
