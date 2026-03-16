@@ -60,6 +60,18 @@ function normalizeRelativePath(input: string) {
   return input.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
+function sourceAssetRelativePath(assetId: string, kind: SourceMediaKind) {
+  return `${assetId}.${kind}`;
+}
+
+function stickerOutputRelativePath(assetId: string) {
+  return `${assetId}.webm`;
+}
+
+function iconOutputRelativePath() {
+  return "icon.webm";
+}
+
 function resolvePackPaths(rootPath: string) {
   return {
     packFilePath: path.join(rootPath, "pack.json"),
@@ -73,6 +85,91 @@ function extToKind(filePath: string): SourceMediaKind | null {
   return supportedMediaKindsSet.has(extension as SourceMediaKind)
     ? (extension as SourceMediaKind)
     : null;
+}
+
+function getOriginalFileName(
+  asset: Partial<StickerPackRecord["assets"][number]>,
+) {
+  if (asset.originalFileName !== undefined) {
+    return asset.originalFileName;
+  }
+
+  if (asset.originalImportPath) {
+    return path.basename(asset.originalImportPath);
+  }
+
+  if (asset.relativePath) {
+    return path.basename(asset.relativePath);
+  }
+
+  return null;
+}
+
+function compareAssetsByOrder(
+  left: Pick<SourceAsset, "id" | "order" | "importedAt">,
+  right: Pick<SourceAsset, "id" | "order" | "importedAt">,
+) {
+  return (
+    left.order - right.order ||
+    left.importedAt.localeCompare(right.importedAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function syncOutputOrders(record: StickerPackRecord) {
+  const assetOrderById = new Map(record.assets.map((asset) => [asset.id, asset.order]));
+
+  for (const output of record.outputs) {
+    output.order = assetOrderById.get(output.sourceAssetId) ?? output.order ?? 0;
+  }
+}
+
+function compactStickerOrders(record: StickerPackRecord) {
+  const stickerAssets = record.assets
+    .filter((asset) => asset.id !== record.iconAssetId)
+    .sort(compareAssetsByOrder);
+
+  stickerAssets.forEach((asset, index) => {
+    asset.order = index;
+  });
+
+  syncOutputOrders(record);
+}
+
+function sortPackRecord(record: StickerPackRecord) {
+  record.assets.sort((left, right) => {
+    const leftIsIcon = left.id === record.iconAssetId;
+    const rightIsIcon = right.id === record.iconAssetId;
+
+    if (leftIsIcon !== rightIsIcon) {
+      return leftIsIcon ? -1 : 1;
+    }
+
+    return compareAssetsByOrder(left, right);
+  });
+
+  record.outputs.sort((left, right) => {
+    const leftIsIcon = left.mode === "icon";
+    const rightIsIcon = right.mode === "icon";
+
+    if (leftIsIcon !== rightIsIcon) {
+      return leftIsIcon ? -1 : 1;
+    }
+
+    return (
+      left.order - right.order ||
+      left.updatedAt.localeCompare(right.updatedAt) ||
+      left.sourceAssetId.localeCompare(right.sourceAssetId)
+    );
+  });
+}
+
+function nextStickerOrder(record: StickerPackRecord) {
+  return (
+    record.assets
+      .filter((asset) => asset.id !== record.iconAssetId)
+      .reduce((maxOrder, asset) => Math.max(maxOrder, asset.order), -1) + 1
+  );
 }
 
 async function collectFiles(directoryPath: string): Promise<string[]> {
@@ -301,8 +398,9 @@ function normalizePackRecord(
 ): StickerPackRecord {
   const now = new Date().toISOString();
   const source = record?.source ?? "local";
+  const schemaVersion = record?.schemaVersion ?? 2;
   const normalized: StickerPackRecord = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: record?.id ?? randomUUID(),
     source,
     name: record?.name ?? "Untitled Pack",
@@ -318,7 +416,9 @@ function normalizePackRecord(
     assets: (record?.assets ?? []).map((asset, index) => ({
       id: asset.id ?? randomUUID(),
       packId: asset.packId ?? (record?.id ?? ""),
+      order: asset.order ?? index,
       relativePath: asset.relativePath ?? `sticker-${index + 1}.webm`,
+      originalFileName: getOriginalFileName(asset),
       emojiList: asset.emojiList ?? [],
       kind: asset.kind ?? "png",
       importedAt: asset.importedAt ?? now,
@@ -339,6 +439,7 @@ function normalizePackRecord(
     outputs: (record?.outputs ?? []).map((output) => ({
       packId: output.packId ?? (record?.id ?? ""),
       sourceAssetId: output.sourceAssetId ?? "",
+      order: output.order ?? 0,
       mode: output.mode ?? "sticker",
       relativePath: output.relativePath ?? "",
       sizeBytes: output.sizeBytes ?? 0,
@@ -347,7 +448,36 @@ function normalizePackRecord(
     })),
   };
 
+  if (schemaVersion < 3) {
+    if (source === "telegram") {
+      const remoteAssets = normalized.assets
+        .filter((asset) => asset.telegram)
+        .sort(
+          (left, right) =>
+            (left.telegram?.position ?? 0) - (right.telegram?.position ?? 0) ||
+            left.importedAt.localeCompare(right.importedAt) ||
+            left.id.localeCompare(right.id),
+        );
+      const localOnlyAssets = normalized.assets
+        .filter((asset) => !asset.telegram)
+        .sort(compareAssetsByOrder);
+
+      remoteAssets.forEach((asset, index) => {
+        asset.order = index;
+      });
+      localOnlyAssets.forEach((asset, index) => {
+        asset.order = remoteAssets.length + index;
+      });
+    } else {
+      normalized.assets.forEach((asset, index) => {
+        asset.order = index;
+      });
+    }
+  }
+
   enforcePackOutputRoleInvariants(normalized);
+  compactStickerOrders(normalized);
+  sortPackRecord(normalized);
   return normalized;
 }
 
@@ -417,11 +547,14 @@ export class LibraryService {
     const backupFilePath = `${packFilePath}.bak`;
     try {
       const raw = await fs.readFile(packFilePath, "utf8");
-      return normalizePackRecord(
-        JSON.parse(raw) as Partial<StickerPackRecord> & {
-          source?: PackSource;
-        },
-      );
+      const parsed = JSON.parse(raw) as Partial<StickerPackRecord> & {
+        source?: PackSource;
+      };
+      const record = normalizePackRecord(parsed);
+      if ((parsed.schemaVersion ?? 2) < 3) {
+        await this.writePackRecord(rootPath, record);
+      }
+      return record;
     } catch (error) {
       if (!isJsonParseError(error) || !(await pathExists(backupFilePath))) {
         throw error;
@@ -441,7 +574,9 @@ export class LibraryService {
   private async writePackRecord(rootPath: string, record: StickerPackRecord) {
     const removedOutputs = enforcePackOutputRoleInvariants(record);
     await this.deleteOutputFilesIfUnreferenced(record, rootPath, removedOutputs);
-    record.schemaVersion = 2;
+    syncOutputOrders(record);
+    sortPackRecord(record);
+    record.schemaVersion = 3;
     record.updatedAt = new Date().toISOString();
     await this.ensurePackDirectories(rootPath);
     const { packFilePath } = resolvePackPaths(rootPath);
@@ -568,17 +703,15 @@ export class LibraryService {
     record: StickerPackRecord,
     rootPath: string,
     absolutePath: string,
-    relativePath: string,
+    _relativePath: string,
   ): Promise<SourceAsset | null> {
     const kind = extToKind(absolutePath);
     if (!kind) {
       return null;
     }
 
-    const nextRelativePath = this.resolveUniqueRelativePath(
-      record,
-      relativePath,
-    );
+    const assetId = randomUUID();
+    const nextRelativePath = sourceAssetRelativePath(assetId, kind);
     const destination = path.join(
       resolvePackPaths(rootPath).sourceRoot,
       nextRelativePath,
@@ -587,10 +720,12 @@ export class LibraryService {
     await fs.copyFile(absolutePath, destination);
 
     const asset: SourceAsset = {
-      id: randomUUID(),
+      id: assetId,
       packId: record.id,
+      order: nextStickerOrder(record),
       relativePath: nextRelativePath,
       absolutePath: destination,
+      originalFileName: path.basename(absolutePath),
       emojiList: [],
       kind,
       importedAt: new Date().toISOString(),
@@ -601,7 +736,9 @@ export class LibraryService {
     record.assets.push({
       id: asset.id,
       packId: asset.packId,
+      order: asset.order,
       relativePath: asset.relativePath,
+      originalFileName: asset.originalFileName,
       emojiList: asset.emojiList,
       kind: asset.kind,
       importedAt: asset.importedAt,
@@ -871,7 +1008,7 @@ export class LibraryService {
         continue;
       }
 
-      const nextRelativePath = asset.relativePath;
+      const nextRelativePath = stickerOutputRelativePath(asset.id);
       const nextAbsolutePath = path.join(outputRoot, nextRelativePath);
       const previousOutputPath =
         output && output.relativePath !== nextRelativePath
@@ -893,6 +1030,7 @@ export class LibraryService {
       record.outputs.push({
         packId: record.id,
         sourceAssetId: asset.id,
+        order: asset.order,
         mode: "sticker",
         relativePath: nextRelativePath,
         sizeBytes: stat.size,
@@ -980,6 +1118,8 @@ export class LibraryService {
 
       await fs.rm(path.join(outputRoot, output.relativePath), { force: true });
     }
+
+    compactStickerOrders(record);
   }
 
   async listPacks(): Promise<StickerPack[]> {
@@ -1058,7 +1198,7 @@ export class LibraryService {
 
     const now = new Date().toISOString();
     const record: StickerPackRecord = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id,
       source: "local",
       name: input.name,
@@ -1107,8 +1247,15 @@ export class LibraryService {
           .slice()
           .sort((left, right) => left.telegram.position - right.telegram.position)
           .map(async (assetInput, index) => {
+            const assetId =
+              existingByStickerId.get(assetInput.telegram.stickerId)?.id ??
+              assetInput.id ??
+              randomUUID();
             const existingAsset = existingByStickerId.get(assetInput.telegram.stickerId);
-            const relativePath = normalizeRelativePath(assetInput.relativePath);
+            const relativePath = sourceAssetRelativePath(
+              assetId,
+              assetInput.kind ?? "webm",
+            );
             await migrateTelegramAssetFile(
               rootPath,
               existingAsset?.relativePath ?? null,
@@ -1119,9 +1266,12 @@ export class LibraryService {
             );
 
             return {
-              id: existingAsset?.id ?? assetInput.id ?? randomUUID(),
+              id: assetId,
               packId: existing?.id ?? directoryName,
+              order: index,
               relativePath,
+              originalFileName:
+                existingAsset?.originalFileName ?? path.basename(assetInput.relativePath),
               emojiList: assetInput.emojiList,
               kind: assetInput.kind ?? "webm",
               importedAt: existingAsset?.importedAt ?? new Date().toISOString(),
@@ -1138,9 +1288,16 @@ export class LibraryService {
             };
           }),
       );
+      const normalizedLocalOnlyAssets = localOnlyAssets
+        .slice()
+        .sort(compareAssetsByOrder)
+        .map((asset, index) => ({
+          ...asset,
+          order: remoteAssets.length + index,
+        }));
 
       const record: StickerPackRecord = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: existing?.id ?? directoryName,
         source: "telegram",
         name: input.title,
@@ -1169,15 +1326,16 @@ export class LibraryService {
         }),
         createdAt: existing?.createdAt ?? new Date().toISOString(),
         updatedAt: existing?.updatedAt ?? new Date().toISOString(),
-        assets: [...remoteAssets, ...localOnlyAssets],
+        assets: [...remoteAssets, ...normalizedLocalOnlyAssets],
         outputs:
           existing?.outputs.filter((output) =>
-            [...remoteAssets, ...localOnlyAssets].some(
+            [...remoteAssets, ...normalizedLocalOnlyAssets].some(
               (asset) => asset.id === output.sourceAssetId,
             ),
           ) ?? [],
       };
 
+      compactStickerOrders(record);
       await this.reconcileTelegramMirrorOutputs(record, rootPath);
       await this.pruneDuplicateLocalTelegramAssets(record, rootPath);
       await this.writePackRecord(rootPath, record);
@@ -1227,6 +1385,7 @@ export class LibraryService {
             ? null
             : record.assets.find((asset) => asset.id === input.assetId) ?? null;
         record.iconAssetId = input.assetId;
+        compactStickerOrders(record);
         if (
           selectedAsset &&
           !(record.source === "telegram" && selectedAsset.telegram)
@@ -1271,12 +1430,10 @@ export class LibraryService {
     return this.importEntries(
       record,
       rootPath,
-      [...filePaths]
-        .sort()
-        .map((filePath) => ({
-          absolutePath: filePath,
-          relativePath: path.basename(filePath),
-        })),
+      [...filePaths].map((filePath) => ({
+        absolutePath: filePath,
+        relativePath: path.basename(filePath),
+      })),
     );
   }
 
@@ -1437,6 +1594,63 @@ export class LibraryService {
     });
   }
 
+  async reorderAsset(input: {
+    packId: string;
+    assetId: string;
+    beforeAssetId: string | null;
+  }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      if (record.iconAssetId === input.assetId) {
+        throw new Error("The icon asset cannot be reordered.");
+      }
+
+      if (input.beforeAssetId !== null && record.iconAssetId === input.beforeAssetId) {
+        throw new Error("Sticker assets cannot be moved before the icon.");
+      }
+
+      const asset = record.assets.find((item) => item.id === input.assetId);
+      if (!asset) {
+        throw new Error(`Asset not found: ${input.assetId}`);
+      }
+
+      const stickerAssets = record.assets
+        .filter((item) => item.id !== record.iconAssetId)
+        .sort(compareAssetsByOrder);
+      const currentIndex = stickerAssets.findIndex((item) => item.id === input.assetId);
+      if (currentIndex === -1) {
+        throw new Error(`Asset not found: ${input.assetId}`);
+      }
+
+      const [moved] = stickerAssets.splice(currentIndex, 1);
+      if (!moved) {
+        throw new Error(`Asset not found: ${input.assetId}`);
+      }
+
+      if (input.beforeAssetId === null) {
+        stickerAssets.push(moved);
+      } else {
+        const nextIndex = stickerAssets.findIndex(
+          (item) => item.id === input.beforeAssetId,
+        );
+        if (nextIndex === -1) {
+          throw new Error(`Asset not found: ${input.beforeAssetId}`);
+        }
+
+        stickerAssets.splice(nextIndex, 0, moved);
+      }
+
+      stickerAssets.forEach((item, index) => {
+        item.order = index;
+      });
+      syncOutputOrders(record);
+
+      if (record.telegram) {
+        record.telegram.syncState = "stale";
+        await this.reconcileTelegramMirrorOutputs(record, rootPath);
+      }
+    });
+  }
+
   async moveAsset(input: {
     packId: string;
     assetId: string;
@@ -1462,6 +1676,7 @@ export class LibraryService {
   async deleteAsset(input: { packId: string; assetId: string }) {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
       await this.deleteAssetRecord(record, rootPath, input.assetId);
+      compactStickerOrders(record);
 
       if (record.telegram) {
         record.telegram.syncState = "stale";
@@ -1475,6 +1690,7 @@ export class LibraryService {
       for (const assetId of [...new Set(input.assetIds)]) {
         await this.deleteAssetRecord(record, rootPath, assetId);
       }
+      compactStickerOrders(record);
 
       if (record.telegram) {
         record.telegram.syncState = "stale";
@@ -1498,12 +1714,13 @@ export class LibraryService {
     },
   ) {
     const { record, rootPath } = await this.readPackRecordById(packId);
-    const absolutePath = path.join(
-      resolvePackPaths(rootPath).outputRoot,
-      result.outputFileName,
-    );
-    const sha256 = await sha256ForFile(absolutePath);
     const sourceAsset = record.assets.find((asset) => asset.id === result.assetId);
+    const relativePath =
+      result.mode === "icon"
+        ? iconOutputRelativePath()
+        : stickerOutputRelativePath(result.assetId);
+    const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, relativePath);
+    const sha256 = await sha256ForFile(absolutePath);
     if (
       result.mode === "icon" &&
       sourceAsset &&
@@ -1525,8 +1742,9 @@ export class LibraryService {
     record.outputs.push({
       packId: record.id,
       sourceAssetId: result.assetId,
+      order: sourceAsset?.order ?? 0,
       mode: result.mode,
-      relativePath: result.outputFileName,
+      relativePath,
       sizeBytes: result.sizeBytes,
       sha256,
       updatedAt: new Date().toISOString(),
@@ -1557,9 +1775,7 @@ export class LibraryService {
         );
       }
 
-      const nextRelativePath = input.relativePath
-        ? this.resolveUniqueRelativePath(record, input.relativePath, asset.id)
-        : asset.relativePath;
+      const nextRelativePath = sourceAssetRelativePath(asset.id, asset.kind);
       const destination = path.join(
         resolvePackPaths(rootPath).sourceRoot,
         nextRelativePath,
