@@ -386,4 +386,70 @@ describe("LibraryService", () => {
       "webm-data",
     );
   });
+
+  it("preserves local-only telegram outputs when emoji metadata changes", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const remoteDetails = await libraryService.upsertTelegramMirror({
+      stickerSetId: "700",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath: null,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      assets: [
+        {
+          relativePath: "remote.webm",
+          emojiList: ["🙂"],
+          kind: "webm",
+          downloadState: "missing",
+          telegram: {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            position: 0,
+            baselineOutputHash: null,
+          },
+        },
+      ],
+    });
+
+    const fileRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-local-telegram-"));
+    cleanup.push(fileRoot);
+    const localSourcePath = path.join(fileRoot, "local.webm");
+    await fs.writeFile(localSourcePath, "local-webm");
+
+    const imported = await libraryService.importFiles(remoteDetails.pack.id, [
+      localSourcePath,
+    ]);
+    const localAsset = imported.imported[0]!;
+    const localOutputPath = path.join(remoteDetails.pack.outputRoot, `${localAsset.id}.webm`);
+    await fs.writeFile(localOutputPath, "local-output");
+    await libraryService.recordConversionResult(remoteDetails.pack.id, {
+      assetId: localAsset.id,
+      mode: "sticker",
+      outputFileName: `${localAsset.id}.webm`,
+      sizeBytes: "local-output".length,
+    });
+
+    const updated = await libraryService.setAssetEmojis({
+      packId: remoteDetails.pack.id,
+      assetId: localAsset.id,
+      emojis: ["🔥"],
+    });
+
+    expect(updated.assets.find((asset) => asset.id === localAsset.id)?.emojiList).toEqual([
+      "🔥",
+    ]);
+    expect(
+      updated.outputs.find((output) => output.sourceAssetId === localAsset.id),
+    ).toMatchObject({
+      relativePath: `${localAsset.id}.webm`,
+    });
+    await expect(fs.readFile(localOutputPath, "utf8")).resolves.toBe("local-output");
+  });
 });

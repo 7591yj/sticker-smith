@@ -938,6 +938,16 @@ export class LibraryService {
       }
 
       const asset = assetById.get(output.sourceAssetId);
+      const outputPath = path.join(outputRoot, output.relativePath);
+      const outputExists = await pathExists(outputPath);
+
+      if (asset && !asset.telegram) {
+        if (outputExists) {
+          nextOutputs.push(output);
+        }
+        continue;
+      }
+
       const sourcePath = asset
         ? path.join(sourceRoot, asset.relativePath)
         : null;
@@ -957,7 +967,7 @@ export class LibraryService {
         asset.downloadState = "missing";
       }
 
-      await fs.rm(path.join(outputRoot, output.relativePath), {
+      await fs.rm(outputPath, {
         force: true,
       });
     }
