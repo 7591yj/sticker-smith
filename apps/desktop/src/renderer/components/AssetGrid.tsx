@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, MouseEvent } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -23,18 +22,23 @@ import {
   browserMenuIconSx,
   browserMenuPaperSx,
   browserMenuTitleSx,
-  browserMetaChipSx,
-  browserMetadataRowSx,
   browserToolbarSx,
   formatCountLabel,
 } from "./browserStyles";
 import {
-  BrowserGalleryCard,
-  BrowserListRow,
   type BrowserView,
   FilePreview,
   sortItemsWithPinnedFirst,
 } from "./fileBrowser";
+import {
+  buildAssetMetadata,
+  buildAssetTitle,
+  buildStandaloneIconMetadata,
+  buildStandaloneIconTitle,
+  formatAssetLabel,
+  formatDownloadSummary,
+  renderBrowserItem,
+} from "./browserItemUtils";
 
 interface Props {
   assets: SourceAsset[];
@@ -43,11 +47,13 @@ interface Props {
   refreshDetails: () => Promise<StickerPackDetails>;
 }
 
+const DRAG_ASSET_ID_MIME = "application/x-sticker-smith-asset-id";
+
 export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const [draggedAssetId, setDraggedAssetId] = useState<string | null>(null);
   const [dragOverAssetId, setDragOverAssetId] = useState<string | null>(null);
+  const draggedAssetIdRef = useRef<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -101,8 +107,8 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   useEffect(() => {
     setSelectedAssetIds([]);
     setSelectionAnchorId(null);
-    setDraggedAssetId(null);
     setDragOverAssetId(null);
+    draggedAssetIdRef.current = null;
     setContextMenu(null);
   }, [pack.id]);
 
@@ -113,6 +119,10 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     setSelectionAnchorId((current) =>
       current && assetById.has(current) ? current : null,
     );
+    if (draggedAssetIdRef.current && !assetById.has(draggedAssetIdRef.current)) {
+      draggedAssetIdRef.current = null;
+      setDragOverAssetId(null);
+    }
   }, [assetById]);
 
   const selectOnly = useCallback((assetId: string) => {
@@ -235,30 +245,47 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     setSelectionAnchorId(null);
   }, []);
 
+  const clearDragState = useCallback(() => {
+    draggedAssetIdRef.current = null;
+    setDragOverAssetId(null);
+  }, []);
+
+  const readDraggedAssetId = useCallback(
+    (event?: Pick<DragEvent<HTMLDivElement>, "dataTransfer">) => {
+      const transferredAssetId =
+        event?.dataTransfer.getData(DRAG_ASSET_ID_MIME) ||
+        event?.dataTransfer.getData("text/plain") ||
+        null;
+
+      return draggedAssetIdRef.current ?? transferredAssetId;
+    },
+    [],
+  );
+
   const submitReorder = useCallback(
-    async (beforeAssetId: string | null) => {
-      if (!draggedAssetId) {
+    async (assetId: string, beforeAssetId: string | null) => {
+      if (!assetId) {
         return;
       }
 
-      const draggedAsset = assetById.get(draggedAssetId);
-      if (!draggedAsset || pack.iconAssetId === draggedAssetId) {
+      const draggedAsset = assetById.get(assetId);
+      if (!draggedAsset || pack.iconAssetId === assetId) {
         return;
       }
 
-      if (beforeAssetId === draggedAssetId) {
+      if (beforeAssetId === assetId) {
         return;
       }
 
       await window.stickerSmith.assets.reorder({
         packId: pack.id,
-        assetId: draggedAssetId,
+        assetId,
         beforeAssetId,
       });
       setDragOverAssetId(null);
       await refreshDetails();
     },
-    [assetById, draggedAssetId, pack.iconAssetId, pack.id, refreshDetails],
+    [assetById, pack.iconAssetId, pack.id, refreshDetails],
   );
 
   const handleDragStart = useCallback(
@@ -268,20 +295,26 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       }
 
       event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData(DRAG_ASSET_ID_MIME, asset.id);
       event.dataTransfer.setData("text/plain", asset.id);
-      setDraggedAssetId(asset.id);
+      draggedAssetIdRef.current = asset.id;
     },
     [pack.iconAssetId],
   );
 
   const handleDragEnd = useCallback(() => {
-    setDraggedAssetId(null);
-    setDragOverAssetId(null);
-  }, []);
+    clearDragState();
+  }, [clearDragState]);
 
   const handleDragOverAsset = useCallback(
     (event: DragEvent<HTMLDivElement>, asset: SourceAsset) => {
-      if (!draggedAssetId || asset.id === pack.iconAssetId || asset.id === draggedAssetId) {
+      const activeDraggedAssetId = readDraggedAssetId(event);
+
+      if (
+        !activeDraggedAssetId ||
+        asset.id === pack.iconAssetId ||
+        asset.id === activeDraggedAssetId
+      ) {
         return;
       }
 
@@ -290,26 +323,32 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       event.dataTransfer.dropEffect = "move";
       setDragOverAssetId(asset.id);
     },
-    [draggedAssetId, pack.iconAssetId],
+    [pack.iconAssetId, readDraggedAssetId],
   );
 
   const handleDropBeforeAsset = useCallback(
     async (event: DragEvent<HTMLDivElement>, asset: SourceAsset) => {
-      if (!draggedAssetId || asset.id === pack.iconAssetId || asset.id === draggedAssetId) {
+      const activeDraggedAssetId = readDraggedAssetId(event);
+
+      if (
+        !activeDraggedAssetId ||
+        asset.id === pack.iconAssetId ||
+        asset.id === activeDraggedAssetId
+      ) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
-      await submitReorder(asset.id);
-      setDraggedAssetId(null);
+      await submitReorder(activeDraggedAssetId, asset.id);
+      clearDragState();
     },
-    [draggedAssetId, pack.iconAssetId, submitReorder],
+    [clearDragState, pack.iconAssetId, readDraggedAssetId, submitReorder],
   );
 
   const handleDragOverEnd = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
-      if (!draggedAssetId) {
+      if (!readDraggedAssetId(event)) {
         return;
       }
 
@@ -318,21 +357,23 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       event.dataTransfer.dropEffect = "move";
       setDragOverAssetId("__end__");
     },
-    [draggedAssetId],
+    [readDraggedAssetId],
   );
 
   const handleDropToEnd = useCallback(
     async (event: DragEvent<HTMLDivElement>) => {
-      if (!draggedAssetId) {
+      const activeDraggedAssetId = readDraggedAssetId(event);
+
+      if (!activeDraggedAssetId) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
-      await submitReorder(null);
-      setDraggedAssetId(null);
+      await submitReorder(activeDraggedAssetId, null);
+      clearDragState();
     },
-    [draggedAssetId, submitReorder],
+    [clearDragState, readDraggedAssetId, submitReorder],
   );
 
   if (assets.length === 0 && !standaloneTelegramIconPath) {
@@ -350,9 +391,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
 
   return (
     <>
-      <Box
-        sx={browserToolbarSx}
-      >
+      <Box sx={browserToolbarSx}>
         <Typography
           variant="caption"
           color="text.secondary"
@@ -401,145 +440,58 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       </Box>
 
       <Box sx={{ pb: 2.5 }}>
-        {view === "list" ? (
-          <Box
-            sx={browserListContainerSx}
-            onDragOver={handleDragOverEnd}
-            onDrop={handleDropToEnd}
-          >
-            {standaloneTelegramIconPath ? (
-              <BrowserListRow
-                key="telegram-pack-icon"
-                title={buildStandaloneIconTitle(standaloneTelegramIconRelativePath)}
-                label="Icon"
-                isPinned
-                preview={
+        <Box
+          sx={view === "list" ? browserListContainerSx : browserGridContainerSx}
+          onDragOver={handleDragOverEnd}
+          onDrop={handleDropToEnd}
+        >
+          {standaloneTelegramIconPath
+            ? renderBrowserItem(view, {
+                key: "telegram-pack-icon",
+                title: buildStandaloneIconTitle(
+                  standaloneTelegramIconRelativePath,
+                ),
+                label: "Icon",
+                isPinned: true,
+                preview: (
                   <FilePreview
                     absolutePath={standaloneTelegramIconPath}
                     relativePath={standaloneTelegramIconRelativePath}
                   />
-                }
-                metadata={
-                  <Box sx={browserMetadataRowSx}>
-                    <Chip label="icon" size="small" sx={browserMetaChipSx} />
-                    <Chip label="ready" size="small" sx={browserMetaChipSx} />
-                  </Box>
-                }
-              />
-            ) : null}
-            {sortedAssets.map((asset) => {
-              const isIcon = pack.iconAssetId === asset.id;
-              const label = formatAssetLabel(asset, isIcon);
+                ),
+                metadata: buildStandaloneIconMetadata(),
+              })
+            : null}
+          {sortedAssets.map((asset) => {
+            const isIcon = pack.iconAssetId === asset.id;
+            const label = formatAssetLabel(asset, isIcon);
 
-              return (
-                <BrowserListRow
-                  key={asset.id}
-                  title={buildAssetTitle(asset, label, isIcon)}
-                  label={label}
-                  isPinned={isIcon}
-                  isDragOver={dragOverAssetId === asset.id}
-                  draggable={!isIcon}
-                  selected={selectedAssetIds.includes(asset.id)}
-                  onClick={(event) => handleAssetClick(event, asset)}
-                  onContextMenu={(event) => handleContextMenu(event, asset)}
-                  onDragStart={(event) => handleDragStart(event, asset)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(event) => handleDragOverAsset(event, asset)}
-                  onDrop={(event) => void handleDropBeforeAsset(event, asset)}
-                  preview={
-                    <FilePreview
-                      absolutePath={asset.absolutePath}
-                      relativePath={asset.relativePath}
-                      kind={asset.kind}
-                      placeholderLabel={`Telegram media ${formatDownloadSummary(asset)}`}
-                    />
-                  }
-                  metadata={
-                    <Box sx={browserMetadataRowSx}>
-                      <Chip label={asset.kind} size="small" sx={browserMetaChipSx} />
-                      {pack.source === "telegram" ? (
-                        <Chip
-                          label={formatDownloadSummary(asset)}
-                          size="small"
-                          sx={browserMetaChipSx}
-                        />
-                      ) : null}
-                    </Box>
-                  }
+            return renderBrowserItem(view, {
+              key: asset.id,
+              title: buildAssetTitle(asset, label, isIcon),
+              label,
+              isPinned: isIcon,
+              isDragOver: dragOverAssetId === asset.id,
+              draggable: !isIcon,
+              selected: selectedAssetIds.includes(asset.id),
+              onClick: (event) => handleAssetClick(event, asset),
+              onContextMenu: (event) => handleContextMenu(event, asset),
+              onDragStart: (event) => handleDragStart(event, asset),
+              onDragEnd: handleDragEnd,
+              onDragOver: (event) => handleDragOverAsset(event, asset),
+              onDrop: (event) => void handleDropBeforeAsset(event, asset),
+              preview: (
+                <FilePreview
+                  absolutePath={asset.absolutePath}
+                  relativePath={asset.relativePath}
+                  kind={asset.kind}
+                  placeholderLabel={`Telegram media ${formatDownloadSummary(asset)}`}
                 />
-              );
-            })}
-          </Box>
-        ) : (
-          <Box
-            sx={browserGridContainerSx}
-            onDragOver={handleDragOverEnd}
-            onDrop={handleDropToEnd}
-          >
-            {standaloneTelegramIconPath ? (
-              <BrowserGalleryCard
-                key="telegram-pack-icon"
-                title={buildStandaloneIconTitle(standaloneTelegramIconRelativePath)}
-                label="Icon"
-                isPinned
-                preview={
-                  <FilePreview
-                    absolutePath={standaloneTelegramIconPath}
-                    relativePath={standaloneTelegramIconRelativePath}
-                  />
-                }
-                metadata={
-                  <Box sx={browserMetadataRowSx}>
-                    <Chip label="icon" size="small" sx={browserMetaChipSx} />
-                    <Chip label="ready" size="small" sx={browserMetaChipSx} />
-                  </Box>
-                }
-              />
-            ) : null}
-            {sortedAssets.map((asset) => {
-              const isIcon = pack.iconAssetId === asset.id;
-              const label = formatAssetLabel(asset, isIcon);
-
-              return (
-                <BrowserGalleryCard
-                  key={asset.id}
-                  title={buildAssetTitle(asset, label, isIcon)}
-                  label={label}
-                  isPinned={isIcon}
-                  isDragOver={dragOverAssetId === asset.id}
-                  draggable={!isIcon}
-                  selected={selectedAssetIds.includes(asset.id)}
-                  onClick={(event) => handleAssetClick(event, asset)}
-                  onContextMenu={(event) => handleContextMenu(event, asset)}
-                  onDragStart={(event) => handleDragStart(event, asset)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(event) => handleDragOverAsset(event, asset)}
-                  onDrop={(event) => void handleDropBeforeAsset(event, asset)}
-                  preview={
-                    <FilePreview
-                      absolutePath={asset.absolutePath}
-                      relativePath={asset.relativePath}
-                      kind={asset.kind}
-                      placeholderLabel={`Telegram media ${formatDownloadSummary(asset)}`}
-                    />
-                  }
-                  metadata={
-                    <Box sx={browserMetadataRowSx}>
-                      <Chip label={asset.kind} size="small" sx={browserMetaChipSx} />
-                      {pack.source === "telegram" ? (
-                        <Chip
-                          label={formatDownloadSummary(asset)}
-                          size="small"
-                          sx={browserMetaChipSx}
-                        />
-                      ) : null}
-                    </Box>
-                  }
-                />
-              );
-            })}
-          </Box>
-        )}
+              ),
+              metadata: buildAssetMetadata(pack, asset),
+            });
+          })}
+        </Box>
       </Box>
 
       <Menu
@@ -556,11 +508,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
         }}
       >
         {contextAssets.length > 0 ? (
-          <MenuItem
-            disabled
-            dense
-            sx={browserMenuTitleSx}
-          >
+          <MenuItem disabled dense sx={browserMenuTitleSx}>
             {contextAssets.length === 1
               ? formatAssetLabel(
                   contextAssets[0]!,
@@ -592,48 +540,4 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
       </Menu>
     </>
   );
-}
-
-function formatDownloadSummary(asset: SourceAsset) {
-  if (asset.absolutePath) {
-    return "ready";
-  }
-
-  switch (asset.downloadState) {
-    case "queued":
-      return "queued";
-    case "downloading":
-      return "downloading";
-    case "failed":
-      return "failed";
-    default:
-      return "missing";
-  }
-}
-
-function formatAssetLabel(asset: SourceAsset, isIcon: boolean) {
-  return isIcon ? "Icon" : formatOrderLabel(asset.order);
-}
-
-function formatOrderLabel(order: number) {
-  return String(order + 1).padStart(3, "0");
-}
-
-function buildAssetTitle(
-  asset: SourceAsset,
-  label: string,
-  isIcon: boolean,
-) {
-  return [
-    label,
-    asset.originalFileName ? `Original: ${asset.originalFileName}` : null,
-    `Stored: source/${asset.relativePath}`,
-    isIcon ? "Role: icon" : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function buildStandaloneIconTitle(relativePath: string) {
-  return ["Icon", `Stored: source/${relativePath}`].join("\n");
 }

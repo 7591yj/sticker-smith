@@ -73,6 +73,36 @@ function createOutput(
   };
 }
 
+function createDataTransfer(initialData: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initialData));
+
+  return {
+    effectAllowed: "all",
+    dropEffect: "none",
+    setData(type: string, value: string) {
+      store.set(type, value);
+    },
+    getData(type: string) {
+      return store.get(type) ?? "";
+    },
+  };
+}
+
+function dispatchDragEvent(
+  target: Element,
+  type: string,
+  dataTransfer: ReturnType<typeof createDataTransfer>,
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+
+  Object.defineProperty(event, "dataTransfer", {
+    configurable: true,
+    value: dataTransfer,
+  });
+
+  target.dispatchEvent(event);
+}
+
 describe("fileBrowser", () => {
   beforeEach(() => {
     (
@@ -200,6 +230,82 @@ describe("AssetGrid", () => {
     expect(markup).toContain("telegram-pack-icon.webp");
     expect(markup).toContain("Icon");
     expect(markup).toContain("ready");
+  });
+
+  it("reorders assets from the drop payload even if drag state has not re-rendered yet", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const reorder = vi.fn(async (): Promise<StickerPackDetails> => ({
+      pack: createPack(),
+      assets: [],
+      outputs: [],
+    }));
+    const refreshDetails = vi.fn(async (): Promise<StickerPackDetails> => ({
+      pack: createPack(),
+      assets: [],
+      outputs: [],
+    }));
+
+    Object.assign(window, {
+      stickerSmith: {
+        assets: {
+          reorder,
+          delete: vi.fn(),
+          deleteMany: vi.fn(),
+        },
+        packs: {
+          setIcon: vi.fn(),
+        },
+      },
+    });
+
+    await act(async () => {
+      root.render(
+        <AssetGrid
+          assets={[
+            createAsset("asset-1", "one.png", "png", { order: 0 }),
+            createAsset("asset-2", "two.png", "png", { order: 1 }),
+          ]}
+          pack={createPack()}
+          view="list"
+          refreshDetails={refreshDetails}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const draggableRows = Array.from(
+      container.querySelectorAll('[draggable="true"]'),
+    );
+    expect(draggableRows).toHaveLength(2);
+
+    const targetRow = draggableRows.find((row) =>
+      row.getAttribute("title")?.includes("Original: two.png"),
+    );
+    expect(targetRow).toBeTruthy();
+
+    const dataTransfer = createDataTransfer({
+      "application/x-sticker-smith-asset-id": "asset-1",
+      "text/plain": "asset-1",
+    });
+
+    await act(async () => {
+      dispatchDragEvent(targetRow!, "dragover", dataTransfer);
+      dispatchDragEvent(targetRow!, "drop", dataTransfer);
+      await Promise.resolve();
+    });
+
+    expect(reorder).toHaveBeenCalledWith({
+      packId: "pack-1",
+      assetId: "asset-1",
+      beforeAssetId: "asset-2",
+    });
+    expect(refreshDetails).toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });
 

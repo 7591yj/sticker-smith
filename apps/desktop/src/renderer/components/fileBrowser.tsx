@@ -39,7 +39,7 @@ interface BrowserViewToggleProps {
   compact?: boolean;
 }
 
-interface BrowserGalleryCardProps {
+interface BrowserItemProps {
   title: string;
   label: string;
   isPinned?: boolean;
@@ -57,22 +57,35 @@ interface BrowserGalleryCardProps {
   onDrop?: (event: DragEvent<HTMLDivElement>) => void;
 }
 
-interface BrowserListRowProps {
-  title: string;
-  label: string;
-  isPinned?: boolean;
-  selected?: boolean;
-  isDragOver?: boolean;
-  draggable?: boolean;
-  preview: ReactNode;
-  metadata: ReactNode;
-  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
-  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
-  onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
-  onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
-  onDragEnd?: (event: DragEvent<HTMLDivElement>) => void;
-  onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop?: (event: DragEvent<HTMLDivElement>) => void;
+function browserItemStateSx(input: {
+  isPinned: boolean;
+  selected: boolean;
+  isDragOver: boolean;
+  draggable: boolean;
+}) {
+  return {
+    position: "relative",
+    border: "1px solid",
+    borderColor:
+      input.isDragOver
+        ? "primary.light"
+        : input.selected || input.isPinned
+          ? "primary.main"
+          : "divider",
+    bgcolor: input.selected ? "action.selected" : "action.hover",
+    cursor: input.draggable ? "grab" : "default",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+    boxShadow:
+      input.isDragOver || input.selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
+    "&:hover": {
+      bgcolor: "action.selected",
+      borderColor:
+        input.selected || input.isPinned ? "primary.light" : "action.selected",
+    },
+    "&:active": input.draggable ? { cursor: "grabbing" } : undefined,
+  } as const;
 }
 
 export function formatBytes(bytes: number): string {
@@ -150,6 +163,7 @@ export function FilePreview({
         component="img"
         src={fileUrl}
         alt={filename}
+        draggable={false}
         sx={{
           width: "100%",
           height: "100%",
@@ -165,6 +179,7 @@ export function FilePreview({
       <Box
         component="video"
         src={fileUrl}
+        draggable={false}
         muted
         autoPlay
         loop
@@ -268,7 +283,7 @@ export function BrowserGalleryCard({
   onDragEnd,
   onDragOver,
   onDrop,
-}: BrowserGalleryCardProps) {
+}: BrowserItemProps) {
   return (
     <Box
       onClick={onClick}
@@ -281,28 +296,14 @@ export function BrowserGalleryCard({
       draggable={draggable}
       title={title}
       sx={{
-        position: "relative",
         borderRadius: appTokens.shape.radius.card,
         overflow: "hidden",
-        border: "1px solid",
-        borderColor:
-          isDragOver
-            ? "primary.light"
-            : selected || isPinned
-              ? "primary.main"
-              : "divider",
-        bgcolor: selected ? "action.selected" : "action.hover",
-        cursor: draggable ? "grab" : "default",
-        userSelect: "none",
-        WebkitUserSelect: "none",
-        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
-        boxShadow:
-          isDragOver || selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
-        "&:hover": {
-          bgcolor: "action.selected",
-          borderColor: selected || isPinned ? "primary.light" : "action.selected",
-        },
-        "&:active": draggable ? { cursor: "grabbing" } : undefined,
+        ...browserItemStateSx({
+          isPinned,
+          selected,
+          isDragOver,
+          draggable,
+        }),
       }}
     >
       {isPinned ? <PinnedBadge /> : null}
@@ -356,7 +357,7 @@ export function BrowserListRow({
   onDragEnd,
   onDragOver,
   onDrop,
-}: BrowserListRowProps) {
+}: BrowserItemProps) {
   return (
     <Box
       onClick={onClick}
@@ -369,32 +370,18 @@ export function BrowserListRow({
       draggable={draggable}
       title={title}
       sx={{
-        position: "relative",
         display: "flex",
         alignItems: "center",
         gap: 1.25,
         px: 1,
         py: 0.85,
         borderRadius: appTokens.shape.radius.panel,
-        border: "1px solid",
-        borderColor:
-          isDragOver
-            ? "primary.light"
-            : selected || isPinned
-              ? "primary.main"
-              : "divider",
-        bgcolor: selected ? "action.selected" : "action.hover",
-        cursor: draggable ? "grab" : "default",
-        userSelect: "none",
-        WebkitUserSelect: "none",
-        transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
-        boxShadow:
-          isDragOver || selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
-        "&:hover": {
-          bgcolor: "action.selected",
-          borderColor: selected || isPinned ? "primary.light" : "action.selected",
-        },
-        "&:active": draggable ? { cursor: "grabbing" } : undefined,
+        ...browserItemStateSx({
+          isPinned,
+          selected,
+          isDragOver,
+          draggable,
+        }),
       }}
     >
       {isPinned ? <PinnedBadge /> : null}

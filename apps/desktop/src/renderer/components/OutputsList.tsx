@@ -3,7 +3,6 @@ import type { MouseEvent } from "react";
 import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -22,18 +21,21 @@ import {
   browserMenuIconSx,
   browserMenuPaperSx,
   browserMenuTitleSx,
-  browserMetaChipSx,
   browserToolbarSx,
   formatCountLabel,
 } from "./browserStyles";
 import {
-  BrowserGalleryCard,
-  BrowserListRow,
   type BrowserView,
   FilePreview,
-  formatBytes,
   sortItemsWithPinnedFirst,
 } from "./fileBrowser";
+import {
+  buildOutputMetadata,
+  buildOutputTitle,
+  formatOrderLabel,
+  formatOutputLabel,
+  renderBrowserItem,
+} from "./browserItemUtils";
 
 interface Props {
   packId: string;
@@ -232,9 +234,7 @@ export function OutputsList({
 
   return (
     <>
-      <Box
-        sx={browserToolbarSx}
-      >
+      <Box sx={browserToolbarSx}>
         <Typography
           variant="caption"
           color="text.secondary"
@@ -275,129 +275,34 @@ export function OutputsList({
       </Box>
 
       <Box sx={{ pb: 2.5 }}>
-        {view === "list" ? (
-          <Box sx={browserListContainerSx}>
-            {sortedOutputs.map((out) => {
-              const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
-              const selectable = out.mode === "sticker" && sourceAsset !== null;
-              const showEmojiMetadata =
-                out.mode === "sticker" && sourceAsset !== null;
+        <Box sx={view === "list" ? browserListContainerSx : browserGridContainerSx}>
+          {sortedOutputs.map((out) => {
+            const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
+            const selectable = out.mode === "sticker" && sourceAsset !== null;
 
-              return (
-                <BrowserListRow
-                  key={out.relativePath}
-                  title={buildOutputTitle(out, sourceAsset)}
-                  label={formatOutputLabel(out)}
-                  isPinned={out.mode === "icon"}
-                  selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
-                  onClick={
-                    selectable ? (event) => handleOutputClick(event, out) : undefined
-                  }
-                  onDoubleClick={
-                    selectable
-                      ? (event) => handleOutputDoubleClick(event, out)
-                      : undefined
-                  }
-                  onContextMenu={
-                    selectable ? (event) => handleContextMenu(event, out) : undefined
-                  }
-                  preview={
-                    <FilePreview
-                      absolutePath={out.absolutePath}
-                      relativePath={out.relativePath}
-                    />
-                  }
-                  metadata={
-                    <>
-                      <Chip
-                        label={out.mode}
-                        size="small"
-                        sx={browserMetaChipSx}
-                      />
-                      {showEmojiMetadata ? (
-                        <Chip
-                          label={formatEmojiSummary(sourceAsset)}
-                          size="small"
-                          sx={emojiMetaChipSx(sourceAsset.emojiList.length === 0)}
-                        />
-                      ) : null}
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{
-                          fontSize: appTokens.typography.fontSizes.secondaryCaption,
-                        }}
-                      >
-                        {formatBytes(out.sizeBytes)}
-                      </Typography>
-                    </>
-                  }
+            return renderBrowserItem(view, {
+              key: out.relativePath,
+              title: buildOutputTitle(out, sourceAsset),
+              label: formatOutputLabel(out),
+              isPinned: out.mode === "icon",
+              selected: selectable && selectedAssetIds.includes(out.sourceAssetId),
+              onClick: selectable ? (event) => handleOutputClick(event, out) : undefined,
+              onDoubleClick:
+                selectable
+                  ? (event) => handleOutputDoubleClick(event, out)
+                  : undefined,
+              onContextMenu:
+                selectable ? (event) => handleContextMenu(event, out) : undefined,
+              preview: (
+                <FilePreview
+                  absolutePath={out.absolutePath}
+                  relativePath={out.relativePath}
                 />
-              );
-            })}
-          </Box>
-        ) : (
-          <Box sx={browserGridContainerSx}>
-            {sortedOutputs.map((out) => {
-              const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
-              const selectable = out.mode === "sticker" && sourceAsset !== null;
-              const showEmojiMetadata =
-                out.mode === "sticker" && sourceAsset !== null;
-
-              return (
-                <BrowserGalleryCard
-                  key={out.relativePath}
-                  title={buildOutputTitle(out, sourceAsset)}
-                  label={formatOutputLabel(out)}
-                  isPinned={out.mode === "icon"}
-                  selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
-                  onClick={
-                    selectable ? (event) => handleOutputClick(event, out) : undefined
-                  }
-                  onDoubleClick={
-                    selectable
-                      ? (event) => handleOutputDoubleClick(event, out)
-                      : undefined
-                  }
-                  onContextMenu={
-                    selectable ? (event) => handleContextMenu(event, out) : undefined
-                  }
-                  preview={
-                    <FilePreview
-                      absolutePath={out.absolutePath}
-                      relativePath={out.relativePath}
-                    />
-                  }
-                  metadata={
-                    <>
-                      <Chip
-                        label={out.mode}
-                        size="small"
-                        sx={browserMetaChipSx}
-                      />
-                      {showEmojiMetadata ? (
-                        <Chip
-                          label={formatEmojiSummary(sourceAsset)}
-                          size="small"
-                          sx={emojiMetaChipSx(sourceAsset.emojiList.length === 0)}
-                        />
-                      ) : null}
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{
-                          fontSize: appTokens.typography.fontSizes.secondaryCaption,
-                        }}
-                      >
-                        {formatBytes(out.sizeBytes)}
-                      </Typography>
-                    </>
-                  }
-                />
-              );
-            })}
-          </Box>
-        )}
+              ),
+              metadata: buildOutputMetadata(out, sourceAsset),
+            });
+          })}
+        </Box>
       </Box>
 
       <Menu
@@ -414,11 +319,7 @@ export function OutputsList({
         }}
       >
         {contextAssets.length > 0 ? (
-          <MenuItem
-            disabled
-            dense
-            sx={browserMenuTitleSx}
-          >
+          <MenuItem disabled dense sx={browserMenuTitleSx}>
             {contextAssets.length === 1
               ? formatOrderLabel(contextAssets[0]!.order)
               : formatCountLabel(contextAssets.length, "selected output")}
@@ -466,39 +367,3 @@ function initialEmojiSelection(
     ? [...firstAsset.emojiList]
     : [];
 }
-
-function formatEmojiSummary(asset: SourceAsset) {
-  return asset.emojiList.length > 0
-    ? asset.emojiList.join(" ")
-    : appTokens.copy.labels.noEmoji;
-}
-
-function formatOutputLabel(output: OutputArtifact) {
-  return output.mode === "icon" ? "Icon" : formatOrderLabel(output.order);
-}
-
-function formatOrderLabel(order: number) {
-  return String(order + 1).padStart(3, "0");
-}
-
-function buildOutputTitle(
-  output: OutputArtifact,
-  sourceAsset: SourceAsset | null,
-) {
-  return [
-    formatOutputLabel(output),
-    sourceAsset?.originalFileName ? `Original: ${sourceAsset.originalFileName}` : null,
-    `Stored: webm/${output.relativePath}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-const emojiMetaChipSx = (missingEmoji: boolean) =>
-  ({
-    height: appTokens.sizes.chip.compactHeight,
-    fontSize: appTokens.typography.fontSizes.assetKind,
-    letterSpacing: appTokens.typography.letterSpacing.chip,
-    color: missingEmoji ? "error.main" : "text.secondary",
-    borderColor: missingEmoji ? "error.main" : "divider",
-  }) as const;
