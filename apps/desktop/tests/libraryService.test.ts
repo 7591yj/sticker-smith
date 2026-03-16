@@ -120,7 +120,7 @@ describe("LibraryService", () => {
     expect(relativePaths).toEqual(["a.jpeg", "a.png", "nested/a.png"]);
   });
 
-  it("clears old icon outputs when changing the icon asset", async () => {
+  it("promoting an asset to the explicit icon removes its sticker output and icon.webm", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);
 
@@ -134,21 +134,33 @@ describe("LibraryService", () => {
     await fs.writeFile(filePath, "bird");
 
     const importResult = await libraryService.importFiles(pack.id, [filePath]);
+    await fs.writeFile(path.join(pack.outputRoot, "bird.webm"), "sticker");
+    await libraryService.recordConversionResult(pack.id, {
+      assetId: importResult.imported[0].id,
+      mode: "sticker",
+      outputFileName: "bird.webm",
+      sizeBytes: 32,
+    });
+
+    await fs.writeFile(path.join(pack.outputRoot, "icon.webm"), "icon");
     await libraryService.recordConversionResult(pack.id, {
       assetId: importResult.imported[0].id,
       mode: "icon",
       outputFileName: "icon.webm",
       sizeBytes: 64,
     });
-    await fs.writeFile(path.join(pack.outputRoot, "icon.webm"), "icon");
 
     const updatedPack = await libraryService.setPackIcon({
       packId: pack.id,
       assetId: importResult.imported[0].id,
     });
+    const details = await libraryService.getPack(pack.id);
 
     expect(updatedPack.iconAssetId).toBe(importResult.imported[0].id);
     expect(updatedPack.thumbnailPath).toBeNull();
+    expect(details.outputs).toEqual([]);
+    await expect(fs.access(path.join(pack.outputRoot, "bird.webm"))).rejects.toThrow();
+    await expect(fs.access(path.join(pack.outputRoot, "icon.webm"))).rejects.toThrow();
   });
 
   it("preserves telegram thumbnails across metadata syncs and normalizes video thumbnails to .webm", async () => {
@@ -374,6 +386,92 @@ describe("LibraryService", () => {
     ]);
   });
 
+  it("loads legacy telegram mirrors without promoting remote stickers into icon assets", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const packRoot = path.join(root, "packs", "telegram-legacy");
+    await fs.mkdir(path.join(packRoot, "source"), { recursive: true });
+    await fs.mkdir(path.join(packRoot, "webm"), { recursive: true });
+    await fs.writeFile(
+      path.join(packRoot, "pack.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 2,
+          id: "telegram-legacy",
+          source: "telegram",
+          name: "Legacy Mirror",
+          slug: "legacy-mirror",
+          iconAssetId: "remote-asset",
+          telegram: {
+            stickerSetId: "900",
+            shortName: "legacy_mirror",
+            title: "Legacy Mirror",
+            format: "video",
+            thumbnailPath: null,
+            syncState: "idle",
+            lastSyncedAt: null,
+            lastSyncError: null,
+            publishedFromLocalPackId: null,
+          },
+          createdAt: "2026-03-11T00:00:00.000Z",
+          updatedAt: "2026-03-11T00:00:00.000Z",
+          assets: [
+            {
+              id: "remote-asset",
+              packId: "telegram-legacy",
+              relativePath: "sticker-001.webm",
+              emojiList: ["🙂"],
+              kind: "webm",
+              importedAt: "2026-03-11T00:00:00.000Z",
+              originalImportPath: null,
+              downloadState: "ready",
+              telegram: {
+                stickerId: "sticker-1",
+                fileId: "remote-1",
+                fileUniqueId: "unique-1",
+                position: 0,
+                baselineOutputHash: "baseline",
+              },
+            },
+          ],
+          outputs: [
+            {
+              packId: "telegram-legacy",
+              sourceAssetId: "remote-asset",
+              mode: "sticker",
+              relativePath: "sticker-001.webm",
+              sizeBytes: 128,
+              sha256: "baseline",
+              updatedAt: "2026-03-11T00:00:00.000Z",
+            },
+            {
+              packId: "telegram-legacy",
+              sourceAssetId: "remote-asset",
+              mode: "icon",
+              relativePath: "icon.webm",
+              sizeBytes: 64,
+              sha256: "icon-hash",
+              updatedAt: "2026-03-11T00:00:00.000Z",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const details = await libraryService.getPack("telegram-legacy");
+
+    expect(details.pack.iconAssetId).toBeNull();
+    expect(details.outputs).toHaveLength(1);
+    expect(details.outputs[0]).toMatchObject({
+      sourceAssetId: "remote-asset",
+      mode: "sticker",
+      relativePath: "sticker-001.webm",
+    });
+  });
+
   it("mirrors downloaded telegram webm assets into sticker outputs and updates baseline-synced outputs", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);
@@ -388,7 +486,6 @@ describe("LibraryService", () => {
       lastSyncedAt: "2026-03-12T00:00:00.000Z",
       lastSyncError: null,
       publishedFromLocalPackId: null,
-      iconStickerId: null,
       assets: [
         {
           relativePath: "sticker-001.webm",
@@ -453,7 +550,6 @@ describe("LibraryService", () => {
       lastSyncedAt: "2026-03-12T00:00:00.000Z",
       lastSyncError: null,
       publishedFromLocalPackId: null,
-      iconStickerId: null,
       assets: [
         {
           relativePath: "sticker-001.webm",
@@ -504,7 +600,6 @@ describe("LibraryService", () => {
       lastSyncedAt: "2026-03-12T00:00:00.000Z",
       lastSyncError: null,
       publishedFromLocalPackId: null,
-      iconStickerId: null,
       assets: [
         {
           id: details.assets[0]!.id,
@@ -634,7 +729,6 @@ describe("LibraryService", () => {
       lastSyncedAt: "2026-03-12T00:00:00.000Z",
       lastSyncError: null,
       publishedFromLocalPackId: null,
-      iconStickerId: null,
       assets: [],
     });
 
@@ -642,5 +736,53 @@ describe("LibraryService", () => {
     await expect(fs.readFile(details.pack.thumbnailPath!, "utf8")).resolves.toBe(
       "thumbnail",
     );
+  });
+
+  it("recording an icon conversion overwrites a stale sticker output for the same asset", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const pack = await libraryService.createPack({ name: "Overwrite Icon Pack" });
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-icon-overwrite-"),
+    );
+    cleanup.push(fileRoot);
+
+    const filePath = path.join(fileRoot, "icon.png");
+    await fs.writeFile(filePath, "icon");
+
+    const imported = await libraryService.importFiles(pack.id, [filePath]);
+    const assetId = imported.imported[0]!.id;
+
+    await fs.writeFile(path.join(pack.outputRoot, "sticker.webm"), "sticker-output");
+    await libraryService.recordConversionResult(pack.id, {
+      assetId,
+      mode: "sticker",
+      outputFileName: "sticker.webm",
+      sizeBytes: "sticker-output".length,
+    });
+
+    await libraryService.setPackIcon({
+      packId: pack.id,
+      assetId,
+    });
+
+    await fs.writeFile(path.join(pack.outputRoot, "icon.webm"), "icon-output");
+    await libraryService.recordConversionResult(pack.id, {
+      assetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: "icon-output".length,
+    });
+
+    const details = await libraryService.getPack(pack.id);
+
+    expect(details.outputs).toHaveLength(1);
+    expect(details.outputs[0]).toMatchObject({
+      sourceAssetId: assetId,
+      mode: "icon",
+      relativePath: "icon.webm",
+    });
+    await expect(fs.access(path.join(pack.outputRoot, "sticker.webm"))).rejects.toThrow();
   });
 });

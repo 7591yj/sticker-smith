@@ -44,7 +44,6 @@ export interface TelegramMirrorUpsertInput {
   publishedFromLocalPackId: string | null;
   lastSyncedAt: string | null;
   assets: TelegramMirrorAssetInput[];
-  iconStickerId?: string | null;
 }
 
 function slugify(value: string) {
@@ -302,8 +301,7 @@ function normalizePackRecord(
 ): StickerPackRecord {
   const now = new Date().toISOString();
   const source = record?.source ?? "local";
-
-  return {
+  const normalized: StickerPackRecord = {
     schemaVersion: 2,
     id: record?.id ?? randomUUID(),
     source,
@@ -348,6 +346,45 @@ function normalizePackRecord(
       updatedAt: output.updatedAt ?? now,
     })),
   };
+
+  enforcePackOutputRoleInvariants(normalized);
+  return normalized;
+}
+
+function enforcePackOutputRoleInvariants(record: StickerPackRecord) {
+  const assetById = new Map(record.assets.map((asset) => [asset.id, asset]));
+  const currentIconAsset =
+    record.iconAssetId === null
+      ? null
+      : assetById.get(record.iconAssetId) ?? null;
+
+  if (record.source === "telegram" && currentIconAsset?.telegram) {
+    record.iconAssetId = null;
+  }
+
+  const iconAssetId = record.iconAssetId;
+  const removedOutputs: StickerPackRecord["outputs"] = [];
+  const nextOutputs: StickerPackRecord["outputs"] = [];
+
+  for (const output of record.outputs) {
+    const sourceAsset = assetById.get(output.sourceAssetId);
+    const isStickerOutputForExplicitIcon =
+      iconAssetId !== null &&
+      output.mode === "sticker" &&
+      output.sourceAssetId === iconAssetId;
+    const isLegacyTelegramIconOutput =
+      output.mode === "icon" && Boolean(sourceAsset?.telegram);
+
+    if (isStickerOutputForExplicitIcon || isLegacyTelegramIconOutput) {
+      removedOutputs.push(output);
+      continue;
+    }
+
+    nextOutputs.push(output);
+  }
+
+  record.outputs = nextOutputs;
+  return removedOutputs;
 }
 
 export class LibraryService {
@@ -402,6 +439,8 @@ export class LibraryService {
   }
 
   private async writePackRecord(rootPath: string, record: StickerPackRecord) {
+    const removedOutputs = enforcePackOutputRoleInvariants(record);
+    await this.deleteOutputFilesIfUnreferenced(record, rootPath, removedOutputs);
     record.schemaVersion = 2;
     record.updatedAt = new Date().toISOString();
     await this.ensurePackDirectories(rootPath);
@@ -578,19 +617,10 @@ export class LibraryService {
     rootPath: string,
     assetId: AssetId,
   ) {
-    const { outputRoot } = resolvePackPaths(rootPath);
-    const matching = record.outputs.filter(
+    await this.removeOutputs(
+      record,
+      rootPath,
       (output) => output.sourceAssetId === assetId,
-    );
-    record.outputs = record.outputs.filter(
-      (output) => output.sourceAssetId !== assetId,
-    );
-
-    await Promise.all(
-      matching.map(async (output) => {
-        const target = path.join(outputRoot, output.relativePath);
-        await fs.rm(target, { force: true });
-      }),
     );
   }
 
@@ -598,10 +628,49 @@ export class LibraryService {
     record: StickerPackRecord,
     rootPath: string,
   ) {
-    record.outputs = record.outputs.filter((output) => output.mode !== "icon");
+    await this.removeOutputs(record, rootPath, (output) => output.mode === "icon");
     await fs.rm(path.join(resolvePackPaths(rootPath).outputRoot, "icon.webm"), {
       force: true,
     });
+  }
+
+  private async deleteOutputFilesIfUnreferenced(
+    record: StickerPackRecord,
+    rootPath: string,
+    outputs: StickerPackRecord["outputs"],
+  ) {
+    if (outputs.length === 0) {
+      return;
+    }
+
+    const { outputRoot } = resolvePackPaths(rootPath);
+    await Promise.all(
+      outputs.map(async (output) => {
+        if (
+          record.outputs.some(
+            (candidate) => candidate.relativePath === output.relativePath,
+          )
+        ) {
+          return;
+        }
+
+        await fs.rm(path.join(outputRoot, output.relativePath), { force: true });
+      }),
+    );
+  }
+
+  private async removeOutputs(
+    record: StickerPackRecord,
+    rootPath: string,
+    predicate: (output: StickerPackRecord["outputs"][number]) => boolean,
+  ) {
+    const removedOutputs = record.outputs.filter(predicate);
+    if (removedOutputs.length === 0) {
+      return;
+    }
+
+    record.outputs = record.outputs.filter((output) => !predicate(output));
+    await this.deleteOutputFilesIfUnreferenced(record, rootPath, removedOutputs);
   }
 
   private async finalizeAssetMutation(
@@ -1077,9 +1146,12 @@ export class LibraryService {
         name: input.title,
         slug: slugify(input.shortName || input.title),
         iconAssetId:
-          remoteAssets.find(
-            (asset) => asset.telegram?.stickerId === input.iconStickerId,
-          )?.id ?? null,
+          existing?.iconAssetId &&
+          [...remoteAssets, ...localOnlyAssets].some(
+            (asset) => asset.id === existing.iconAssetId,
+          )
+            ? existing.iconAssetId
+            : null,
         telegramShortName: null,
         telegram: createDefaultTelegramSummary({
           stickerSetId: input.stickerSetId,
@@ -1150,7 +1222,22 @@ export class LibraryService {
           throw new Error(`Asset not found in pack: ${input.assetId}`);
         }
 
+        const selectedAsset =
+          input.assetId === null
+            ? null
+            : record.assets.find((asset) => asset.id === input.assetId) ?? null;
         record.iconAssetId = input.assetId;
+        if (
+          selectedAsset &&
+          !(record.source === "telegram" && selectedAsset.telegram)
+        ) {
+          await this.removeOutputs(
+            record,
+            rootPath,
+            (output) =>
+              output.sourceAssetId === input.assetId && output.mode === "sticker",
+          );
+        }
         await this.clearIconOutput(record, rootPath);
         if (record.telegram) {
           record.telegram.syncState = "stale";
@@ -1416,6 +1503,19 @@ export class LibraryService {
       result.outputFileName,
     );
     const sha256 = await sha256ForFile(absolutePath);
+    const sourceAsset = record.assets.find((asset) => asset.id === result.assetId);
+    if (
+      result.mode === "icon" &&
+      sourceAsset &&
+      !(record.source === "telegram" && sourceAsset.telegram)
+    ) {
+      await this.removeOutputs(
+        record,
+        rootPath,
+        (output) =>
+          output.sourceAssetId === result.assetId && output.mode === "sticker",
+      );
+    }
     record.outputs = record.outputs.filter(
       (output) =>
         !(

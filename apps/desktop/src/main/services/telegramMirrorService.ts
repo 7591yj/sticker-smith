@@ -39,7 +39,6 @@ export class TelegramMirrorService {
       lastSyncedAt: new Date().toISOString(),
       lastSyncError: input.lastSyncError ?? null,
       publishedFromLocalPackId: input.publishedFromLocalPackId ?? null,
-      iconStickerId: includeAssets ? stickerSet.thumbnailStickerId : null,
       assets: includeAssets
         ? stickerSet.stickers.map((sticker) => ({
             relativePath: relativeStickerPath(sticker.position),
