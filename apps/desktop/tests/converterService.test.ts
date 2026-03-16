@@ -132,32 +132,41 @@ function createDetails(): StickerPackDetails {
       {
         id: "asset-1",
         packId: "pack-1",
+        order: 1,
         relativePath: "one.png",
         absolutePath: "/tmp/sample-pack/source/one.png",
+        originalFileName: "one.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/one.png",
+        downloadState: "ready",
       },
       {
         id: "asset-2",
         packId: "pack-1",
+        order: 0,
         relativePath: "two.png",
         absolutePath: "/tmp/sample-pack/source/two.png",
+        originalFileName: "two.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/two.png",
+        downloadState: "ready",
       },
       {
         id: "asset-3",
         packId: "pack-1",
+        order: 2,
         relativePath: "icon.png",
         absolutePath: "/tmp/sample-pack/source/icon.png",
+        originalFileName: "icon.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/icon.png",
+        downloadState: "ready",
       },
     ],
     outputs: [],
@@ -392,6 +401,51 @@ describe("ConverterService", () => {
     expect(emitSpy).toHaveBeenCalledWith(
       createEvent("asset-1", "/tmp/out/one.webm"),
     );
+  });
+
+  it("builds conversion tasks from explicit asset order and appends the icon last", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    const stdinEnd = child.stdin.end as unknown as { mock: { calls: unknown[][] } };
+    const request = JSON.parse(
+      String(stdinEnd.mock.calls[0]?.[0]),
+    ) as { tasks: Array<{ assetId: string; mode: string }> };
+    child.emit("close", 0);
+    await conversion;
+
+    expect(request.tasks).toEqual([
+      { assetId: "asset-2", sourcePath: "/tmp/sample-pack/source/two.png", mode: "sticker" },
+      { assetId: "asset-1", sourcePath: "/tmp/sample-pack/source/one.png", mode: "sticker" },
+      { assetId: "asset-3", sourcePath: "/tmp/sample-pack/source/icon.png", mode: "icon" },
+    ]);
   });
 
   it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {

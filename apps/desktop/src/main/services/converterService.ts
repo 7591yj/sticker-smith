@@ -306,10 +306,13 @@ export class ConverterService {
 
   private buildTasks(details: StickerPackDetails, assetIds?: string[]) {
     const selectedAssetIds = assetIds ? new Set(assetIds) : null;
+    const sortedAssets = [...details.assets].sort(
+      (left, right) => left.order - right.order || left.id.localeCompare(right.id),
+    );
     const tasks: ConversionTask[] = [];
     let iconTask: ConversionTask | null = null;
 
-    for (const asset of details.assets) {
+    for (const asset of sortedAssets) {
       if (selectedAssetIds && !selectedAssetIds.has(asset.id)) {
         continue;
       }
