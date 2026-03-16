@@ -387,6 +387,74 @@ describe("LibraryService", () => {
     );
   });
 
+  it("reuses the canonical sticker output record when a telegram mirror asset is converted", async () => {
+    const { root, libraryService } = await createLibraryService();
+    cleanup.push(root);
+
+    const details = await libraryService.upsertTelegramMirror({
+      stickerSetId: "601",
+      title: "Telegram Pack",
+      shortName: "telegram_pack",
+      format: "video",
+      thumbnailPath: null,
+      syncState: "idle",
+      lastSyncedAt: "2026-03-12T00:00:00.000Z",
+      lastSyncError: null,
+      publishedFromLocalPackId: null,
+      assets: [
+        {
+          relativePath: "legacy-name.webm",
+          emojiList: ["🙂"],
+          kind: "webm",
+          downloadState: "missing",
+          telegram: {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            position: 0,
+            baselineOutputHash: null,
+          },
+        },
+      ],
+    });
+
+    const downloadRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-telegram-"));
+    cleanup.push(downloadRoot);
+    const downloadedPath = path.join(downloadRoot, "downloaded.webm");
+    await fs.writeFile(downloadedPath, "baseline-webm-data");
+
+    const hydrated = await libraryService.writeTelegramAssetFile({
+      packId: details.pack.id,
+      assetId: details.assets[0]!.id,
+      sourceFilePath: downloadedPath,
+    });
+    const outputPath = path.join(
+      hydrated.pack.outputRoot,
+      `${hydrated.assets[0]!.id}.webm`,
+    );
+
+    await fs.writeFile(outputPath, "converted-webm-data");
+    await libraryService.recordConversionResult(hydrated.pack.id, {
+      assetId: hydrated.assets[0]!.id,
+      mode: "sticker",
+      outputFileName: "stale-name.webm",
+      sizeBytes: "converted-webm-data".length,
+    });
+
+    const updated = await libraryService.getPack(hydrated.pack.id);
+
+    expect(updated.assets).toHaveLength(1);
+    expect(updated.outputs).toHaveLength(1);
+    expect(updated.outputs[0]).toMatchObject({
+      sourceAssetId: hydrated.assets[0]!.id,
+      relativePath: `${hydrated.assets[0]!.id}.webm`,
+      mode: "sticker",
+    });
+    await expect(fs.readFile(updated.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
+      "converted-webm-data",
+    );
+  });
+
   it("preserves local-only telegram outputs when emoji metadata changes", async () => {
     const { root, libraryService } = await createLibraryService();
     cleanup.push(root);

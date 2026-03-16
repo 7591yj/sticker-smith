@@ -184,6 +184,13 @@ function createEvent(assetId: string, outputPath: string): ConversionJobEvent {
   };
 }
 
+function getExpectedStickerOutputPath(
+  details: StickerPackDetails,
+  assetId: string,
+) {
+  return path.join(details.pack.outputRoot, `${assetId}.webm`);
+}
+
 afterEach(() => {
   spawnMock.mockReset();
   appMock.isPackaged = false;
@@ -263,7 +270,14 @@ describe("ConverterService", () => {
     await waitForSpawn();
     child.stdout.emit(
       "data",
-      Buffer.from(JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))),
+      Buffer.from(
+        JSON.stringify(
+          createEvent(
+            "asset-1",
+            getExpectedStickerOutputPath(details, "asset-1"),
+          ),
+        ),
+      ),
     );
     child.emit("close", 0);
 
@@ -274,12 +288,12 @@ describe("ConverterService", () => {
       {
         assetId: "asset-1",
         mode: "sticker",
-        outputFileName: "one.webm",
+        outputFileName: "asset-1.webm",
         sizeBytes: 128,
       },
     );
     expect(emitSpy).toHaveBeenCalledWith(
-      createEvent("asset-1", "/tmp/out/one.webm"),
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
     );
   });
 
@@ -331,13 +345,17 @@ describe("ConverterService", () => {
     child.stdout.emit(
       "data",
       Buffer.from(
-        `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`,
+        `${JSON.stringify(
+          createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
+        )}\n`,
       ),
     );
     child.stdout.emit(
       "data",
       Buffer.from(
-        `${JSON.stringify(createEvent("asset-2", "/tmp/out/two.webm"))}\n`,
+        `${JSON.stringify(
+          createEvent("asset-2", getExpectedStickerOutputPath(details, "asset-2")),
+        )}\n`,
       ),
     );
 
@@ -390,7 +408,9 @@ describe("ConverterService", () => {
 
     const conversion = service.convertPack(details.pack.id);
     await waitForSpawn();
-    const payload = `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`;
+    const payload = `${JSON.stringify(
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
+    )}\n`;
     child.stdout.emit("data", Buffer.from(payload.slice(0, 20)));
     child.stdout.emit("data", Buffer.from(payload.slice(20)));
     child.emit("close", 0);
@@ -399,8 +419,95 @@ describe("ConverterService", () => {
 
     expect(libraryService.recordConversionResult).toHaveBeenCalledTimes(1);
     expect(emitSpy).toHaveBeenCalledWith(
-      createEvent("asset-1", "/tmp/out/one.webm"),
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
     );
+  });
+
+  it("rejects a completion event outside the pack output root", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify(createEvent("asset-1", "/tmp/elsewhere/asset-1.webm")),
+      ),
+    );
+
+    await expect(conversion).rejects.toThrow(
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve("/tmp/elsewhere/asset-1.webm")}, expected a file inside ${path.resolve(details.pack.outputRoot)}.`,
+    );
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
+  });
+
+  it("rejects a completion event with a non-canonical filename inside the output root", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const wrongOutputPath = path.join(details.pack.outputRoot, "stale-name.webm");
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify(createEvent("asset-1", wrongOutputPath))),
+    );
+
+    await expect(conversion).rejects.toThrow(
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve(wrongOutputPath)}, expected ${path.resolve(getExpectedStickerOutputPath(details, "asset-1"))}.`,
+    );
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
   });
 
   it("builds conversion tasks from explicit asset order and appends the icon last", async () => {
