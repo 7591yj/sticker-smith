@@ -93,6 +93,12 @@ export const setAssetEmojisSchema = z.object({
   emojis: emojiListSchema,
 });
 
+export const reorderAssetSchema = z.object({
+  packId: packIdSchema,
+  assetId: assetIdSchema,
+  beforeAssetId: assetIdSchema.nullable(),
+});
+
 export const setManyAssetEmojisSchema = z.object({
   packId: packIdSchema,
   assetIds: z.array(assetIdSchema).min(1),

@@ -81,8 +81,10 @@ export interface StickerPack {
 export interface SourceAsset {
   id: AssetId;
   packId: PackId;
+  order: number;
   relativePath: string;
   absolutePath: string | null;
+  originalFileName: string | null;
   emojiList: string[];
   kind: SourceMediaKind;
   importedAt: string;
@@ -94,6 +96,7 @@ export interface SourceAsset {
 export interface OutputArtifact {
   packId: PackId;
   sourceAssetId: AssetId;
+  order: number;
   mode: ConversionMode;
   relativePath: string;
   absolutePath: string;
@@ -103,7 +106,7 @@ export interface OutputArtifact {
 }
 
 export interface StickerPackRecord {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: PackId;
   source: PackSource;
   name: string;
@@ -269,6 +272,12 @@ export interface SetAssetEmojisInput {
   packId: PackId;
   assetId: AssetId;
   emojis: string[];
+}
+
+export interface ReorderAssetInput {
+  packId: PackId;
+  assetId: AssetId;
+  beforeAssetId: AssetId | null;
 }
 
 export interface SetManyAssetEmojisInput {
