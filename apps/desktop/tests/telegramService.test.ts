@@ -1340,6 +1340,82 @@ describe("TelegramService", () => {
     expect(downloadCount).toBe(1);
   });
 
+  it("backfills a separate remote thumbnail during pack media download", async () => {
+    const { root, downloadRoot, telegramService, tdlibService, libraryService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    let [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.thumbnailPath).toBeNull();
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.downloadPackMedia({ packId: mirrorPack!.id });
+
+    [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.thumbnailPath).toContain("/source/telegram-pack-icon");
+  });
+
   it("does not fetch thumbnails for unsupported packs during sync", async () => {
     const { root, downloadRoot, telegramService, tdlibService } =
       await createTelegramService();

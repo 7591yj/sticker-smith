@@ -1863,6 +1863,28 @@ export class LibraryService {
     });
   }
 
+  async syncTelegramThumbnail(input: {
+    packId: string;
+    thumbnailPath: string | null;
+    hasThumbnail?: boolean;
+    thumbnailExtension?: string | null;
+  }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      if (!record.telegram) {
+        throw new Error(`Pack is not a Telegram mirror: ${input.packId}`);
+      }
+
+      record.telegram.thumbnailPath = await syncTelegramThumbnailFile(
+        rootPath,
+        input.thumbnailPath,
+        {
+          hasThumbnail: input.hasThumbnail,
+          preferredExtension: input.thumbnailExtension,
+        },
+      );
+    });
+  }
+
   async getConversionContext(packId: string) {
     return this.getPack(packId);
   }

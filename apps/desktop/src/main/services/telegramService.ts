@@ -1171,6 +1171,28 @@ export class TelegramService {
       }
 
       const remoteSet = await this.getRemoteStickerSetOrThrow(stickerSetId);
+      const shouldBackfillThumbnail =
+        details.pack.iconAssetId === null &&
+        !(await this.hasAccessibleLocalFile(details.pack.thumbnailPath));
+      if (shouldBackfillThumbnail) {
+        const thumbnailPath = await this.resolveStickerSetThumbnailPath(remoteSet, {
+          allowDownload: true,
+        });
+        const hasRemoteThumbnail =
+          Boolean(
+            remoteSet.thumbnailFile && remoteSet.thumbnailFile.numericFileId > 0,
+          ) || Boolean(remoteSet.thumbnailStickerId);
+
+        if (thumbnailPath || hasRemoteThumbnail) {
+          await this.libraryService.syncTelegramThumbnail({
+            packId: details.pack.id,
+            thumbnailPath,
+            hasThumbnail: hasRemoteThumbnail,
+            thumbnailExtension: this.inferStickerSetThumbnailExtension(remoteSet),
+          });
+        }
+      }
+
       const remoteByStickerId = new Map(
         remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
       );
