@@ -1227,11 +1227,13 @@ export class TelegramService {
   }
 
   private getStickerAssets(details: StickerPackDetails) {
-    return details.assets.filter((asset) => asset.id !== details.pack.iconAssetId);
+    return details.assets
+      .filter((asset) => asset.id !== details.pack.iconAssetId)
+      .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
   }
 
   private getPublishStickerAssets(details: StickerPackDetails) {
-    return details.assets.filter((asset) => asset.id !== details.pack.iconAssetId);
+    return this.getStickerAssets(details);
   }
 
   private getStickerOutput(details: StickerPackDetails, assetId: string) {
@@ -1241,7 +1243,12 @@ export class TelegramService {
   }
 
   private getStickerOutputs(details: StickerPackDetails) {
-    return details.outputs.filter((output) => output.mode === "sticker");
+    return details.outputs
+      .filter((output) => output.mode === "sticker")
+      .sort(
+        (left, right) =>
+          left.order - right.order || left.sourceAssetId.localeCompare(right.sourceAssetId),
+      );
   }
 
   private getIconOutput(details: StickerPackDetails) {

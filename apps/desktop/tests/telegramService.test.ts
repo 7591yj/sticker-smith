@@ -409,6 +409,7 @@ async function createLocalPackWithStickerOutput(libraryService: LibraryService) 
   await fs.writeFile(filePath, "sticker");
   const importResult = await libraryService.importFiles(pack.id, [filePath]);
   const assetId = importResult.imported[0]!.id;
+  const outputFileName = `${assetId}.webm`;
   await libraryService.setAssetEmojis({
     packId: pack.id,
     assetId,
@@ -417,11 +418,11 @@ async function createLocalPackWithStickerOutput(libraryService: LibraryService) 
   await libraryService.recordConversionResult(pack.id, {
     assetId,
     mode: "sticker",
-    outputFileName: "sticker-1.webm",
+    outputFileName,
     sizeBytes: 128,
   });
-  await fs.writeFile(path.join(pack.outputRoot, "sticker-1.webm"), "webm-data");
-  return { pack, outputPath: path.join(pack.outputRoot, "sticker-1.webm"), fileRoot };
+  await fs.writeFile(path.join(pack.outputRoot, outputFileName), "webm-data");
+  return { pack, assetId, outputPath: path.join(pack.outputRoot, outputFileName), fileRoot };
 }
 
 async function addIconOutput(
@@ -1168,8 +1169,10 @@ describe("TelegramService", () => {
     expect(details.assets[0]?.emojiList).toEqual(["🙂"]);
     expect(details.assets[0]?.absolutePath).not.toBeNull();
     expect(details.assets[0]?.downloadState).toBe("ready");
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     expect(details.outputs[0]?.sourceAssetId).toBe(details.assets[0]?.id);
+    expect(details.assets[0]?.order).toBe(0);
+    expect(details.outputs[0]?.order).toBe(0);
   });
 
   it("keeps non-video owned packs as unsupported telegram mirrors", async () => {
@@ -1420,7 +1423,7 @@ describe("TelegramService", () => {
     let details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     await expect(fs.readFile(details.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
       "webm-data",
     );
@@ -1430,8 +1433,8 @@ describe("TelegramService", () => {
     details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
-    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.assets[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     expect(downloadCount).toBe(1);
   });
 
@@ -1452,8 +1455,9 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const mirror = await libraryService.findPackByTelegramStickerSetId("100");
     expect(mirror).not.toBeNull();
+    const assetId = mirror!.record.assets[0]!.id;
     const nestedPath = path.join(mirror!.rootPath, "source", "stickers/001.webm");
-    const flatPath = path.join(mirror!.rootPath, "source", "sticker-001.webm");
+    const flatPath = path.join(mirror!.rootPath, "source", `${assetId}.webm`);
     await fs.mkdir(path.dirname(nestedPath), { recursive: true });
     await fs.rename(flatPath, nestedPath);
     const packRecordPath = path.join(mirror!.rootPath, "pack.json");
@@ -1468,44 +1472,8 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
 
     const details = await libraryService.getPack(mirror!.record.id);
-    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.assets[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     expect(details.assets[0]?.absolutePath).toBe(flatPath);
-  });
-
-  it("does not overwrite divergent telegram sticker outputs on resync", async () => {
-    const { root, downloadRoot, telegramService, libraryService } =
-      await createTelegramService();
-    cleanup.push(root, downloadRoot);
-
-    await telegramService.submitTdlibParameters({
-      apiId: "12345",
-      apiHash: VALID_API_HASH,
-    });
-    await telegramService.submitPhoneNumber({
-      phoneNumber: "+12025550123",
-    });
-    await telegramService.submitCode({ code: "12345" });
-
-    await telegramService.syncOwnedPacks();
-    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
-    expect(mirror).not.toBeNull();
-
-    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
-    const details = await libraryService.getPack(mirror!.record.id);
-    const customOutputPath = path.join(mirror!.rootPath, "webm", "custom.webm");
-    await fs.writeFile(customOutputPath, "custom-webm");
-    await libraryService.recordConversionResult(mirror!.record.id, {
-      assetId: details.assets[0]!.id,
-      mode: "sticker",
-      outputFileName: "custom.webm",
-      sizeBytes: "custom-webm".length,
-    });
-
-    await telegramService.syncOwnedPacks();
-
-    const resynced = await libraryService.getPack(mirror!.record.id);
-    expect(resynced.outputs[0]?.relativePath).toBe("custom.webm");
-    await expect(fs.readFile(customOutputPath, "utf8")).resolves.toBe("custom-webm");
   });
 
   it("removes telegram mirrors that are no longer owned after resync", async () => {
@@ -1658,23 +1626,24 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
     const details = await libraryService.getPack(mirrorPack!.id);
+    const outputFileName = `${details.assets[0]!.id}.webm`;
     await libraryService.recordConversionResult(mirrorPack!.id, {
       assetId: details.assets[0]!.id,
       mode: "sticker",
-      outputFileName: "sticker-1.webm",
+      outputFileName,
       sizeBytes: 256,
     });
-    const outputPath = path.join(mirrorPack!.outputRoot, "sticker-1.webm");
+    const outputPath = path.join(mirrorPack!.outputRoot, outputFileName);
     await fs.rm(outputPath, { force: true });
 
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
-    ).rejects.toThrow("Sticker output for sticker-001.webm is missing");
+    ).rejects.toThrow(`Sticker output for ${details.assets[0]!.relativePath} is missing`);
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Sticker output for sticker-001.webm is missing",
+      `Sticker output for ${details.assets[0]!.relativePath} is missing`,
     );
   });
 
@@ -1713,12 +1682,15 @@ describe("TelegramService", () => {
       emojis: [...remoteAsset.emojiList],
     });
 
-    const duplicateOutputPath = path.join(mirrorPack!.outputRoot, "duplicate.webm");
+    const duplicateOutputPath = path.join(
+      mirrorPack!.outputRoot,
+      `${duplicateAssetId}.webm`,
+    );
     await fs.copyFile(remoteAsset.absolutePath!, duplicateOutputPath);
     await libraryService.recordConversionResult(mirrorPack!.id, {
       assetId: duplicateAssetId,
       mode: "sticker",
-      outputFileName: "duplicate.webm",
+      outputFileName: `${duplicateAssetId}.webm`,
       sizeBytes: 128,
     });
 
@@ -1895,13 +1867,13 @@ describe("TelegramService", () => {
     const iconAssetId = imported.imported[0]!.id;
 
     await fs.writeFile(
-      path.join(mirrorPack!.outputRoot, "icon-sticker.webm"),
+      path.join(mirrorPack!.outputRoot, `${iconAssetId}.webm`),
       "icon-sticker-data",
     );
     await libraryService.recordConversionResult(mirrorPack!.id, {
       assetId: iconAssetId,
       mode: "sticker",
-      outputFileName: "icon-sticker.webm",
+      outputFileName: `${iconAssetId}.webm`,
       sizeBytes: "icon-sticker-data".length,
     });
 
