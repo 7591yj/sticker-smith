@@ -1907,6 +1907,58 @@ describe("TelegramService", () => {
     });
   });
 
+  it("preserves the explicit local icon thumbnail after a later telegram resync", async () => {
+    const { root, downloadRoot, libraryService, telegramService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-local-icon-resync-"),
+    );
+    cleanup.push(fileRoot);
+
+    const iconPath = path.join(fileRoot, "icon.webm");
+    await fs.writeFile(iconPath, "icon-data");
+    const imported = await libraryService.importFiles(mirrorPack!.id, [iconPath]);
+    const iconAssetId = imported.imported[0]!.id;
+
+    await libraryService.setPackIcon({
+      packId: mirrorPack!.id,
+      assetId: iconAssetId,
+    });
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: 64,
+    });
+    await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-data");
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+    await telegramService.syncOwnedPacks();
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.iconAssetId).toBe(iconAssetId);
+    expect(updated.pack.thumbnailPath).toBe(
+      path.join(mirrorPack!.outputRoot, "icon.webm"),
+    );
+    expect(
+      updated.outputs.find((output) => output.mode === "icon")?.sourceAssetId,
+    ).toBe(iconAssetId);
+  });
+
   it("repairs an empty telegram mirror short name from remote metadata during update", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();

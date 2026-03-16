@@ -338,14 +338,13 @@ function buildStickerPack(
       ? null
       : record.assets.find((asset) => asset.id === record.iconAssetId) ?? null;
   const thumbnailPath =
-    record.source === "telegram"
-      ? record.telegram?.thumbnailPath ??
-        (iconAsset && iconAsset.downloadState === "ready"
-          ? path.join(sourceRoot, iconAsset.relativePath)
-          : null)
-      : iconOutput
-        ? path.join(outputRoot, iconOutput.relativePath)
-        : null;
+    iconOutput
+      ? path.join(outputRoot, iconOutput.relativePath)
+      : iconAsset && iconAsset.downloadState === "ready"
+        ? path.join(sourceRoot, iconAsset.relativePath)
+        : record.source === "telegram"
+          ? record.telegram?.thumbnailPath ?? null
+          : null;
 
   return {
     id: record.id,

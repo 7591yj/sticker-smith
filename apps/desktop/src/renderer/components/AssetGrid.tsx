@@ -69,6 +69,7 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   const standaloneTelegramIconPath =
     pack.source === "telegram" &&
     pack.thumbnailPath &&
+    pack.thumbnailPath.startsWith(pack.sourceRoot) &&
     !assets.some((asset) => asset.absolutePath === pack.thumbnailPath)
       ? pack.thumbnailPath
       : null;
