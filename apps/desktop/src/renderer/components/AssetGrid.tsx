@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MouseEvent } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Box from "@mui/material/Box";
@@ -17,8 +16,6 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import { getLeafName } from "../utils/pathDisplay";
-import { RenameDialog } from "./RenameDialog";
 import {
   browserCountLabelSx,
   browserGridContainerSx,
@@ -49,20 +46,18 @@ interface Props {
 export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [draggedAssetId, setDraggedAssetId] = useState<string | null>(null);
+  const [dragOverAssetId, setDragOverAssetId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
     assetIds: string[];
     primaryAssetId: string;
   } | null>(null);
-  const [renameAsset, setRenameAsset] = useState<SourceAsset | null>(null);
-  const [batchRenameAssetIds, setBatchRenameAssetIds] = useState<string[] | null>(
-    null,
-  );
   const sortedAssets = useMemo(
     () =>
       sortItemsWithPinnedFirst(assets, {
-        getLabel: (asset) => asset.relativePath,
+        getOrder: (asset) => asset.order,
         isPinned: (asset) => pack.iconAssetId === asset.id,
       }),
     [assets, pack.iconAssetId],
@@ -105,6 +100,8 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
   useEffect(() => {
     setSelectedAssetIds([]);
     setSelectionAnchorId(null);
+    setDraggedAssetId(null);
+    setDragOverAssetId(null);
     setContextMenu(null);
   }, [pack.id]);
 
@@ -227,41 +224,6 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     await refreshDetails();
   }, [contextAssets, handleCloseContextMenu, pack.id, refreshDetails]);
 
-  const handleRenameConfirm = useCallback(
-    async (nextRelativePath: string) => {
-      if (!renameAsset) return;
-
-      await window.stickerSmith.assets.rename({
-        packId: pack.id,
-        assetId: renameAsset.id,
-        nextRelativePath,
-      });
-      setRenameAsset(null);
-      selectOnly(renameAsset.id);
-      await refreshDetails();
-    },
-    [pack.id, refreshDetails, renameAsset, selectOnly],
-  );
-
-  const handleBatchRenameConfirm = useCallback(
-    async (baseName: string) => {
-      if (!batchRenameAssetIds || batchRenameAssetIds.length === 0) {
-        return;
-      }
-
-      await window.stickerSmith.assets.renameMany({
-        packId: pack.id,
-        assetIds: batchRenameAssetIds,
-        baseName,
-      });
-      setBatchRenameAssetIds(null);
-      setSelectedAssetIds(batchRenameAssetIds);
-      setSelectionAnchorId(batchRenameAssetIds[0] ?? null);
-      await refreshDetails();
-    },
-    [batchRenameAssetIds, pack.id, refreshDetails],
-  );
-
   const handleSelectAll = useCallback(() => {
     setSelectedAssetIds(selectableAssetIds);
     setSelectionAnchorId(selectableAssetIds[0] ?? null);
@@ -272,17 +234,105 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
     setSelectionAnchorId(null);
   }, []);
 
-  const openSingleRename = useCallback(() => {
-    if (!contextPrimaryAsset) return;
-    setRenameAsset(contextPrimaryAsset);
-    handleCloseContextMenu();
-  }, [contextPrimaryAsset, handleCloseContextMenu]);
+  const submitReorder = useCallback(
+    async (beforeAssetId: string | null) => {
+      if (!draggedAssetId) {
+        return;
+      }
 
-  const openBatchRenameDialog = useCallback(() => {
-    if (!hasBatchActions) return;
-    setBatchRenameAssetIds(batchActionAssetIds);
-    handleCloseContextMenu();
-  }, [batchActionAssetIds, handleCloseContextMenu, hasBatchActions]);
+      const draggedAsset = assetById.get(draggedAssetId);
+      if (!draggedAsset || pack.iconAssetId === draggedAssetId) {
+        return;
+      }
+
+      if (beforeAssetId === draggedAssetId) {
+        return;
+      }
+
+      await window.stickerSmith.assets.reorder({
+        packId: pack.id,
+        assetId: draggedAssetId,
+        beforeAssetId,
+      });
+      setDragOverAssetId(null);
+      await refreshDetails();
+    },
+    [assetById, draggedAssetId, pack.iconAssetId, pack.id, refreshDetails],
+  );
+
+  const handleDragStart = useCallback(
+    (event: DragEvent<HTMLDivElement>, asset: SourceAsset) => {
+      if (asset.id === pack.iconAssetId) {
+        return;
+      }
+
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", asset.id);
+      setDraggedAssetId(asset.id);
+    },
+    [pack.iconAssetId],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedAssetId(null);
+    setDragOverAssetId(null);
+  }, []);
+
+  const handleDragOverAsset = useCallback(
+    (event: DragEvent<HTMLDivElement>, asset: SourceAsset) => {
+      if (!draggedAssetId || asset.id === pack.iconAssetId || asset.id === draggedAssetId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      setDragOverAssetId(asset.id);
+    },
+    [draggedAssetId, pack.iconAssetId],
+  );
+
+  const handleDropBeforeAsset = useCallback(
+    async (event: DragEvent<HTMLDivElement>, asset: SourceAsset) => {
+      if (!draggedAssetId || asset.id === pack.iconAssetId || asset.id === draggedAssetId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      await submitReorder(asset.id);
+      setDraggedAssetId(null);
+    },
+    [draggedAssetId, pack.iconAssetId, submitReorder],
+  );
+
+  const handleDragOverEnd = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!draggedAssetId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      setDragOverAssetId("__end__");
+    },
+    [draggedAssetId],
+  );
+
+  const handleDropToEnd = useCallback(
+    async (event: DragEvent<HTMLDivElement>) => {
+      if (!draggedAssetId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      await submitReorder(null);
+      setDraggedAssetId(null);
+    },
+    [draggedAssetId, submitReorder],
+  );
 
   if (assets.length === 0 && !standaloneTelegramIconPath) {
     return (
@@ -330,32 +380,22 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
           {appTokens.copy.actions.clearSelection}
         </Button>
         {hasBatchActions ? (
-          <>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={openBatchRenameDialog}
-              sx={{ textTransform: "none" }}
-            >
-              {appTokens.copy.actions.batchRename}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              onClick={async () => {
-                await window.stickerSmith.assets.deleteMany({
-                  packId: pack.id,
-                  assetIds: batchActionAssetIds,
-                });
-                handleClearSelection();
-                await refreshDetails();
-              }}
-              sx={{ textTransform: "none" }}
-            >
-              {appTokens.copy.actions.delete}
-            </Button>
-          </>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            onClick={async () => {
+              await window.stickerSmith.assets.deleteMany({
+                packId: pack.id,
+                assetIds: batchActionAssetIds,
+              });
+              handleClearSelection();
+              await refreshDetails();
+            }}
+            sx={{ textTransform: "none" }}
+          >
+            {appTokens.copy.actions.delete}
+          </Button>
         ) : null}
       </Box>
 
@@ -363,12 +403,14 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
         {view === "list" ? (
           <Box
             sx={browserListContainerSx}
+            onDragOver={handleDragOverEnd}
+            onDrop={handleDropToEnd}
           >
             {standaloneTelegramIconPath ? (
               <BrowserListRow
                 key="telegram-pack-icon"
-                title={standaloneTelegramIconRelativePath}
-                filename={standaloneTelegramIconRelativePath}
+                title={buildStandaloneIconTitle(standaloneTelegramIconRelativePath)}
+                label="Icon"
                 isPinned
                 preview={
                   <FilePreview
@@ -386,17 +428,23 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
-              const filename = getLeafName(asset.relativePath);
+              const label = formatAssetLabel(asset, isIcon);
 
               return (
                 <BrowserListRow
                   key={asset.id}
-                  title={asset.relativePath}
-                  filename={filename}
+                  title={buildAssetTitle(asset, label, isIcon)}
+                  label={label}
                   isPinned={isIcon}
+                  isDragOver={dragOverAssetId === asset.id}
+                  draggable={!isIcon}
                   selected={selectedAssetIds.includes(asset.id)}
                   onClick={(event) => handleAssetClick(event, asset)}
                   onContextMenu={(event) => handleContextMenu(event, asset)}
+                  onDragStart={(event) => handleDragStart(event, asset)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(event) => handleDragOverAsset(event, asset)}
+                  onDrop={(event) => void handleDropBeforeAsset(event, asset)}
                   preview={
                     <FilePreview
                       absolutePath={asset.absolutePath}
@@ -424,12 +472,14 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
         ) : (
           <Box
             sx={browserGridContainerSx}
+            onDragOver={handleDragOverEnd}
+            onDrop={handleDropToEnd}
           >
             {standaloneTelegramIconPath ? (
               <BrowserGalleryCard
                 key="telegram-pack-icon"
-                title={standaloneTelegramIconRelativePath}
-                filename={standaloneTelegramIconRelativePath}
+                title={buildStandaloneIconTitle(standaloneTelegramIconRelativePath)}
+                label="Icon"
                 isPinned
                 preview={
                   <FilePreview
@@ -447,17 +497,23 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             ) : null}
             {sortedAssets.map((asset) => {
               const isIcon = pack.iconAssetId === asset.id;
-              const filename = getLeafName(asset.relativePath);
+              const label = formatAssetLabel(asset, isIcon);
 
               return (
                 <BrowserGalleryCard
                   key={asset.id}
-                  title={asset.relativePath}
-                  filename={filename}
+                  title={buildAssetTitle(asset, label, isIcon)}
+                  label={label}
                   isPinned={isIcon}
+                  isDragOver={dragOverAssetId === asset.id}
+                  draggable={!isIcon}
                   selected={selectedAssetIds.includes(asset.id)}
                   onClick={(event) => handleAssetClick(event, asset)}
                   onContextMenu={(event) => handleContextMenu(event, asset)}
+                  onDragStart={(event) => handleDragStart(event, asset)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(event) => handleDragOverAsset(event, asset)}
+                  onDrop={(event) => void handleDropBeforeAsset(event, asset)}
                   preview={
                     <FilePreview
                       absolutePath={asset.absolutePath}
@@ -505,7 +561,10 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             sx={browserMenuTitleSx}
           >
             {contextAssets.length === 1
-              ? getLeafName(contextAssets[0]!.relativePath)
+              ? formatAssetLabel(
+                  contextAssets[0]!,
+                  pack.iconAssetId === contextAssets[0]!.id,
+                )
               : formatCountLabel(contextAssets.length, "selected asset")}
           </MenuItem>
         ) : null}
@@ -525,45 +584,11 @@ export function AssetGrid({ assets, pack, view, refreshDetails }: Props) {
             )}
           </MenuItem>
         ) : null}
-        <MenuItem
-          onClick={
-            contextAssets.length === 1
-              ? openSingleRename
-              : openBatchRenameDialog
-          }
-          dense
-        >
-          <EditIcon sx={browserMenuIconSx} />
-          {contextAssets.length === 1
-            ? appTokens.copy.actions.rename
-            : appTokens.copy.actions.batchRename}
-        </MenuItem>
         <MenuItem onClick={() => void handleDelete()} dense sx={{ color: "error.light" }}>
           <DeleteIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.delete}
         </MenuItem>
       </Menu>
-
-      {renameAsset ? (
-        <RenameDialog
-          open
-          title={appTokens.copy.dialogs.renameAsset}
-          initialValue={renameAsset.relativePath}
-          onConfirm={handleRenameConfirm}
-          onClose={() => setRenameAsset(null)}
-        />
-      ) : null}
-
-      {batchRenameAssetIds ? (
-        <RenameDialog
-          open
-          title={appTokens.copy.dialogs.batchRenameAssets}
-          label={appTokens.copy.labels.baseName}
-          initialValue="sticker"
-          onConfirm={handleBatchRenameConfirm}
-          onClose={() => setBatchRenameAssetIds(null)}
-        />
-      ) : null}
     </>
   );
 }
@@ -583,4 +608,31 @@ function formatDownloadSummary(asset: SourceAsset) {
     default:
       return "missing";
   }
+}
+
+function formatAssetLabel(asset: SourceAsset, isIcon: boolean) {
+  return isIcon ? "Icon" : formatOrderLabel(asset.order);
+}
+
+function formatOrderLabel(order: number) {
+  return String(order + 1).padStart(3, "0");
+}
+
+function buildAssetTitle(
+  asset: SourceAsset,
+  label: string,
+  isIcon: boolean,
+) {
+  return [
+    label,
+    asset.originalFileName ? `Original: ${asset.originalFileName}` : null,
+    `Stored: source/${asset.relativePath}`,
+    isIcon ? "Role: icon" : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildStandaloneIconTitle(relativePath: string) {
+  return ["Icon", `Stored: source/${relativePath}`].join("\n");
 }

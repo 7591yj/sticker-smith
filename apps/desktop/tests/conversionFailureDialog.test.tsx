@@ -37,8 +37,10 @@ describe("conversion failure dialog", () => {
         {
           id: "asset-1",
           packId: "pack-1",
+          order: 0,
           relativePath: "broken.png",
           absolutePath: "/tmp/sample-pack/source/broken.png",
+          originalFileName: "broken.png",
           emojiList: [],
           kind: "png",
           importedAt: "2026-03-12T00:00:00.000Z",

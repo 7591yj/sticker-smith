@@ -14,7 +14,6 @@ import type {
   StickerPackDetails,
 } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import { getLeafName } from "../utils/pathDisplay";
 import { EmojiPickerDialog } from "./EmojiPickerDialog";
 import {
   browserCountLabelSx,
@@ -64,7 +63,7 @@ export function OutputsList({
   const sortedOutputs = useMemo(
     () =>
       sortItemsWithPinnedFirst(outputs, {
-        getLabel: (output) => output.relativePath,
+        getOrder: (output) => output.order,
         isPinned: (output) => output.mode === "icon",
       }),
     [outputs],
@@ -287,8 +286,8 @@ export function OutputsList({
               return (
                 <BrowserListRow
                   key={out.relativePath}
-                  title={out.relativePath}
-                  filename={getLeafName(out.relativePath)}
+                  title={buildOutputTitle(out, sourceAsset)}
+                  label={formatOutputLabel(out)}
                   isPinned={out.mode === "icon"}
                   selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
                   onClick={
@@ -340,7 +339,6 @@ export function OutputsList({
         ) : (
           <Box sx={browserGridContainerSx}>
             {sortedOutputs.map((out) => {
-              const filename = getLeafName(out.relativePath);
               const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
               const selectable = out.mode === "sticker" && sourceAsset !== null;
               const showEmojiMetadata =
@@ -349,8 +347,8 @@ export function OutputsList({
               return (
                 <BrowserGalleryCard
                   key={out.relativePath}
-                  title={out.relativePath}
-                  filename={filename}
+                  title={buildOutputTitle(out, sourceAsset)}
+                  label={formatOutputLabel(out)}
                   isPinned={out.mode === "icon"}
                   selected={selectable && selectedAssetIds.includes(out.sourceAssetId)}
                   onClick={
@@ -422,7 +420,7 @@ export function OutputsList({
             sx={browserMenuTitleSx}
           >
             {contextAssets.length === 1
-              ? getLeafName(contextAssets[0]!.relativePath)
+              ? formatOrderLabel(contextAssets[0]!.order)
               : formatCountLabel(contextAssets.length, "selected output")}
           </MenuItem>
         ) : null}
@@ -473,6 +471,27 @@ function formatEmojiSummary(asset: SourceAsset) {
   return asset.emojiList.length > 0
     ? asset.emojiList.join(" ")
     : appTokens.copy.labels.noEmoji;
+}
+
+function formatOutputLabel(output: OutputArtifact) {
+  return output.mode === "icon" ? "Icon" : formatOrderLabel(output.order);
+}
+
+function formatOrderLabel(order: number) {
+  return String(order + 1).padStart(3, "0");
+}
+
+function buildOutputTitle(
+  output: OutputArtifact,
+  sourceAsset: SourceAsset | null,
+) {
+  return [
+    formatOutputLabel(output),
+    sourceAsset?.originalFileName ? `Original: ${sourceAsset.originalFileName}` : null,
+    `Stored: webm/${output.relativePath}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const emojiMetaChipSx = (missingEmoji: boolean) =>

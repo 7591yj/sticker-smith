@@ -157,8 +157,10 @@ describe("PackPanel", () => {
             {
               id: "asset-1",
               packId: "pack-1",
+              order: 0,
               relativePath: "sticker.webm",
               absolutePath: null,
+              originalFileName: "sticker.webm",
               emojiList: ["🙂"],
               kind: "webm",
               importedAt: "2026-03-12T00:00:00.000Z",
