@@ -38,6 +38,8 @@ const originalStickerSmithRoot = process.env.STICKER_SMITH_ROOT;
 const originalBackendDir = process.env.STICKER_SMITH_BACKEND_DIR;
 const originalFfmpegEnv = process.env.STICKER_SMITH_FFMPEG;
 const originalFfprobeEnv = process.env.STICKER_SMITH_FFPROBE;
+const originalPythonPathEnv = process.env.PYTHONPATH;
+const originalStickerSmithPythonPathEnv = process.env.STICKER_SMITH_PYTHONPATH;
 const tempDirectories: string[] = [];
 
 class FakeChildProcess extends EventEmitter {
@@ -223,6 +225,16 @@ afterEach(() => {
     delete process.env.STICKER_SMITH_FFPROBE;
   } else {
     process.env.STICKER_SMITH_FFPROBE = originalFfprobeEnv;
+  }
+  if (originalPythonPathEnv === undefined) {
+    delete process.env.PYTHONPATH;
+  } else {
+    process.env.PYTHONPATH = originalPythonPathEnv;
+  }
+  if (originalStickerSmithPythonPathEnv === undefined) {
+    delete process.env.STICKER_SMITH_PYTHONPATH;
+  } else {
+    process.env.STICKER_SMITH_PYTHONPATH = originalStickerSmithPythonPathEnv;
   }
   vi.restoreAllMocks();
 
@@ -652,6 +664,8 @@ describe("ConverterService", () => {
     });
     process.env.STICKER_SMITH_ROOT = workspaceRoot;
     delete process.env.STICKER_SMITH_BACKEND_DIR;
+    delete process.env.PYTHONPATH;
+    delete process.env.STICKER_SMITH_PYTHONPATH;
 
     const service = new ConverterService({} as never);
     const backend = await getResolveBackendCommand(service);

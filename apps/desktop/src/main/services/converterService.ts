@@ -99,12 +99,31 @@ function parseNdjsonChunk(buffer: string) {
   return parseNdjsonLines(buffer.split("\n"));
 }
 
+function flushStandaloneNdjsonValue(buffer: string) {
+  const trimmed = buffer.trim();
+  if (!trimmed.includes("\n") && trimmed.length > 0) {
+    try {
+      return {
+        buffer: "",
+        events: [JSON.parse(trimmed) as ConversionJobEvent],
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
   const lines = `${buffer}${chunk.toString()}`.split("\n");
-  return {
+  const next = {
     buffer: lines.pop() ?? "",
     events: parseNdjsonLines(lines),
   };
+
+  const flushed = flushStandaloneNdjsonValue(next.buffer);
+  return flushed ?? next;
 }
 
 async function pathExists(targetPath: string) {
