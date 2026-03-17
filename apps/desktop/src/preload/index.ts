@@ -8,6 +8,7 @@ import type {
   ImportResult,
   MoveAssetInput,
   PublishLocalPackInput,
+  ReorderAssetInput,
   RenameAssetInput,
   RenameManyAssetsInput,
   SetPackTelegramShortNameInput,
@@ -105,6 +106,8 @@ const stickerSmith: StickerSmithApi = {
       input: SetManyAssetEmojisInput,
     ): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.setEmojisMany", input),
+    reorder: (input: ReorderAssetInput): Promise<StickerPackDetails> =>
+      ipcRenderer.invoke("assets.reorder", input),
     rename: (input: RenameAssetInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("assets.rename", input),
     renameMany: (input: RenameManyAssetsInput): Promise<StickerPackDetails> =>

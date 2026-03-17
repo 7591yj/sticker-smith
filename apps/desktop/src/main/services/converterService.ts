@@ -20,6 +20,75 @@ const FFPROBE_BINARY = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
 const CURRENT_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const COMMAND_HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
+interface BackendCommand {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
+class CanonicalOutputRegistry {
+  private readonly outputPathByTaskKey: ReadonlyMap<string, string>;
+
+  constructor(
+    private readonly outputRoot: string,
+    tasks: readonly ConversionTask[],
+  ) {
+    this.outputPathByTaskKey = new Map(
+      tasks.map((task) => [
+        CanonicalOutputRegistry.getTaskKey(task.assetId, task.mode),
+        CanonicalOutputRegistry.getExpectedOutputPath(outputRoot, task),
+      ]),
+    );
+  }
+
+  static getTaskKey(assetId: string, mode: ConversionTask["mode"]) {
+    return `${assetId}:${mode}`;
+  }
+
+  static getExpectedOutputPath(outputRoot: string, task: ConversionTask) {
+    return path.resolve(
+      outputRoot,
+      task.mode === "icon" ? "icon.webm" : `${task.assetId}.webm`,
+    );
+  }
+
+  validateCompletedEvent(
+    packId: string,
+    event: ConversionJobEvent & {
+      type: "asset_completed";
+      assetId: string;
+      mode: ConversionTask["mode"];
+      outputPath: string;
+    },
+  ) {
+    const actualPath = path.resolve(event.outputPath);
+    const resolvedOutputRoot = path.resolve(this.outputRoot);
+
+    if (!isWithinDirectory(actualPath, resolvedOutputRoot)) {
+      throw new Error(
+        `Conversion output path mismatch for pack ${packId}: asset ${event.assetId} (${event.mode}) reported ${actualPath}, expected a file inside ${resolvedOutputRoot}.`,
+      );
+    }
+
+    const expectedPath = this.outputPathByTaskKey.get(
+      CanonicalOutputRegistry.getTaskKey(event.assetId, event.mode),
+    );
+
+    if (!expectedPath) {
+      throw new Error(
+        `Conversion output path mismatch for pack ${packId}: asset ${event.assetId} (${event.mode}) reported ${actualPath}, but no canonical output path was registered for that task.`,
+      );
+    }
+
+    if (actualPath !== expectedPath) {
+      throw new Error(
+        `Conversion output path mismatch for pack ${packId}: asset ${event.assetId} (${event.mode}) reported ${actualPath}, expected ${expectedPath}.`,
+      );
+    }
+  }
+}
+
 function parseNdjsonLines(lines: string[]) {
   return lines
     .filter((line) => line.trim())
@@ -30,12 +99,31 @@ function parseNdjsonChunk(buffer: string) {
   return parseNdjsonLines(buffer.split("\n"));
 }
 
+function flushStandaloneNdjsonValue(buffer: string) {
+  const trimmed = buffer.trim();
+  if (!trimmed.includes("\n") && trimmed.length > 0) {
+    try {
+      return {
+        buffer: "",
+        events: [JSON.parse(trimmed) as ConversionJobEvent],
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
   const lines = `${buffer}${chunk.toString()}`.split("\n");
-  return {
+  const next = {
     buffer: lines.pop() ?? "",
     events: parseNdjsonLines(lines),
   };
+
+  const flushed = flushStandaloneNdjsonValue(next.buffer);
+  return flushed ?? next;
 }
 
 async function pathExists(targetPath: string) {
@@ -222,7 +310,27 @@ export class ConverterService {
     this.eventSink?.(event);
   }
 
-  private async handleJobEvent(packId: string, event: ConversionJobEvent) {
+  private async recordCompletedEvent(
+    packId: string,
+    event: ConversionJobEvent & {
+      type: "asset_completed";
+      assetId: string;
+      mode: ConversionTask["mode"];
+    },
+  ) {
+    await this.libraryService.recordConversionResult(packId, {
+      assetId: event.assetId,
+      mode: event.mode,
+      outputFileName: path.basename(event.outputPath),
+      sizeBytes: event.sizeBytes,
+    });
+  }
+
+  private async handleJobEvent(
+    packId: string,
+    outputRegistry: CanonicalOutputRegistry,
+    event: ConversionJobEvent,
+  ) {
     this.emit(event);
 
     if (
@@ -232,59 +340,38 @@ export class ConverterService {
       event.outputPath &&
       typeof event.sizeBytes === "number"
     ) {
-      await this.libraryService.recordConversionResult(packId, {
-        assetId: event.assetId,
-        mode: event.mode,
-        outputFileName: path.basename(event.outputPath),
-        sizeBytes: event.sizeBytes,
-      });
+      outputRegistry.validateCompletedEvent(packId, event);
+      await this.recordCompletedEvent(packId, event);
     }
   }
 
   private async handleQueuedJobEvents(
     packId: string,
+    outputRegistry: CanonicalOutputRegistry,
     events: ConversionJobEvent[],
   ) {
     for (const event of events) {
-      await this.handleJobEvent(packId, event);
+      await this.handleJobEvent(packId, outputRegistry, event);
     }
   }
 
-  private async resolveBackendCommand() {
-    const backendOverride = process.env.STICKER_SMITH_BACKEND_DIR;
+  private async resolvePackagedBackendCommand(
+    backendOverride?: string,
+  ): Promise<BackendCommand> {
+    const backendDirectory =
+      backendOverride ?? path.join(process.resourcesPath, "backend");
+    const bundledBackend = await resolveBundledBackend(backendDirectory);
 
-    if (app.isPackaged) {
-      const backendDirectory =
-        backendOverride ?? path.join(process.resourcesPath, "backend");
-      const bundledBackend = await resolveBundledBackend(backendDirectory);
-
-      if (bundledBackend) {
-        return bundledBackend;
-      }
-
-      throw new Error(
-        `Bundled conversion backend not found at ${backendDirectory}`,
-      );
+    if (bundledBackend) {
+      return bundledBackend;
     }
 
-    const workspaceRoot = await findWorkspaceRoot();
-    if (backendOverride) {
-      const bundledBackend = await resolveBundledBackend(
-        backendOverride,
-      );
-      if (bundledBackend) {
-        return bundledBackend;
-      }
-    }
+    throw new Error(`Bundled conversion backend not found at ${backendDirectory}`);
+  }
 
-    if (!workspaceRoot) {
-      throw new Error(
-        "Could not locate the workspace root. Set STICKER_SMITH_ROOT or STICKER_SMITH_BACKEND_DIR.",
-      );
-    }
-
-    // In development, prefer the live Python backend so source changes are used
-    // immediately instead of a potentially stale bundled dist/backend.
+  private async resolveDevelopmentBackendCommand(
+    workspaceRoot: string,
+  ): Promise<BackendCommand> {
     const pythonSourceRoot = path.join(workspaceRoot, "tg-webm-converter", "src");
     return {
       command:
@@ -304,12 +391,39 @@ export class ConverterService {
     };
   }
 
+  private async resolveBackendCommand() {
+    const backendOverride = process.env.STICKER_SMITH_BACKEND_DIR;
+
+    if (app.isPackaged) {
+      return this.resolvePackagedBackendCommand(backendOverride);
+    }
+
+    if (backendOverride) {
+      const bundledBackend = await resolveBundledBackend(backendOverride);
+      if (bundledBackend) {
+        return bundledBackend;
+      }
+    }
+
+    const workspaceRoot = await findWorkspaceRoot();
+    if (!workspaceRoot) {
+      throw new Error(
+        "Could not locate the workspace root. Set STICKER_SMITH_ROOT or STICKER_SMITH_BACKEND_DIR.",
+      );
+    }
+
+    return this.resolveDevelopmentBackendCommand(workspaceRoot);
+  }
+
   private buildTasks(details: StickerPackDetails, assetIds?: string[]) {
     const selectedAssetIds = assetIds ? new Set(assetIds) : null;
+    const sortedAssets = [...details.assets].sort(
+      (left, right) => left.order - right.order || left.id.localeCompare(right.id),
+    );
     const tasks: ConversionTask[] = [];
     let iconTask: ConversionTask | null = null;
 
-    for (const asset of details.assets) {
+    for (const asset of sortedAssets) {
       if (selectedAssetIds && !selectedAssetIds.has(asset.id)) {
         continue;
       }
@@ -352,6 +466,7 @@ export class ConverterService {
       outputRoot,
       tasks,
     };
+    const outputRegistry = new CanonicalOutputRegistry(outputRoot, tasks);
 
     const backend = await this.resolveBackendCommand();
 
@@ -394,7 +509,7 @@ export class ConverterService {
         }
 
         eventQueue = eventQueue.then(() =>
-          this.handleQueuedJobEvents(packId, events),
+          this.handleQueuedJobEvents(packId, outputRegistry, events),
         );
         eventQueue.catch(rejectOnce);
       };

@@ -42,8 +42,10 @@ function createAsset(
   return {
     id,
     packId: "pack-1",
+    order: 0,
     relativePath,
     absolutePath: `/tmp/sample-pack/source/${relativePath}`,
+    originalFileName: relativePath.split("/").pop() ?? relativePath,
     emojiList: [],
     kind,
     importedAt: "2026-03-11T00:00:00.000Z",
@@ -56,10 +58,12 @@ function createAsset(
 function createOutput(
   relativePath: string,
   mode: OutputArtifact["mode"] = "sticker",
+  order = 0,
 ): OutputArtifact {
   return {
     packId: "pack-1",
     sourceAssetId: `asset-for-${relativePath}`,
+    order,
     mode,
     relativePath,
     absolutePath: `/tmp/sample-pack/webm/${relativePath}`,
@@ -67,6 +71,36 @@ function createOutput(
     sha256: null,
     updatedAt: "2026-03-11T00:00:00.000Z",
   };
+}
+
+function createDataTransfer(initialData: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initialData));
+
+  return {
+    effectAllowed: "all",
+    dropEffect: "none",
+    setData(type: string, value: string) {
+      store.set(type, value);
+    },
+    getData(type: string) {
+      return store.get(type) ?? "";
+    },
+  };
+}
+
+function dispatchDragEvent(
+  target: Element,
+  type: string,
+  dataTransfer: ReturnType<typeof createDataTransfer>,
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+
+  Object.defineProperty(event, "dataTransfer", {
+    configurable: true,
+    value: dataTransfer,
+  });
+
+  target.dispatchEvent(event);
 }
 
 describe("fileBrowser", () => {
@@ -85,17 +119,17 @@ describe("fileBrowser", () => {
   it("keeps pinned items first before sorting the rest", () => {
     const sorted = sortItemsWithPinnedFirst(
       [
-        { label: "zeta", pinned: false },
-        { label: "alpha", pinned: false },
-        { label: "icon", pinned: true },
+        { order: 2, pinned: false },
+        { order: 1, pinned: false },
+        { order: 5, pinned: true },
       ],
       {
-        getLabel: (item) => item.label,
+        getOrder: (item) => item.order,
         isPinned: (item) => item.pinned,
       },
     );
 
-    expect(sorted.map((item) => item.label)).toEqual(["icon", "alpha", "zeta"]);
+    expect(sorted.map((item) => item.order)).toEqual([5, 1, 2]);
   });
 
   it("renders webm previews as videos", () => {
@@ -114,9 +148,9 @@ describe("fileBrowser", () => {
 describe("AssetGrid", () => {
   it("keeps the icon asset first in gallery view", () => {
     const assets = [
-      createAsset("asset-1", "zeta.png"),
-      createAsset("asset-2", "icon.png"),
-      createAsset("asset-3", "alpha.png"),
+      createAsset("asset-1", "asset-1.png", "png", { order: 1, originalFileName: "zeta.png" }),
+      createAsset("asset-2", "asset-2.png", "png", { order: 2, originalFileName: "icon.png" }),
+      createAsset("asset-3", "asset-3.png", "png", { order: 0, originalFileName: "alpha.png" }),
     ];
 
     const markup = renderToStaticMarkup(
@@ -132,7 +166,8 @@ describe("AssetGrid", () => {
       />,
     );
 
-    expect(markup.indexOf("icon.png")).toBeLessThan(markup.indexOf("alpha.png"));
+    expect(markup.indexOf("Icon")).toBeLessThan(markup.indexOf("001"));
+    expect(markup.indexOf("001")).toBeLessThan(markup.indexOf("002"));
   });
 
   it("does not render emoji metadata in the assets grid", () => {
@@ -193,8 +228,84 @@ describe("AssetGrid", () => {
     );
 
     expect(markup).toContain("telegram-pack-icon.webp");
-    expect(markup).toContain("icon");
+    expect(markup).toContain("Icon");
     expect(markup).toContain("ready");
+  });
+
+  it("reorders assets from the drop payload even if drag state has not re-rendered yet", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const reorder = vi.fn(async (): Promise<StickerPackDetails> => ({
+      pack: createPack(),
+      assets: [],
+      outputs: [],
+    }));
+    const refreshDetails = vi.fn(async (): Promise<StickerPackDetails> => ({
+      pack: createPack(),
+      assets: [],
+      outputs: [],
+    }));
+
+    Object.assign(window, {
+      stickerSmith: {
+        assets: {
+          reorder,
+          delete: vi.fn(),
+          deleteMany: vi.fn(),
+        },
+        packs: {
+          setIcon: vi.fn(),
+        },
+      },
+    });
+
+    await act(async () => {
+      root.render(
+        <AssetGrid
+          assets={[
+            createAsset("asset-1", "one.png", "png", { order: 0 }),
+            createAsset("asset-2", "two.png", "png", { order: 1 }),
+          ]}
+          pack={createPack()}
+          view="list"
+          refreshDetails={refreshDetails}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const draggableRows = Array.from(
+      container.querySelectorAll('[draggable="true"]'),
+    );
+    expect(draggableRows).toHaveLength(2);
+
+    const targetRow = draggableRows.find((row) =>
+      row.getAttribute("title")?.includes("Original: two.png"),
+    );
+    expect(targetRow).toBeTruthy();
+
+    const dataTransfer = createDataTransfer({
+      "application/x-sticker-smith-asset-id": "asset-1",
+      "text/plain": "asset-1",
+    });
+
+    await act(async () => {
+      dispatchDragEvent(targetRow!, "dragover", dataTransfer);
+      dispatchDragEvent(targetRow!, "drop", dataTransfer);
+      await Promise.resolve();
+    });
+
+    expect(reorder).toHaveBeenCalledWith({
+      packId: "pack-1",
+      assetId: "asset-1",
+      beforeAssetId: "asset-2",
+    });
+    expect(refreshDetails).toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });
 
@@ -206,14 +317,15 @@ describe("OutputsList", () => {
         view="gallery"
         assets={[
           createAsset("asset-for-zeta.webm", "zeta.png", "png", {
+            order: 1,
             emojiList: ["🙂"],
           }),
-          createAsset("asset-for-alpha.webm", "alpha.png"),
+          createAsset("asset-for-alpha.webm", "alpha.png", "png", { order: 0 }),
         ]}
         outputs={[
-          createOutput("zeta.webm"),
-          createOutput("icon.webm", "icon"),
-          createOutput("alpha.webm"),
+          createOutput("zeta.webm", "sticker", 1),
+          createOutput("icon.webm", "icon", 0),
+          createOutput("alpha.webm", "sticker", 0),
         ]}
         refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
           pack: createPack(),
@@ -224,21 +336,28 @@ describe("OutputsList", () => {
     );
 
     expect(markup).not.toContain("Open containing folder");
-    expect(markup.indexOf("icon.webm")).toBeLessThan(markup.indexOf("alpha.webm"));
+    expect(markup.indexOf("Icon")).toBeLessThan(markup.indexOf("001"));
+    expect(markup.indexOf("001")).toBeLessThan(markup.indexOf("002"));
     expect(markup).toContain("🙂");
     expect(markup).toContain("No emoji");
   });
 
-  it("shows leaf filenames for nested output paths", () => {
+  it("shows tooltip metadata for output filenames while keeping order-based labels", () => {
     const markup = renderToStaticMarkup(
       <OutputsList
         packId="pack-1"
         view="list"
-        assets={[createAsset("asset-for-nested/alpha.webm", "alpha.png")]}
+        assets={[
+          createAsset("asset-for-nested/alpha.webm", "alpha.png", "png", {
+            order: 0,
+            originalFileName: "alpha-original.png",
+          }),
+        ]}
         outputs={[
           {
             ...createOutput("nested/alpha.webm"),
             sourceAssetId: "asset-for-nested/alpha.webm",
+            order: 0,
           },
         ]}
         refreshDetails={vi.fn(async (): Promise<StickerPackDetails> => ({
@@ -249,8 +368,9 @@ describe("OutputsList", () => {
       />,
     );
 
-    expect(markup).toContain("alpha.webm");
-    expect(markup).not.toContain(">nested/alpha.webm<");
+    expect(markup).toContain("001");
+    expect(markup).toContain("Original: alpha-original.png");
+    expect(markup).toContain("Stored: webm/nested/alpha.webm");
   });
 
   it("does not render no-emoji metadata for icon outputs", () => {

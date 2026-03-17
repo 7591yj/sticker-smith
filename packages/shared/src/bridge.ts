@@ -8,6 +8,7 @@ import type {
   MoveAssetInput,
   OutputArtifact,
   PublishLocalPackInput,
+  ReorderAssetInput,
   RenameAssetInput,
   RenameManyAssetsInput,
   SetTelegramPhoneNumberInput,
@@ -77,6 +78,7 @@ export interface StickerSmithApi {
     setEmojisMany: (
       input: SetManyAssetEmojisInput,
     ) => Promise<StickerPackDetails>;
+    reorder: (input: ReorderAssetInput) => Promise<StickerPackDetails>;
     rename: (input: RenameAssetInput) => Promise<StickerPackDetails>;
     renameMany: (input: RenameManyAssetsInput) => Promise<StickerPackDetails>;
     move: (input: MoveAssetInput) => Promise<StickerPackDetails>;

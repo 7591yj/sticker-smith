@@ -3,9 +3,11 @@ import { z } from "zod";
 import { unicodeEmojiSet } from "./emojiCatalog";
 import { supportedMediaKinds } from "./types";
 
+const rgiEmojiPattern = new RegExp("^\\p{RGI_Emoji}$", "v");
+
 function isTelegramCompatibleEmoji(value: string) {
   const trimmed = value.trim();
-  return unicodeEmojiSet.has(trimmed);
+  return unicodeEmojiSet.has(trimmed) || rgiEmojiPattern.test(trimmed);
 }
 
 export const packIdSchema = z.string().min(1);
@@ -91,6 +93,12 @@ export const setAssetEmojisSchema = z.object({
   packId: packIdSchema,
   assetId: assetIdSchema,
   emojis: emojiListSchema,
+});
+
+export const reorderAssetSchema = z.object({
+  packId: packIdSchema,
+  assetId: assetIdSchema,
+  beforeAssetId: assetIdSchema.nullable(),
 });
 
 export const setManyAssetEmojisSchema = z.object({

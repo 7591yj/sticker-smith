@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,35 +11,51 @@ import {
 
 describe("TelegramTdlibService", () => {
   it("rewrites packaged tdjson paths to app.asar.unpacked when present", async () => {
-    const accessMock = vi
-      .spyOn(await import("node:fs/promises"), "access")
-      .mockResolvedValue(undefined);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-tdjson-"));
+    const unpackedPath = path.join(
+      root,
+      "resources",
+      "app.asar.unpacked",
+      "node_modules",
+      "@prebuilt-tdlib",
+      "linux-x64-glibc",
+      "libtdjson.so",
+    );
+    await fs.mkdir(path.dirname(unpackedPath), { recursive: true });
+    await fs.writeFile(unpackedPath, "");
 
     await expect(
       resolvePackagedTdjsonPath(
-        "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+        path.join(
+          root,
+          "resources",
+          "app.asar",
+          "node_modules",
+          "@prebuilt-tdlib",
+          "linux-x64-glibc",
+          "libtdjson.so",
+        ),
       ),
-    ).resolves.toBe(
-      "/tmp/Sticker Smith/resources/app.asar.unpacked/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
-    );
+    ).resolves.toBe(unpackedPath);
 
-    accessMock.mockRestore();
+    await fs.rm(root, { recursive: true, force: true });
   });
 
   it("keeps packaged tdjson paths unchanged when no unpacked file exists", async () => {
-    const accessMock = vi
-      .spyOn(await import("node:fs/promises"), "access")
-      .mockRejectedValue(new Error("ENOENT"));
-
-    await expect(
-      resolvePackagedTdjsonPath(
-        "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
-      ),
-    ).resolves.toBe(
-      "/tmp/Sticker Smith/resources/app.asar/node_modules/@prebuilt-tdlib/linux-x64-glibc/libtdjson.so",
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-tdjson-"));
+    const tdjsonPath = path.join(
+      root,
+      "resources",
+      "app.asar",
+      "node_modules",
+      "@prebuilt-tdlib",
+      "linux-x64-glibc",
+      "libtdjson.so",
     );
 
-    accessMock.mockRestore();
+    await expect(resolvePackagedTdjsonPath(tdjsonPath)).resolves.toBe(tdjsonPath);
+
+    await fs.rm(root, { recursive: true, force: true });
   });
 
   it("sends the required tdlib parameter defaults during initialization", async () => {
@@ -521,8 +541,39 @@ describe("TelegramTdlibService", () => {
             _: "stickerFormatWebm",
           },
           emojis: "🙂",
-          keywords: "",
         },
+      },
+    ]);
+  });
+
+  it("moves stickers within a set by remote file id", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = new TelegramTdlibService() as TelegramTdlibService & {
+      client: {
+        invoke: (request: Record<string, unknown>) => Promise<unknown>;
+      };
+    };
+
+    service.client = {
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        return { _: "ok" };
+      },
+    };
+
+    await service.setStickerPositionInSet({
+      fileId: "remote-file-id",
+      position: 0,
+    });
+
+    expect(requests).toEqual([
+      {
+        _: "setStickerPositionInSet",
+        sticker: {
+          _: "inputFileRemote",
+          id: "remote-file-id",
+        },
+        position: 0,
       },
     ]);
   });

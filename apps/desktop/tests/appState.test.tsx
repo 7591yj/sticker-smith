@@ -57,8 +57,10 @@ function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPack
       {
         id: "asset-1",
         packId: "pack-1",
+        order: 0,
         relativePath: "nested/cat.png",
         absolutePath: "/tmp/cats/source/nested/cat.png",
+        originalFileName: "cat.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-12T00:00:00.000Z",
@@ -68,8 +70,10 @@ function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPack
       {
         id: "asset-2",
         packId: "pack-1",
+        order: 1,
         relativePath: "dog.png",
         absolutePath: "/tmp/cats/source/dog.png",
+        originalFileName: "dog.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-12T00:00:00.000Z",

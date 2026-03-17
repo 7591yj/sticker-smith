@@ -38,6 +38,8 @@ const originalStickerSmithRoot = process.env.STICKER_SMITH_ROOT;
 const originalBackendDir = process.env.STICKER_SMITH_BACKEND_DIR;
 const originalFfmpegEnv = process.env.STICKER_SMITH_FFMPEG;
 const originalFfprobeEnv = process.env.STICKER_SMITH_FFPROBE;
+const originalPythonPathEnv = process.env.PYTHONPATH;
+const originalStickerSmithPythonPathEnv = process.env.STICKER_SMITH_PYTHONPATH;
 const tempDirectories: string[] = [];
 
 class FakeChildProcess extends EventEmitter {
@@ -132,32 +134,41 @@ function createDetails(): StickerPackDetails {
       {
         id: "asset-1",
         packId: "pack-1",
+        order: 1,
         relativePath: "one.png",
         absolutePath: "/tmp/sample-pack/source/one.png",
+        originalFileName: "one.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/one.png",
+        downloadState: "ready",
       },
       {
         id: "asset-2",
         packId: "pack-1",
+        order: 0,
         relativePath: "two.png",
         absolutePath: "/tmp/sample-pack/source/two.png",
+        originalFileName: "two.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/two.png",
+        downloadState: "ready",
       },
       {
         id: "asset-3",
         packId: "pack-1",
+        order: 2,
         relativePath: "icon.png",
         absolutePath: "/tmp/sample-pack/source/icon.png",
+        originalFileName: "icon.png",
         emojiList: [],
         kind: "png",
         importedAt: "2026-03-11T00:00:00.000Z",
         originalImportPath: "/tmp/imports/icon.png",
+        downloadState: "ready",
       },
     ],
     outputs: [],
@@ -173,6 +184,13 @@ function createEvent(assetId: string, outputPath: string): ConversionJobEvent {
     outputPath,
     sizeBytes: 128,
   };
+}
+
+function getExpectedStickerOutputPath(
+  details: StickerPackDetails,
+  assetId: string,
+) {
+  return path.join(details.pack.outputRoot, `${assetId}.webm`);
 }
 
 afterEach(() => {
@@ -207,6 +225,16 @@ afterEach(() => {
     delete process.env.STICKER_SMITH_FFPROBE;
   } else {
     process.env.STICKER_SMITH_FFPROBE = originalFfprobeEnv;
+  }
+  if (originalPythonPathEnv === undefined) {
+    delete process.env.PYTHONPATH;
+  } else {
+    process.env.PYTHONPATH = originalPythonPathEnv;
+  }
+  if (originalStickerSmithPythonPathEnv === undefined) {
+    delete process.env.STICKER_SMITH_PYTHONPATH;
+  } else {
+    process.env.STICKER_SMITH_PYTHONPATH = originalStickerSmithPythonPathEnv;
   }
   vi.restoreAllMocks();
 
@@ -254,7 +282,14 @@ describe("ConverterService", () => {
     await waitForSpawn();
     child.stdout.emit(
       "data",
-      Buffer.from(JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))),
+      Buffer.from(
+        JSON.stringify(
+          createEvent(
+            "asset-1",
+            getExpectedStickerOutputPath(details, "asset-1"),
+          ),
+        ),
+      ),
     );
     child.emit("close", 0);
 
@@ -265,12 +300,12 @@ describe("ConverterService", () => {
       {
         assetId: "asset-1",
         mode: "sticker",
-        outputFileName: "one.webm",
+        outputFileName: "asset-1.webm",
         sizeBytes: 128,
       },
     );
     expect(emitSpy).toHaveBeenCalledWith(
-      createEvent("asset-1", "/tmp/out/one.webm"),
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
     );
   });
 
@@ -322,13 +357,17 @@ describe("ConverterService", () => {
     child.stdout.emit(
       "data",
       Buffer.from(
-        `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`,
+        `${JSON.stringify(
+          createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
+        )}\n`,
       ),
     );
     child.stdout.emit(
       "data",
       Buffer.from(
-        `${JSON.stringify(createEvent("asset-2", "/tmp/out/two.webm"))}\n`,
+        `${JSON.stringify(
+          createEvent("asset-2", getExpectedStickerOutputPath(details, "asset-2")),
+        )}\n`,
       ),
     );
 
@@ -381,7 +420,9 @@ describe("ConverterService", () => {
 
     const conversion = service.convertPack(details.pack.id);
     await waitForSpawn();
-    const payload = `${JSON.stringify(createEvent("asset-1", "/tmp/out/one.webm"))}\n`;
+    const payload = `${JSON.stringify(
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
+    )}\n`;
     child.stdout.emit("data", Buffer.from(payload.slice(0, 20)));
     child.stdout.emit("data", Buffer.from(payload.slice(20)));
     child.emit("close", 0);
@@ -390,8 +431,140 @@ describe("ConverterService", () => {
 
     expect(libraryService.recordConversionResult).toHaveBeenCalledTimes(1);
     expect(emitSpy).toHaveBeenCalledWith(
-      createEvent("asset-1", "/tmp/out/one.webm"),
+      createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
     );
+  });
+
+  it("rejects a completion event outside the pack output root", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify(createEvent("asset-1", "/tmp/elsewhere/asset-1.webm")),
+      ),
+    );
+
+    await expect(conversion).rejects.toThrow(
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve("/tmp/elsewhere/asset-1.webm")}, expected a file inside ${path.resolve(details.pack.outputRoot)}.`,
+    );
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
+  });
+
+  it("rejects a completion event with a non-canonical filename inside the output root", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const wrongOutputPath = path.join(details.pack.outputRoot, "stale-name.webm");
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify(createEvent("asset-1", wrongOutputPath))),
+    );
+
+    await expect(conversion).rejects.toThrow(
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve(wrongOutputPath)}, expected ${path.resolve(getExpectedStickerOutputPath(details, "asset-1"))}.`,
+    );
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
+  });
+
+  it("builds conversion tasks from explicit asset order and appends the icon last", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    const stdinEnd = child.stdin.end as unknown as { mock: { calls: unknown[][] } };
+    const request = JSON.parse(
+      String(stdinEnd.mock.calls[0]?.[0]),
+    ) as { tasks: Array<{ assetId: string; mode: string }> };
+    child.emit("close", 0);
+    await conversion;
+
+    expect(request.tasks).toEqual([
+      { assetId: "asset-2", sourcePath: "/tmp/sample-pack/source/two.png", mode: "sticker" },
+      { assetId: "asset-1", sourcePath: "/tmp/sample-pack/source/one.png", mode: "sticker" },
+      { assetId: "asset-3", sourcePath: "/tmp/sample-pack/source/icon.png", mode: "icon" },
+    ]);
   });
 
   it("falls back to system ffmpeg and ffprobe for packaged builds when bundled binaries are unhealthy", async () => {
@@ -491,6 +664,8 @@ describe("ConverterService", () => {
     });
     process.env.STICKER_SMITH_ROOT = workspaceRoot;
     delete process.env.STICKER_SMITH_BACKEND_DIR;
+    delete process.env.PYTHONPATH;
+    delete process.env.STICKER_SMITH_PYTHONPATH;
 
     const service = new ConverterService({} as never);
     const backend = await getResolveBackendCommand(service);

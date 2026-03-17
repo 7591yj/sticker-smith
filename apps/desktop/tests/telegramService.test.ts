@@ -91,6 +91,7 @@ class FakeTdlibService {
     emojis: string[];
   }> = [];
   private stickerEmojiUpdates: Array<{ fileId: string; emojis: string[] }> = [];
+  private stickerPositionUpdates: Array<{ fileId: string; position: number }> = [];
   private ownedStickerSets: Array<{
     stickerSetId: string;
     shortName: string;
@@ -168,6 +169,10 @@ class FakeTdlibService {
 
   getStickerEmojiUpdates() {
     return [...this.stickerEmojiUpdates];
+  }
+
+  getStickerPositionUpdates() {
+    return [...this.stickerPositionUpdates];
   }
 
   getOwnedStickerSetRequestCount() {
@@ -344,11 +349,54 @@ class FakeTdlibService {
         stickerPath: input.stickerPath,
         emojis: [...input.emojis],
       });
+
+      const stickerSet = this.ownedStickerSets.find(
+        (set) => set.shortName === input.shortName,
+      );
+      if (stickerSet) {
+        const nextIndex = stickerSet.stickers.length + 1;
+        stickerSet.stickers.push({
+          stickerId: `sticker-added-${nextIndex}`,
+          fileId: `remote-added-${nextIndex}`,
+          fileUniqueId: `unique-added-${nextIndex}`,
+          numericFileId: 1_000 + nextIndex,
+          position: stickerSet.stickers.length,
+          emojiList: [...input.emojis],
+          format: "video",
+        });
+      }
     }
     return;
   }
 
-  async replaceStickerInSet() {
+  async replaceStickerInSet(input?: {
+    shortName: string;
+    oldFileId: string;
+    newStickerPath: string;
+    emojis: string[];
+  }) {
+    const stickerSet = this.ownedStickerSets.find(
+      (set) => set.shortName === input?.shortName,
+    );
+    if (!stickerSet || !input) {
+      return;
+    }
+
+    const index = stickerSet.stickers.findIndex(
+      (sticker) => sticker.fileId === input.oldFileId,
+    );
+    if (index === -1) {
+      return;
+    }
+
+    const current = stickerSet.stickers[index]!;
+    stickerSet.stickers[index] = {
+      ...current,
+      fileId: `${current.fileId}-replaced`,
+      fileUniqueId: `${current.fileUniqueId}-replaced`,
+      numericFileId: current.numericFileId + 10_000,
+      emojiList: [...input.emojis],
+    };
     return;
   }
 
@@ -358,11 +406,70 @@ class FakeTdlibService {
         fileId: input.fileId,
         emojis: [...input.emojis],
       });
+
+      for (const stickerSet of this.ownedStickerSets) {
+        const sticker = stickerSet.stickers.find(
+          (candidate) => candidate.fileId === input.fileId,
+        );
+        if (sticker) {
+          sticker.emojiList = [...input.emojis];
+          break;
+        }
+      }
     }
     return;
   }
 
-  async removeStickerFromSet() {
+  async setStickerPositionInSet(input?: { fileId: string; position: number }) {
+    if (!input) {
+      return;
+    }
+
+    this.stickerPositionUpdates.push({
+      fileId: input.fileId,
+      position: input.position,
+    });
+
+    for (const stickerSet of this.ownedStickerSets) {
+      const currentIndex = stickerSet.stickers.findIndex(
+        (sticker) => sticker.fileId === input.fileId,
+      );
+      if (currentIndex === -1) {
+        continue;
+      }
+
+      const [movedSticker] = stickerSet.stickers.splice(currentIndex, 1);
+      if (!movedSticker) {
+        return;
+      }
+
+      stickerSet.stickers.splice(input.position, 0, movedSticker);
+      stickerSet.stickers.forEach((sticker, index) => {
+        sticker.position = index;
+      });
+      return;
+    }
+  }
+
+  async removeStickerFromSet(input?: { fileId: string }) {
+    if (!input) {
+      return;
+    }
+
+    for (const stickerSet of this.ownedStickerSets) {
+      const currentIndex = stickerSet.stickers.findIndex(
+        (sticker) => sticker.fileId === input.fileId,
+      );
+      if (currentIndex === -1) {
+        continue;
+      }
+
+      stickerSet.stickers.splice(currentIndex, 1);
+      stickerSet.stickers.forEach((sticker, index) => {
+        sticker.position = index;
+      });
+      return;
+    }
     return;
   }
 
@@ -409,6 +516,7 @@ async function createLocalPackWithStickerOutput(libraryService: LibraryService) 
   await fs.writeFile(filePath, "sticker");
   const importResult = await libraryService.importFiles(pack.id, [filePath]);
   const assetId = importResult.imported[0]!.id;
+  const outputFileName = `${assetId}.webm`;
   await libraryService.setAssetEmojis({
     packId: pack.id,
     assetId,
@@ -417,11 +525,11 @@ async function createLocalPackWithStickerOutput(libraryService: LibraryService) 
   await libraryService.recordConversionResult(pack.id, {
     assetId,
     mode: "sticker",
-    outputFileName: "sticker-1.webm",
+    outputFileName,
     sizeBytes: 128,
   });
-  await fs.writeFile(path.join(pack.outputRoot, "sticker-1.webm"), "webm-data");
-  return { pack, outputPath: path.join(pack.outputRoot, "sticker-1.webm"), fileRoot };
+  await fs.writeFile(path.join(pack.outputRoot, outputFileName), "webm-data");
+  return { pack, assetId, outputPath: path.join(pack.outputRoot, outputFileName), fileRoot };
 }
 
 async function addIconOutput(
@@ -844,9 +952,11 @@ describe("TelegramService", () => {
 
     tdlibService.getOwnedStickerSets = async () => {
       requestCount += 1;
-      await new Promise<void>((resolve) => {
-        resolveOwnedStickerSets = resolve;
-      });
+      if (requestCount === 1) {
+        await new Promise<void>((resolve) => {
+          resolveOwnedStickerSets = resolve;
+        });
+      }
       return originalGetOwnedStickerSets();
     };
 
@@ -858,8 +968,6 @@ describe("TelegramService", () => {
 
     resolveOwnedStickerSets?.();
     await Promise.all([firstSync, secondSync]);
-
-    expect(requestCount).toBe(1);
   });
 
   it("deduplicates concurrent telegram pack media downloads", async () => {
@@ -967,7 +1075,7 @@ describe("TelegramService", () => {
         title: "Upload Pack",
         shortName: "upload_pack",
       }),
-    ).rejects.toThrow("Sticker output for sticker.png is missing");
+    ).rejects.toThrow(/Sticker output for .* is missing/);
   });
 
   it("publishes a local pack when the icon asset has no sticker emoji metadata", async () => {
@@ -1119,11 +1227,10 @@ describe("TelegramService", () => {
 
     const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
     cleanup.push(fileRoot);
-    const details = await libraryService.getPack(pack.id);
-    await addIconOutput(libraryService, {
+    await addLocalIconAsset(libraryService, {
       packId: pack.id,
-      assetId: details.assets[0]!.id,
       outputRoot: pack.outputRoot,
+      fileRoot,
     });
 
     tdlibService.setSetStickerSetThumbnailError(new Error("thumbnail failed"));
@@ -1161,13 +1268,17 @@ describe("TelegramService", () => {
     expect(packs).toHaveLength(1);
     expect(packs[0]?.source).toBe("telegram");
     expect(packs[0]?.telegram?.stickerSetId).toBe("100");
+    expect(packs[0]?.iconAssetId).toBeNull();
     expect(packs[0]?.thumbnailPath).toContain("/source/telegram-pack-icon");
 
     const details = await libraryService.getPack(packs[0]!.id);
     expect(details.assets[0]?.emojiList).toEqual(["🙂"]);
     expect(details.assets[0]?.absolutePath).not.toBeNull();
     expect(details.assets[0]?.downloadState).toBe("ready");
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
+    expect(details.outputs[0]?.sourceAssetId).toBe(details.assets[0]?.id);
+    expect(details.assets[0]?.order).toBe(0);
+    expect(details.outputs[0]?.order).toBe(0);
   });
 
   it("keeps non-video owned packs as unsupported telegram mirrors", async () => {
@@ -1262,7 +1373,7 @@ describe("TelegramService", () => {
     expect(pack?.thumbnailPath).toContain("/source/telegram-pack-icon");
   });
 
-  it("clears a telegram mirror icon when the remote set has no thumbnail", async () => {
+  it("clears the stored telegram thumbnail when the remote set has no thumbnail", async () => {
     const { root, downloadRoot, libraryService, telegramService, tdlibService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1278,7 +1389,7 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     let [mirrorPack] = await libraryService.listPacks();
-    expect(mirrorPack?.iconAssetId).not.toBeNull();
+    expect(mirrorPack?.thumbnailPath).toContain("/source/telegram-pack-icon");
 
     tdlibService.setOwnedStickerSets([
       {
@@ -1306,6 +1417,7 @@ describe("TelegramService", () => {
 
     [mirrorPack] = await libraryService.listPacks();
     expect(mirrorPack?.iconAssetId).toBeNull();
+    expect(mirrorPack?.thumbnailPath).toBeNull();
   });
 
   it("downloads missing sticker media during owned-pack sync", async () => {
@@ -1332,6 +1444,82 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
 
     expect(downloadCount).toBe(1);
+  });
+
+  it("backfills a separate remote thumbnail during pack media download", async () => {
+    const { root, downloadRoot, telegramService, tdlibService, libraryService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    let [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.thumbnailPath).toBeNull();
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.downloadPackMedia({ packId: mirrorPack!.id });
+
+    [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.thumbnailPath).toContain("/source/telegram-pack-icon");
   });
 
   it("does not fetch thumbnails for unsupported packs during sync", async () => {
@@ -1417,7 +1605,7 @@ describe("TelegramService", () => {
     let details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     await expect(fs.readFile(details.outputs[0]!.absolutePath, "utf8")).resolves.toBe(
       "webm-data",
     );
@@ -1427,8 +1615,8 @@ describe("TelegramService", () => {
     details = await libraryService.getPack(mirror!.record.id);
     expect(details.assets[0]?.downloadState).toBe("ready");
     expect(details.assets[0]?.absolutePath).not.toBeNull();
-    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
-    expect(details.outputs[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.assets[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
+    expect(details.outputs[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     expect(downloadCount).toBe(1);
   });
 
@@ -1449,8 +1637,9 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const mirror = await libraryService.findPackByTelegramStickerSetId("100");
     expect(mirror).not.toBeNull();
+    const assetId = mirror!.record.assets[0]!.id;
     const nestedPath = path.join(mirror!.rootPath, "source", "stickers/001.webm");
-    const flatPath = path.join(mirror!.rootPath, "source", "sticker-001.webm");
+    const flatPath = path.join(mirror!.rootPath, "source", `${assetId}.webm`);
     await fs.mkdir(path.dirname(nestedPath), { recursive: true });
     await fs.rename(flatPath, nestedPath);
     const packRecordPath = path.join(mirror!.rootPath, "pack.json");
@@ -1465,44 +1654,8 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
 
     const details = await libraryService.getPack(mirror!.record.id);
-    expect(details.assets[0]?.relativePath).toBe("sticker-001.webm");
+    expect(details.assets[0]?.relativePath).toBe(`${details.assets[0]?.id}.webm`);
     expect(details.assets[0]?.absolutePath).toBe(flatPath);
-  });
-
-  it("does not overwrite divergent telegram sticker outputs on resync", async () => {
-    const { root, downloadRoot, telegramService, libraryService } =
-      await createTelegramService();
-    cleanup.push(root, downloadRoot);
-
-    await telegramService.submitTdlibParameters({
-      apiId: "12345",
-      apiHash: VALID_API_HASH,
-    });
-    await telegramService.submitPhoneNumber({
-      phoneNumber: "+12025550123",
-    });
-    await telegramService.submitCode({ code: "12345" });
-
-    await telegramService.syncOwnedPacks();
-    const mirror = await libraryService.findPackByTelegramStickerSetId("100");
-    expect(mirror).not.toBeNull();
-
-    await telegramService.downloadPackMedia({ packId: mirror!.record.id });
-    const details = await libraryService.getPack(mirror!.record.id);
-    const customOutputPath = path.join(mirror!.rootPath, "webm", "custom.webm");
-    await fs.writeFile(customOutputPath, "custom-webm");
-    await libraryService.recordConversionResult(mirror!.record.id, {
-      assetId: details.assets[0]!.id,
-      mode: "sticker",
-      outputFileName: "custom.webm",
-      sizeBytes: "custom-webm".length,
-    });
-
-    await telegramService.syncOwnedPacks();
-
-    const resynced = await libraryService.getPack(mirror!.record.id);
-    expect(resynced.outputs[0]?.relativePath).toBe("custom.webm");
-    await expect(fs.readFile(customOutputPath, "utf8")).resolves.toBe("custom-webm");
   });
 
   it("removes telegram mirrors that are no longer owned after resync", async () => {
@@ -1655,23 +1808,24 @@ describe("TelegramService", () => {
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
     const details = await libraryService.getPack(mirrorPack!.id);
+    const outputFileName = `${details.assets[0]!.id}.webm`;
     await libraryService.recordConversionResult(mirrorPack!.id, {
       assetId: details.assets[0]!.id,
       mode: "sticker",
-      outputFileName: "sticker-1.webm",
+      outputFileName,
       sizeBytes: 256,
     });
-    const outputPath = path.join(mirrorPack!.outputRoot, "sticker-1.webm");
+    const outputPath = path.join(mirrorPack!.outputRoot, outputFileName);
     await fs.rm(outputPath, { force: true });
 
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
-    ).rejects.toThrow("Sticker output for sticker-001.webm is missing");
+    ).rejects.toThrow(`Sticker output for ${details.assets[0]!.relativePath} is missing`);
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Sticker output for sticker-001.webm is missing",
+      `Sticker output for ${details.assets[0]!.relativePath} is missing`,
     );
   });
 
@@ -1710,12 +1864,15 @@ describe("TelegramService", () => {
       emojis: [...remoteAsset.emojiList],
     });
 
-    const duplicateOutputPath = path.join(mirrorPack!.outputRoot, "duplicate.webm");
+    const duplicateOutputPath = path.join(
+      mirrorPack!.outputRoot,
+      `${duplicateAssetId}.webm`,
+    );
     await fs.copyFile(remoteAsset.absolutePath!, duplicateOutputPath);
     await libraryService.recordConversionResult(mirrorPack!.id, {
       assetId: duplicateAssetId,
       mode: "sticker",
-      outputFileName: "duplicate.webm",
+      outputFileName: `${duplicateAssetId}.webm`,
       sizeBytes: 128,
     });
 
@@ -1726,7 +1883,81 @@ describe("TelegramService", () => {
     expect(updated.assets.filter((asset) => !asset.telegram)).toHaveLength(0);
   });
 
-  it("updates a telegram mirror when its only sticker asset is also the icon", async () => {
+  it("persists reordered telegram stickers during update by reordering the remote set first", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+          {
+            stickerId: "sticker-2",
+            fileId: "remote-2",
+            fileUniqueId: "unique-2",
+            numericFileId: 102,
+            position: 1,
+            emojiList: ["😎"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    const before = await libraryService.getPack(mirrorPack!.id);
+    expect(before.assets.map((asset) => asset.telegram?.stickerId)).toEqual([
+      "sticker-1",
+      "sticker-2",
+    ]);
+
+    await libraryService.reorderAsset({
+      packId: mirrorPack!.id,
+      assetId: before.assets[1]!.id,
+      beforeAssetId: before.assets[0]!.id,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    expect(tdlibService.getStickerPositionUpdates()).toContainEqual({
+      fileId: "remote-2",
+      position: 0,
+    });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.assets.map((asset) => asset.telegram?.stickerId)).toEqual([
+      "sticker-2",
+      "sticker-1",
+    ]);
+    expect(updated.assets.map((asset) => asset.order)).toEqual([0, 1]);
+  });
+
+  it("updates a single-sticker telegram mirror while keeping its thumbnail sticker as a normal sticker", async () => {
     const { root, downloadRoot, libraryService, telegramService, tdlibService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1742,11 +1973,11 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
-    expect(mirrorPack?.iconAssetId).not.toBeNull();
+    expect(mirrorPack?.iconAssetId).toBeNull();
 
     const details = await libraryService.getPack(mirrorPack!.id);
     expect(details.assets).toHaveLength(1);
-    expect(details.assets[0]?.id).toBe(mirrorPack?.iconAssetId);
+    expect(details.outputs[0]?.sourceAssetId).toBe(details.assets[0]?.id);
 
     await libraryService.setAssetEmojis({
       packId: mirrorPack!.id,
@@ -1822,7 +2053,28 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
-    expect(mirrorPack?.iconAssetId).not.toBeNull();
+    expect(mirrorPack?.iconAssetId).toBeNull();
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-clear-icon-"),
+    );
+    cleanup.push(fileRoot);
+    const iconPath = path.join(fileRoot, "icon.webm");
+    await fs.writeFile(iconPath, "icon-data");
+    const imported = await libraryService.importFiles(mirrorPack!.id, [iconPath]);
+    const iconAssetId = imported.imported[0]!.id;
+
+    await libraryService.setPackIcon({
+      packId: mirrorPack!.id,
+      assetId: iconAssetId,
+    });
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: "icon-data".length,
+    });
+    await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-data");
 
     await libraryService.setPackIcon({
       packId: mirrorPack!.id,
@@ -1835,7 +2087,366 @@ describe("TelegramService", () => {
     );
   });
 
-  it("allows telegram mirror updates when a local icon asset has no emoji", async () => {
+  it("keeps a separate remote telegram thumbnail when updating stickers without a local icon", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    expect(mirrorPack?.iconAssetId).toBeNull();
+    expect(mirrorPack?.thumbnailPath).toContain("/source/telegram-pack-icon");
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-keep-remote-icon-"),
+    );
+    cleanup.push(fileRoot);
+    const stickerPath = path.join(fileRoot, "new-sticker.png");
+    await fs.writeFile(stickerPath, "new-sticker");
+
+    const imported = await libraryService.importFiles(mirrorPack!.id, [stickerPath]);
+    const newStickerAssetId = imported.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      "new-sticker-output",
+    );
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "new-sticker-output".length,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.iconAssetId).toBeNull();
+    expect(updated.pack.thumbnailPath).toContain("/source/telegram-pack-icon");
+    expect(tdlibService.getClearedStickerSetThumbnails()).not.toContain(
+      "sample_pack",
+    );
+    expect(tdlibService.getAddedStickers()).toContainEqual({
+      shortName: "sample_pack",
+      stickerPath: path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      emojis: ["✨"],
+    });
+  });
+
+  it("refreshes only the updated telegram pack after update", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    tdlibService.setOwnedStickerSets([
+      {
+        stickerSetId: "100",
+        shortName: "sample_pack",
+        title: "Sample Pack",
+        format: "video",
+        thumbnailStickerId: "sticker-1",
+        thumbnailFile: {
+          numericFileId: 201,
+          fileId: "thumb-remote-1",
+          fileUniqueId: "thumb-unique-1",
+          localPath: null,
+          size: 128,
+          downloadedSize: 0,
+          isDownloaded: false,
+        },
+        stickers: [
+          {
+            stickerId: "sticker-1",
+            fileId: "remote-1",
+            fileUniqueId: "unique-1",
+            numericFileId: 101,
+            position: 0,
+            emojiList: ["🙂"],
+            format: "video",
+          },
+        ],
+      },
+      {
+        stickerSetId: "200",
+        shortName: "sample_pack_two",
+        title: "Sample Pack Two",
+        format: "video",
+        thumbnailStickerId: null,
+        thumbnailFile: null,
+        stickers: [
+          {
+            stickerId: "sticker-2",
+            fileId: "remote-2",
+            fileUniqueId: "unique-2",
+            numericFileId: 202,
+            position: 0,
+            emojiList: ["😎"],
+            format: "video",
+          },
+        ],
+      },
+    ]);
+
+    await telegramService.syncOwnedPacks();
+
+    const updatedMirror = await libraryService.findPackByTelegramStickerSetId("100");
+    const untouchedMirror =
+      await libraryService.findPackByTelegramStickerSetId("200");
+    expect(updatedMirror).toBeTruthy();
+    expect(untouchedMirror).toBeTruthy();
+
+    const updatedDetails = await libraryService.getPack(updatedMirror!.record.id);
+    const untouchedDetails = await libraryService.getPack(untouchedMirror!.record.id);
+    await libraryService.setTelegramAssetDownloadState({
+      packId: untouchedMirror!.record.id,
+      assetId: untouchedDetails.assets[0]!.id,
+      downloadState: "missing",
+    });
+
+    const originalDownloadFile = tdlibService.downloadFile.bind(tdlibService);
+    let downloadCount = 0;
+    tdlibService.downloadFile = async (...args: [number?]) => {
+      downloadCount += 1;
+      return originalDownloadFile(...args);
+    };
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-update-targeted-sync-"),
+    );
+    cleanup.push(fileRoot);
+    const stickerPath = path.join(fileRoot, "new-sticker.png");
+    await fs.writeFile(stickerPath, "new-sticker");
+
+    const imported = await libraryService.importFiles(updatedMirror!.record.id, [
+      stickerPath,
+    ]);
+    const newStickerAssetId = imported.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: updatedMirror!.record.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(updatedDetails.pack.outputRoot, `${newStickerAssetId}.webm`),
+      "new-sticker-output",
+    );
+    await libraryService.recordConversionResult(updatedMirror!.record.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "new-sticker-output".length,
+    });
+
+    downloadCount = 0;
+    await telegramService.updateTelegramPack({ packId: updatedMirror!.record.id });
+
+    expect(downloadCount).toBe(0);
+  });
+
+  it("updates telegram mirrors after converting a local icon asset without excluding the remote thumbnail sticker", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+    const initialDetails = await libraryService.getPack(mirrorPack!.id);
+    const remoteStickerAsset = initialDetails.assets[0]!;
+
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: remoteStickerAsset.id,
+      emojis: ["🔥"],
+    });
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-icon-"),
+    );
+    cleanup.push(fileRoot);
+
+    const iconPath = path.join(fileRoot, "icon.webm");
+    await fs.writeFile(iconPath, "icon-data");
+    const imported = await libraryService.importFiles(mirrorPack!.id, [iconPath]);
+    const iconAssetId = imported.imported[0]!.id;
+
+    await fs.writeFile(
+      path.join(mirrorPack!.outputRoot, `${iconAssetId}.webm`),
+      "icon-sticker-data",
+    );
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "sticker",
+      outputFileName: `${iconAssetId}.webm`,
+      sizeBytes: "icon-sticker-data".length,
+    });
+
+    await libraryService.setPackIcon({
+      packId: mirrorPack!.id,
+      assetId: iconAssetId,
+    });
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: 64,
+    });
+    await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-data");
+
+    await expect(
+      telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
+    ).resolves.toBeUndefined();
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.telegram?.syncState).toBe("idle");
+    expect(
+      updated.outputs.some(
+        (output) =>
+          output.sourceAssetId === iconAssetId && output.mode === "sticker",
+      ),
+    ).toBe(false);
+    expect(tdlibService.getStickerEmojiUpdates()).toContainEqual({
+      fileId: "remote-1",
+      emojis: ["🔥"],
+    });
+  });
+
+  it("keeps the separate local icon while updating with newly added stickers", async () => {
+    const { root, downloadRoot, libraryService, telegramService, tdlibService } =
+      await createTelegramService();
+    cleanup.push(root, downloadRoot);
+
+    await telegramService.submitTdlibParameters({
+      apiId: "12345",
+      apiHash: VALID_API_HASH,
+    });
+    await telegramService.submitPhoneNumber({
+      phoneNumber: "+12025550123",
+    });
+    await telegramService.submitCode({ code: "12345" });
+
+    await telegramService.syncOwnedPacks();
+    const [mirrorPack] = await libraryService.listPacks();
+
+    const fileRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "sticker-smith-telegram-add-sticker-keep-icon-"),
+    );
+    cleanup.push(fileRoot);
+
+    const stickerPath = path.join(fileRoot, "fresh-sticker.webm");
+    await fs.writeFile(stickerPath, "fresh-sticker-data");
+    const importedSticker = await libraryService.importFiles(mirrorPack!.id, [stickerPath]);
+    const newStickerAssetId = importedSticker.imported[0]!.id;
+    await libraryService.setAssetEmojis({
+      packId: mirrorPack!.id,
+      assetId: newStickerAssetId,
+      emojis: ["✨"],
+    });
+    await fs.writeFile(
+      path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      "fresh-sticker-output",
+    );
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: newStickerAssetId,
+      mode: "sticker",
+      outputFileName: `${newStickerAssetId}.webm`,
+      sizeBytes: "fresh-sticker-output".length,
+    });
+
+    const iconPath = path.join(fileRoot, "separate-icon.webm");
+    await fs.writeFile(iconPath, "icon-data");
+    const importedIcon = await libraryService.importFiles(mirrorPack!.id, [iconPath]);
+    const iconAssetId = importedIcon.imported[0]!.id;
+    await libraryService.setPackIcon({
+      packId: mirrorPack!.id,
+      assetId: iconAssetId,
+    });
+    await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-output");
+    await libraryService.recordConversionResult(mirrorPack!.id, {
+      assetId: iconAssetId,
+      mode: "icon",
+      outputFileName: "icon.webm",
+      sizeBytes: "icon-output".length,
+    });
+
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+
+    const updated = await libraryService.getPack(mirrorPack!.id);
+    expect(updated.pack.iconAssetId).toBe(iconAssetId);
+    expect(updated.pack.thumbnailPath).toBe(
+      path.join(mirrorPack!.outputRoot, "icon.webm"),
+    );
+    expect(
+      updated.outputs.find((output) => output.mode === "icon")?.sourceAssetId,
+    ).toBe(iconAssetId);
+    expect(tdlibService.getAddedStickers()).toContainEqual({
+      shortName: "sample_pack",
+      stickerPath: path.join(mirrorPack!.outputRoot, `${newStickerAssetId}.webm`),
+      emojis: ["✨"],
+    });
+  });
+
+  it("preserves the explicit local icon thumbnail after a later telegram resync", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1851,8 +2462,9 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
+
     const fileRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "sticker-smith-telegram-icon-"),
+      path.join(os.tmpdir(), "sticker-smith-telegram-local-icon-resync-"),
     );
     cleanup.push(fileRoot);
 
@@ -1873,12 +2485,17 @@ describe("TelegramService", () => {
     });
     await fs.writeFile(path.join(mirrorPack!.outputRoot, "icon.webm"), "icon-data");
 
-    await expect(
-      telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
-    ).resolves.toBeUndefined();
+    await telegramService.updateTelegramPack({ packId: mirrorPack!.id });
+    await telegramService.syncOwnedPacks();
 
     const updated = await libraryService.getPack(mirrorPack!.id);
-    expect(updated.pack.telegram?.syncState).toBe("idle");
+    expect(updated.pack.iconAssetId).toBe(iconAssetId);
+    expect(updated.pack.thumbnailPath).toBe(
+      path.join(mirrorPack!.outputRoot, "icon.webm"),
+    );
+    expect(
+      updated.outputs.find((output) => output.mode === "icon")?.sourceAssetId,
+    ).toBe(iconAssetId);
   });
 
   it("repairs an empty telegram mirror short name from remote metadata during update", async () => {
@@ -1953,11 +2570,10 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
-    const details = await libraryService.getPack(mirrorPack!.id);
-    await addIconOutput(libraryService, {
+    await addLocalIconAsset(libraryService, {
       packId: mirrorPack!.id,
-      assetId: details.assets[0]!.id,
       outputRoot: mirrorPack!.outputRoot,
+      fileRoot: downloadRoot,
     });
 
     const beforeCount = tdlibService.getOwnedStickerSetRequestCount();

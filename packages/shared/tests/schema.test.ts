@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createPackSchema,
   conversionJobRequestSchema,
+  reorderAssetSchema,
   setPackTelegramShortNameSchema,
   setTelegramPhoneNumberSchema,
   setTelegramTdlibParametersSchema,
@@ -112,6 +113,16 @@ describe("shared schemas", () => {
         packId: "pack-1",
         shortName: null,
       }).shortName,
+    ).toBeNull();
+  });
+
+  it("validates asset reorder inputs", () => {
+    expect(
+      reorderAssetSchema.parse({
+        packId: "pack-1",
+        assetId: "asset-1",
+        beforeAssetId: null,
+      }).beforeAssetId,
     ).toBeNull();
   });
 });

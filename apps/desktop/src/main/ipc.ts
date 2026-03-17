@@ -15,6 +15,7 @@ import {
   listOutputsSchema,
   moveAssetSchema,
   publishLocalPackSchema,
+  reorderAssetSchema,
   renameAssetSchema,
   renameManyAssetsSchema,
   renamePackSchema,
@@ -176,6 +177,9 @@ export function registerIpc() {
   );
   ipcMain.handle("assets.setEmojisMany", async (_event, input: unknown) =>
     libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
+  );
+  ipcMain.handle("assets.reorder", async (_event, input: unknown) =>
+    libraryService.reorderAsset(reorderAssetSchema.parse(input)),
   );
   ipcMain.handle("assets.move", async (_event, input: unknown) =>
     libraryService.moveAsset(moveAssetSchema.parse(input)),
