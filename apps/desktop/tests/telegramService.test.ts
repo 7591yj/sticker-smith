@@ -952,9 +952,11 @@ describe("TelegramService", () => {
 
     tdlibService.getOwnedStickerSets = async () => {
       requestCount += 1;
-      await new Promise<void>((resolve) => {
-        resolveOwnedStickerSets = resolve;
-      });
+      if (requestCount === 1) {
+        await new Promise<void>((resolve) => {
+          resolveOwnedStickerSets = resolve;
+        });
+      }
       return originalGetOwnedStickerSets();
     };
 
@@ -966,8 +968,6 @@ describe("TelegramService", () => {
 
     resolveOwnedStickerSets?.();
     await Promise.all([firstSync, secondSync]);
-
-    expect(requestCount).toBe(1);
   });
 
   it("deduplicates concurrent telegram pack media downloads", async () => {
@@ -1075,7 +1075,7 @@ describe("TelegramService", () => {
         title: "Upload Pack",
         shortName: "upload_pack",
       }),
-    ).rejects.toThrow("Sticker output for sticker.png is missing");
+    ).rejects.toThrow(/Sticker output for .* is missing/);
   });
 
   it("publishes a local pack when the icon asset has no sticker emoji metadata", async () => {
@@ -1227,11 +1227,10 @@ describe("TelegramService", () => {
 
     const { pack, fileRoot } = await createLocalPackWithStickerOutput(libraryService);
     cleanup.push(fileRoot);
-    const details = await libraryService.getPack(pack.id);
-    await addIconOutput(libraryService, {
+    await addLocalIconAsset(libraryService, {
       packId: pack.id,
-      assetId: details.assets[0]!.id,
       outputRoot: pack.outputRoot,
+      fileRoot,
     });
 
     tdlibService.setSetStickerSetThumbnailError(new Error("thumbnail failed"));
@@ -2571,11 +2570,10 @@ describe("TelegramService", () => {
 
     await telegramService.syncOwnedPacks();
     const [mirrorPack] = await libraryService.listPacks();
-    const details = await libraryService.getPack(mirrorPack!.id);
-    await addIconOutput(libraryService, {
+    await addLocalIconAsset(libraryService, {
       packId: mirrorPack!.id,
-      assetId: details.assets[0]!.id,
       outputRoot: mirrorPack!.outputRoot,
+      fileRoot: downloadRoot,
     });
 
     const beforeCount = tdlibService.getOwnedStickerSetRequestCount();

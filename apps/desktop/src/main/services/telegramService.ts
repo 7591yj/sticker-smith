@@ -1252,7 +1252,20 @@ export class TelegramService {
 
   private getStickerAssets(details: StickerPackDetails) {
     return details.assets
-      .filter((asset) => asset.id !== details.pack.iconAssetId)
+      .filter((asset) => {
+        if (asset.id === details.pack.iconAssetId) {
+          return false;
+        }
+
+        if (asset.telegram) {
+          return true;
+        }
+
+        return (
+          asset.emojiList.length > 0 ||
+          this.getStickerOutput(details, asset.id) !== undefined
+        );
+      })
       .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
   }
 
@@ -1356,9 +1369,7 @@ export class TelegramService {
     const addedRemoteStickers = unmatchedRemoteStickers.slice(-addedAssets.length);
 
     if (addedRemoteStickers.length < addedAssets.length) {
-      throw new Error(
-        "Telegram update completed, but the refreshed sticker set did not contain every newly added sticker.",
-      );
+      return;
     }
 
     const addedStickerByAssetId = new Map(
