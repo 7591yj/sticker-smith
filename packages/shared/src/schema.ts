@@ -3,9 +3,11 @@ import { z } from "zod";
 import { unicodeEmojiSet } from "./emojiCatalog";
 import { supportedMediaKinds } from "./types";
 
+const rgiEmojiPattern = new RegExp("^\\p{RGI_Emoji}$", "v");
+
 function isTelegramCompatibleEmoji(value: string) {
   const trimmed = value.trim();
-  return unicodeEmojiSet.has(trimmed);
+  return unicodeEmojiSet.has(trimmed) || rgiEmojiPattern.test(trimmed);
 }
 
 export const packIdSchema = z.string().min(1);
