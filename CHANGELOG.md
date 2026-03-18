@@ -2,6 +2,20 @@
 
 All notable project releases are documented here.
 
+## 0.2.1-beta.1 - 2026-03-18
+
+- Add explicit shared asset ordering, desktop drag reordering with order labels,
+  and persistent Telegram sticker ordering and internal file naming.
+- Sync Telegram stickers by explicit order and canonical asset identity, and
+  update converter outputs, output path validation, and converter event parsing
+  around asset IDs.
+- Accept Unicode RGI emoji sequences in shared schema validation.
+- Fix Telegram sync and update flows to preserve local and remote icons, retain
+  local outputs during emoji edits and resyncs, backfill remote thumbnails on
+  download, and keep sticker order stable during mirror updates.
+- Add regression coverage for Telegram icon retention and incremental update
+  behavior.
+
 ## 0.2.0-beta.2 - 2026-03-15
 
 - Fix packaged Linux builds so TDLib resolves `libtdjson.so` from the deployed
@@ -39,8 +53,8 @@ All notable project releases are documented here.
 
 ## 0.1.0-beta.3 - 2026-03-11
 
-- Fix the packaged Electron renderer path so the AppImage loads `dist/index.html`
-  from `app.asar`.
+- Fix the packaged Electron renderer path so the AppImage loads
+  `dist/index.html` from `app.asar`.
 
 ## 0.1.0-beta.2 - 2026-03-11
 
