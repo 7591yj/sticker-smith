@@ -316,6 +316,8 @@ export class ConverterService {
       type: "asset_completed";
       assetId: string;
       mode: ConversionTask["mode"];
+      outputPath: string;
+      sizeBytes: number;
     },
   ) {
     await this.libraryService.recordConversionResult(packId, {
@@ -340,8 +342,15 @@ export class ConverterService {
       event.outputPath &&
       typeof event.sizeBytes === "number"
     ) {
-      outputRegistry.validateCompletedEvent(packId, event);
-      await this.recordCompletedEvent(packId, event);
+      const completedEvent = event as ConversionJobEvent & {
+        type: "asset_completed";
+        assetId: string;
+        mode: ConversionTask["mode"];
+        outputPath: string;
+        sizeBytes: number;
+      };
+      outputRegistry.validateCompletedEvent(packId, completedEvent);
+      await this.recordCompletedEvent(packId, completedEvent);
     }
   }
 

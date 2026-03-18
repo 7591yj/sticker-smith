@@ -1350,7 +1350,7 @@ export class TelegramService {
   private async reorderAddedRemoteStickerAssets(
     remoteSet: TelegramRemoteStickerSet,
     stickerAssets: ReturnType<TelegramService["getStickerAssets"]>,
-    addedAssetIds: Set<string>,
+    addedAssetIds: ReadonlySet<string>,
   ) {
     const addedAssets = stickerAssets.filter((asset) => addedAssetIds.has(asset.id));
     if (addedAssets.length === 0) {
