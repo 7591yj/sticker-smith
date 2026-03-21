@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { TelegramSessionUser } from "@sticker-smith/shared";
+import { describeTelegramAuthStep } from "../utils/telegramUtils";
+import { FULL_FILE_DOWNLOAD_LIMIT, OWNED_STICKER_SETS_PAGE_SIZE } from "../config/constants";
 
 export interface TelegramTdlibCredentials {
   apiId: number;
@@ -75,9 +77,6 @@ interface PendingDownload {
   reject: (error: Error) => void;
 }
 
-const FULL_FILE_DOWNLOAD_LIMIT = 1_000_000_000;
-const OWNED_STICKER_SETS_PAGE_SIZE = 100;
-
 function summarizeTdlibParameters(credentials: TelegramTdlibCredentials) {
   return {
     apiId: credentials.apiId,
@@ -149,23 +148,6 @@ function mapStickerSet(set: any): TelegramRemoteStickerSet {
       format: mapStickerFormat(sticker?.format),
     })),
   };
-}
-
-function describeAuthState(authState: string) {
-  switch (authState) {
-    case "wait_tdlib_parameters":
-      return "TDLib requires your Telegram api_id and api_hash.";
-    case "wait_phone_number":
-      return "Enter the phone number for the Telegram account that owns the sticker sets.";
-    case "wait_code":
-      return "Enter the login code Telegram sent to your account.";
-    case "wait_password":
-      return "Enter your Telegram two-step verification password.";
-    case "ready":
-      return "Telegram is connected.";
-    default:
-      return "Telegram is logged out.";
-  }
 }
 
 let tdlibConfigured = false;
@@ -261,7 +243,7 @@ export class TelegramTdlibService {
       this.sessionUser = options.sessionUser;
     }
 
-    const message = options.message ?? describeAuthState(authStep);
+    const message = options.message ?? describeTelegramAuthStep(authStep);
     for (const listener of this.listeners) {
       listener.onAuthStateChanged({
         authStep,
