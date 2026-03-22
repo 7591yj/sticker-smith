@@ -13,12 +13,16 @@ import type {
 } from "@sticker-smith/shared";
 
 import type { LibraryService } from "./libraryService";
+import { isWithinDirectory, pathExists } from "../utils/fsUtils";
+import {
+  COMMAND_HEALTH_CHECK_TIMEOUT_MS,
+  FFMPEG_BINARY,
+  FFPROBE_BINARY,
+  GUI_API_BINARY,
+} from "../config/constants";
+import { env } from "../config/env";
 
-const GUI_API_BINARY = process.platform === "win32" ? "gui-api.exe" : "gui-api";
-const FFMPEG_BINARY = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
-const FFPROBE_BINARY = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
 const CURRENT_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-const COMMAND_HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
 interface BackendCommand {
   command: string;
@@ -126,15 +130,6 @@ function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
   return flushed ?? next;
 }
 
-async function pathExists(targetPath: string) {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function commandIsHealthy(command: string, cwd?: string) {
   return await new Promise<boolean>((resolve) => {
     const child = spawn(command, ["-version"], {
@@ -161,19 +156,11 @@ async function commandIsHealthy(command: string, cwd?: string) {
   });
 }
 
-function isWithinDirectory(targetPath: string, directory: string) {
-  const relativePath = path.relative(directory, targetPath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
-}
-
 async function resolveSystemCommand(
   commandName: string,
   excludedRoots: string[],
 ) {
-  const pathEntries = process.env.PATH?.split(path.delimiter).filter(Boolean) ?? [];
+  const pathEntries = env.PATH?.split(path.delimiter).filter(Boolean) ?? [];
 
   for (const entry of pathEntries) {
     const normalizedEntry = path.resolve(entry);
@@ -213,7 +200,7 @@ function joinPythonPathEntries(...entries: Array<string | undefined>) {
 }
 
 async function findWorkspaceRoot() {
-  const explicitRoot = process.env.STICKER_SMITH_ROOT;
+  const explicitRoot = env.STICKER_SMITH_ROOT;
   if (
     explicitRoot &&
     (await pathExists(path.join(explicitRoot, "tg-webm-converter")))
@@ -273,8 +260,8 @@ async function resolveBundledBackend(backendDirectory: string) {
     path.resolve(path.dirname(process.resourcesPath)),
   ]);
 
-  if (process.env.APPDIR) {
-    excludedRoots.add(path.resolve(process.env.APPDIR));
+  if (env.APPDIR) {
+    excludedRoots.add(path.resolve(env.APPDIR));
   }
 
   return {
@@ -286,12 +273,12 @@ async function resolveBundledBackend(backendDirectory: string) {
       STICKER_SMITH_FFMPEG:
         bundledFfmpegAvailable
           ? ffmpeg
-          : process.env.STICKER_SMITH_FFMPEG ??
+          : env.STICKER_SMITH_FFMPEG ??
             (await resolveSystemCommand(FFMPEG_BINARY, [...excludedRoots])),
       STICKER_SMITH_FFPROBE:
         bundledFfprobeAvailable
           ? ffprobe
-          : process.env.STICKER_SMITH_FFPROBE ??
+          : env.STICKER_SMITH_FFPROBE ??
             (await resolveSystemCommand(FFPROBE_BINARY, [...excludedRoots])),
     },
   };
@@ -384,7 +371,7 @@ export class ConverterService {
     const pythonSourceRoot = path.join(workspaceRoot, "tg-webm-converter", "src");
     return {
       command:
-        process.env.PYTHON ??
+        env.PYTHON ??
         (process.platform === "win32" ? "python" : "python3"),
       args: ["-m", "tg_webm_converter.gui_api"],
       cwd: path.join(workspaceRoot, "tg-webm-converter"),
@@ -393,7 +380,7 @@ export class ConverterService {
         PYTHONPATH:
           joinPythonPathEntries(
             pythonSourceRoot,
-            process.env.STICKER_SMITH_PYTHONPATH,
+            env.STICKER_SMITH_PYTHONPATH,
             process.env.PYTHONPATH,
           ) || pythonSourceRoot,
       },
@@ -401,7 +388,7 @@ export class ConverterService {
   }
 
   private async resolveBackendCommand() {
-    const backendOverride = process.env.STICKER_SMITH_BACKEND_DIR;
+    const backendOverride = env.STICKER_SMITH_BACKEND_DIR;
 
     if (app.isPackaged) {
       return this.resolvePackagedBackendCommand(backendOverride);

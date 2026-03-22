@@ -4,23 +4,12 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { appTokens } from "../theme/appTokens";
 import { registerIpc } from "./ipc";
+import { PREVIEW_MIME_TYPES, PREVIEW_PROTOCOL } from "./config/constants";
+import { env } from "./config/env";
+import { windowConfig } from "./config/windowConfig";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PREVIEW_PROTOCOL = "stickersmith-media";
-const PREVIEW_MIME_TYPES: Record<string, string> = {
-  ".bmp": "image/bmp",
-  ".gif": "image/gif",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".mp4": "video/mp4",
-  ".png": "image/png",
-  ".tiff": "image/tiff",
-  ".tif": "image/tiff",
-  ".webm": "video/webm",
-  ".webp": "image/webp",
-};
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -152,11 +141,11 @@ function parseRangeHeader(
 
 function createWindow() {
   const window = new BrowserWindow({
-    width: appTokens.layout.window.width,
-    height: appTokens.layout.window.height,
-    minWidth: appTokens.layout.window.minWidth,
-    minHeight: appTokens.layout.window.minHeight,
-    backgroundColor: appTokens.colors.background.app,
+    width: windowConfig.width,
+    height: windowConfig.height,
+    minWidth: windowConfig.minWidth,
+    minHeight: windowConfig.minHeight,
+    backgroundColor: windowConfig.backgroundColor,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -165,8 +154,8 @@ function createWindow() {
     },
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    void window.loadURL(process.env.VITE_DEV_SERVER_URL);
+  if (env.VITE_DEV_SERVER_URL) {
+    void window.loadURL(env.VITE_DEV_SERVER_URL);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
     void window.loadFile(path.join(__dirname, "../dist/index.html"));

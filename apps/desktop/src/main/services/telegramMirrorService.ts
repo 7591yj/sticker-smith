@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { LibraryService } from "./libraryService";
+import { nowIso } from "../utils/timeUtils";
 import type {
   TelegramDownloadedFile,
   TelegramRemoteSticker,
@@ -36,7 +37,7 @@ export class TelegramMirrorService {
       hasThumbnail: input.hasThumbnail,
       thumbnailExtension: input.thumbnailExtension,
       syncState: input.syncState ?? "idle",
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: nowIso(),
       lastSyncError: input.lastSyncError ?? null,
       publishedFromLocalPackId: input.publishedFromLocalPackId ?? null,
       assets: includeAssets
@@ -65,7 +66,7 @@ export class TelegramMirrorService {
     await this.libraryService.updateTelegramMirrorMetadata({
       packId,
       syncState,
-      lastSyncedAt: syncState === "idle" ? new Date().toISOString() : undefined,
+      lastSyncedAt: syncState === "idle" ? nowIso() : undefined,
       lastSyncError,
     });
   }

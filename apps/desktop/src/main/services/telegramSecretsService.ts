@@ -2,8 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { SettingsService } from "./settingsService";
-
-const SERVICE_NAME = "Sticker Smith";
+import { APP_SERVICE_NAME as SERVICE_NAME } from "../config/constants";
 
 type SecretKey = "api_hash" | "bot_token" | "database_encryption_key";
 

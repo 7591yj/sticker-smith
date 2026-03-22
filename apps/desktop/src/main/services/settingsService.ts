@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { nowIso } from "../utils/timeUtils";
+
 import type { LibraryConfig } from "@sticker-smith/shared";
 
 function resolveDefaultLibraryRoot() {
@@ -44,7 +46,7 @@ export class SettingsService {
       const config: LibraryConfig = {
         version: 1,
         libraryRoot: this.root,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso(),
       };
       await fs.writeFile(this.configPath, JSON.stringify(config, null, 2));
       return config;

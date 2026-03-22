@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import type { LibraryService } from "./libraryService";
+import { isWithinDirectory } from "../utils/fsUtils";
 
 const execFileAsync = promisify(execFile);
 
@@ -119,13 +120,7 @@ export class ShellService {
       throw new Error("Destination matches the outputs folder.");
     }
 
-    const relativeTarget = path.relative(sourceRoot, targetRoot);
-    const targetInsideSource =
-      relativeTarget !== "" &&
-      !relativeTarget.startsWith("..") &&
-      !path.isAbsolute(relativeTarget);
-
-    if (targetInsideSource) {
+    if (isWithinDirectory(targetRoot, sourceRoot)) {
       throw new Error("Destination cannot be inside the outputs folder.");
     }
 
