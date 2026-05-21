@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { TelegramSecretsService } from "../src/main/services/telegramSecretsService";
+import {
+  normalizeKeytarModule,
+  TelegramSecretsService,
+} from "../src/main/services/telegramSecretsService";
 
 class FakeSettingsService {
   constructor(private readonly root: string) {}
@@ -29,6 +32,16 @@ class FakeKeytar {
     return this.secrets.delete(`${service}:${account}`);
   }
 }
+
+describe("normalizeKeytarModule", () => {
+  it("accepts direct and default-wrapped keytar CommonJS exports", () => {
+    const keytar = new FakeKeytar();
+
+    expect(normalizeKeytarModule(keytar)).toBe(keytar);
+    expect(normalizeKeytarModule({ default: keytar })).toBe(keytar);
+    expect(normalizeKeytarModule({})).toBeNull();
+  });
+});
 
 describe("TelegramSecretsService", () => {
   const cleanup: string[] = [];
