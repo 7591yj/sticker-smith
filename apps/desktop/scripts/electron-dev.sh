@@ -14,7 +14,7 @@ esac
 
 if [[ ! -x "$ELECTRON_BIN" ]]; then
   echo "Electron binary not found at $ELECTRON_BIN" >&2
-  echo "Run 'bun install' before starting dev mode." >&2
+  echo "Run 'pnpm install' before starting dev mode." >&2
   exit 1
 fi
 

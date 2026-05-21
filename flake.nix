@@ -47,8 +47,8 @@
         devTools =
           with pkgs;
           [
-            bun
-            (lib.hiPrio nodejs_22)
+            (lib.hiPrio nodejs_24)
+            pnpm
             prettier
 
             python312
@@ -81,7 +81,8 @@
             ''}
 
             echo "Sticker Smith shell"
-            echo "bun: $(bun --version)"
+            echo "node: $(node --version)"
+            echo "pnpm: $(pnpm --version)"
             echo "prettier: $(prettier --version)"
             echo "steam-run: $(command -v steam-run)"
             echo "python: $(python --version)"

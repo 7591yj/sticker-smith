@@ -23,11 +23,11 @@ from local image and video assets and converting them to WebM.
 
 ## Requirements
 
-Use `devenv shell` on Nix.
+Use `direnv allow` or `nix develop` on Nix.
 
 Outside Nix, install:
 
-- `bun`
+- `pnpm`
 - `node`
 - `python3`
 - `poetry`
@@ -40,14 +40,14 @@ and falls back to Python source mode if that bundle is missing.
 
 ## Common Commands
 
-- `devenv shell`
-- `bun install`
-- `bun run dev`
-- `bun run build`
-- `bun run test`
-- `bun run lint`
-- `bun run package:backend`
-- `bun run package:linux`
+- `nix develop`
+- `pnpm install`
+- `pnpm dev`
+- `pnpm build`
+- `pnpm test`
+- `pnpm lint`
+- `pnpm package:backend`
+- `pnpm package:linux`
 
 ## Development Notes
 
