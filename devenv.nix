@@ -2,8 +2,8 @@
 
 {
   packages = with pkgs; [
-    bun
     nodejs_22
+    pnpm
     nodePackages.prettier
     steam-run-free
     python312
@@ -66,7 +66,8 @@
     }:$LD_LIBRARY_PATH"
 
     echo "Sticker Smith shell"
-    echo "bun: $(bun --version)"
+    echo "node: $(node --version)"
+    echo "pnpm: $(pnpm --version)"
     echo "prettier: $(prettier --version)"
     echo "steam-run: $(command -v steam-run)"
     echo "python: $(python --version)"

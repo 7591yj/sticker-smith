@@ -20,13 +20,14 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
 
       - uses: actions/setup-python@v5
         with:
@@ -48,20 +49,20 @@ jobs:
         run: choco install ffmpeg -y
 
       - name: Install frontend deps
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Install Python deps
         working-directory: tg-webm-converter
         run: poetry install
 
       - name: Build backend bundle
-        run: bun run package:backend
+        run: pnpm package:backend
 
       - name: Build desktop app
         working-directory: apps/desktop
         run: |
-          bun run build
-          bunx electron-builder --publish never
+          pnpm build
+          pnpm exec electron-builder --publish never
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4

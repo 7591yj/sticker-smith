@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.node.json && vite build",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "package:linux": "bun run package:backend && bun run build && electron-builder --linux AppImage deb",
+    "package:linux": "pnpm package:backend && pnpm build && electron-builder --linux AppImage deb",
     "package:backend": "bash ../../tg-webm-converter/scripts/package_backend.sh"
   },
   "dependencies": {
