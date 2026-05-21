@@ -47,7 +47,7 @@
         devTools =
           with pkgs;
           [
-            (lib.hiPrio nodejs_22)
+            (lib.hiPrio nodejs_24)
             pnpm
             prettier
 
