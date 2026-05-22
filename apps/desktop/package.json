@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.node.json && vite build",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "package:linux": "bun run package:backend && bun run build && electron-builder --linux AppImage deb",
+    "package:linux": "pnpm package:backend && pnpm build && electron-builder --linux AppImage deb",
     "package:backend": "bash ../../tg-webm-converter/scripts/package_backend.sh"
   },
   "dependencies": {
@@ -36,7 +36,7 @@
     "@types/react-dom": "^19.0.4",
     "@sticker-smith/shared": "workspace:*",
     "@vitejs/plugin-react": "^4.4.1",
-    "electron": "38.8.4",
+    "electron": "42.2.0",
     "electron-builder": "^25.1.8",
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.0.14",

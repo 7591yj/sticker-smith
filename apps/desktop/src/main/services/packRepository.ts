@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -161,7 +162,7 @@ export class PackRepository {
     record.updatedAt = nowIso();
     await this.ensurePackDirectories(rootPath);
     const { packFilePath } = resolvePackPaths(rootPath);
-    const tempFilePath = `${packFilePath}.tmp`;
+    const tempFilePath = `${packFilePath}.${process.pid}.${randomUUID()}.tmp`;
     const backupFilePath = `${packFilePath}.bak`;
     const serialized = JSON.stringify(record, null, 2);
 
