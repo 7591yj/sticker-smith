@@ -36,6 +36,7 @@ export const conversionTaskSchema = z.object({
   assetId: assetIdSchema,
   sourcePath: z.string().min(1),
   mode: conversionModeSchema,
+  outputPath: z.string().min(1).regex(/\.webm$/i),
 });
 
 export const conversionJobRequestSchema = z.object({
@@ -43,6 +44,41 @@ export const conversionJobRequestSchema = z.object({
   outputRoot: z.string().min(1),
   tasks: z.array(conversionTaskSchema),
 });
+
+export const conversionJobEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("job_started"),
+    jobId: z.string().min(1),
+    taskCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("asset_started"),
+    jobId: z.string().min(1),
+    assetId: assetIdSchema,
+    mode: conversionModeSchema,
+  }),
+  z.object({
+    type: z.literal("asset_completed"),
+    jobId: z.string().min(1),
+    assetId: assetIdSchema,
+    mode: conversionModeSchema,
+    outputPath: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("asset_failed"),
+    jobId: z.string().min(1),
+    assetId: assetIdSchema,
+    mode: conversionModeSchema,
+    error: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("job_finished"),
+    jobId: z.string().min(1),
+    successCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+  }),
+]);
 
 export const createPackSchema = z.object({
   name: z.string().min(1),
@@ -125,7 +161,7 @@ export const deleteManyAssetsSchema = z.object({
 
 export const convertSelectionSchema = z.object({
   packId: packIdSchema,
-  assetIds: z.array(assetIdSchema),
+  assetIds: z.array(assetIdSchema).min(1),
 });
 
 export const listOutputsSchema = z.object({

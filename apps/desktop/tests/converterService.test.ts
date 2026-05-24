@@ -474,7 +474,49 @@ describe("ConverterService", () => {
     );
 
     await expect(conversion).rejects.toThrow(
-      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve("/tmp/elsewhere/asset-1.webm")}, expected a file inside ${path.resolve(details.pack.outputRoot)}.`,
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve("/tmp/elsewhere/asset-1.webm")}, expected a .webm file inside ${path.resolve(details.pack.outputRoot)}.`,
+    );
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
+  });
+
+  it("rejects a completion event that reports the output root itself", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify(createEvent("asset-1", details.pack.outputRoot))),
+    );
+
+    await expect(conversion).rejects.toThrow(
+      `Conversion output path mismatch for pack ${details.pack.id}: asset asset-1 (sticker) reported ${path.resolve(details.pack.outputRoot)}, expected a .webm file inside ${path.resolve(details.pack.outputRoot)}.`,
     );
     expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
   });
@@ -522,6 +564,49 @@ describe("ConverterService", () => {
     expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed backend events before emitting them", async () => {
+    const child = new FakeChildProcess();
+    spawnMock.mockReturnValue(child as never);
+
+    const details = createDetails();
+    const libraryService = {
+      getConversionContext: vi.fn(async () => details),
+      getPack: vi.fn(async () => details),
+      recordConversionResult: vi.fn(async () => undefined),
+    };
+    const service = new ConverterService(libraryService as never);
+    const eventSink = vi.fn();
+    service.setEventSink(eventSink);
+
+    vi.spyOn(
+      service as unknown as {
+        resolveBackendCommand: () => Promise<{
+          command: string;
+          args: string[];
+          cwd: string;
+          env: NodeJS.ProcessEnv;
+        }>;
+      },
+      "resolveBackendCommand",
+    ).mockResolvedValue({
+      command: "gui-api",
+      args: [],
+      cwd: "/tmp",
+      env: process.env,
+    });
+
+    const conversion = service.convertPack(details.pack.id);
+    await waitForSpawn();
+    child.stdout.emit(
+      "data",
+      Buffer.from(`${JSON.stringify({ type: "asset_started", jobId: "job-1" })}\n`),
+    );
+
+    await expect(conversion).rejects.toThrow();
+    expect(eventSink).not.toHaveBeenCalled();
+    expect(libraryService.recordConversionResult).not.toHaveBeenCalled();
+  });
+
   it("builds conversion tasks from explicit asset order and appends the icon last", async () => {
     const child = new FakeChildProcess();
     spawnMock.mockReturnValue(child as never);
@@ -561,9 +646,24 @@ describe("ConverterService", () => {
     await conversion;
 
     expect(request.tasks).toEqual([
-      { assetId: "asset-2", sourcePath: "/tmp/sample-pack/source/two.png", mode: "sticker" },
-      { assetId: "asset-1", sourcePath: "/tmp/sample-pack/source/one.png", mode: "sticker" },
-      { assetId: "asset-3", sourcePath: "/tmp/sample-pack/source/icon.png", mode: "icon" },
+      {
+        assetId: "asset-2",
+        sourcePath: "/tmp/sample-pack/source/two.png",
+        mode: "sticker",
+        outputPath: "/tmp/sample-pack/webm/asset-2.webm",
+      },
+      {
+        assetId: "asset-1",
+        sourcePath: "/tmp/sample-pack/source/one.png",
+        mode: "sticker",
+        outputPath: "/tmp/sample-pack/webm/asset-1.webm",
+      },
+      {
+        assetId: "asset-3",
+        sourcePath: "/tmp/sample-pack/source/icon.png",
+        mode: "icon",
+        outputPath: "/tmp/sample-pack/webm/icon.webm",
+      },
     ]);
   });
 
