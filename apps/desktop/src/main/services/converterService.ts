@@ -5,11 +5,12 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import type {
-  ConversionJobEvent,
-  ConversionJobRequest,
-  ConversionTask,
-  StickerPackDetails,
+import {
+  conversionJobEventSchema,
+  type ConversionJobEvent,
+  type ConversionJobRequest,
+  type ConversionTask,
+  type StickerPackDetails,
 } from "@sticker-smith/shared";
 
 import type { LibraryService } from "./libraryService";
@@ -31,6 +32,21 @@ interface BackendCommand {
   env: NodeJS.ProcessEnv;
 }
 
+interface NdjsonParseResult {
+  buffer: string;
+  events: ConversionJobEvent[];
+}
+
+function isStrictWebmOutputPath(outputPath: string, outputRoot: string): boolean {
+  const relativePath = path.relative(outputRoot, outputPath);
+  return (
+    relativePath !== "" &&
+    !relativePath.startsWith("..") &&
+    !path.isAbsolute(relativePath) &&
+    path.extname(outputPath).toLowerCase() === ".webm"
+  );
+}
+
 class CanonicalOutputRegistry {
   private readonly outputPathByTaskKey: ReadonlyMap<string, string>;
 
@@ -38,23 +54,26 @@ class CanonicalOutputRegistry {
     private readonly outputRoot: string,
     tasks: readonly ConversionTask[],
   ) {
+    const resolvedOutputRoot = path.resolve(outputRoot);
     this.outputPathByTaskKey = new Map(
-      tasks.map((task) => [
-        CanonicalOutputRegistry.getTaskKey(task.assetId, task.mode),
-        CanonicalOutputRegistry.getExpectedOutputPath(outputRoot, task),
-      ]),
+      tasks.map((task) => {
+        const outputPath = path.resolve(task.outputPath);
+        if (!isStrictWebmOutputPath(outputPath, resolvedOutputRoot)) {
+          throw new Error(
+            `Conversion task output path mismatch: asset ${task.assetId} (${task.mode}) requested ${outputPath}, expected a .webm file inside ${resolvedOutputRoot}.`,
+          );
+        }
+
+        return [
+          CanonicalOutputRegistry.getTaskKey(task.assetId, task.mode),
+          outputPath,
+        ];
+      }),
     );
   }
 
-  static getTaskKey(assetId: string, mode: ConversionTask["mode"]) {
+  static getTaskKey(assetId: string, mode: ConversionTask["mode"]): string {
     return `${assetId}:${mode}`;
-  }
-
-  static getExpectedOutputPath(outputRoot: string, task: ConversionTask) {
-    return path.resolve(
-      outputRoot,
-      task.mode === "icon" ? "icon.webm" : `${task.assetId}.webm`,
-    );
   }
 
   validateCompletedEvent(
@@ -65,13 +84,13 @@ class CanonicalOutputRegistry {
       mode: ConversionTask["mode"];
       outputPath: string;
     },
-  ) {
+  ): void {
     const actualPath = path.resolve(event.outputPath);
     const resolvedOutputRoot = path.resolve(this.outputRoot);
 
-    if (!isWithinDirectory(actualPath, resolvedOutputRoot)) {
+    if (!isStrictWebmOutputPath(actualPath, resolvedOutputRoot)) {
       throw new Error(
-        `Conversion output path mismatch for pack ${packId}: asset ${event.assetId} (${event.mode}) reported ${actualPath}, expected a file inside ${resolvedOutputRoot}.`,
+        `Conversion output path mismatch for pack ${packId}: asset ${event.assetId} (${event.mode}) reported ${actualPath}, expected a .webm file inside ${resolvedOutputRoot}.`,
       );
     }
 
@@ -93,23 +112,25 @@ class CanonicalOutputRegistry {
   }
 }
 
-function parseNdjsonLines(lines: string[]) {
-  return lines
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as ConversionJobEvent);
+function parseConversionJobEvent(line: string): ConversionJobEvent {
+  return conversionJobEventSchema.parse(JSON.parse(line)) as ConversionJobEvent;
 }
 
-function parseNdjsonChunk(buffer: string) {
+function parseNdjsonLines(lines: string[]): ConversionJobEvent[] {
+  return lines.filter((line) => line.trim()).map(parseConversionJobEvent);
+}
+
+function parseNdjsonChunk(buffer: string): ConversionJobEvent[] {
   return parseNdjsonLines(buffer.split("\n"));
 }
 
-function flushStandaloneNdjsonValue(buffer: string) {
+function flushStandaloneNdjsonValue(buffer: string): NdjsonParseResult | null {
   const trimmed = buffer.trim();
   if (!trimmed.includes("\n") && trimmed.length > 0) {
     try {
       return {
         buffer: "",
-        events: [JSON.parse(trimmed) as ConversionJobEvent],
+        events: [parseConversionJobEvent(trimmed)],
       };
     } catch {
       return null;
@@ -119,7 +140,7 @@ function flushStandaloneNdjsonValue(buffer: string) {
   return null;
 }
 
-function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
+function consumeNdjsonChunk(buffer: string, chunk: Buffer): NdjsonParseResult {
   const lines = `${buffer}${chunk.toString()}`.split("\n");
   const next = {
     buffer: lines.pop() ?? "",
@@ -130,7 +151,7 @@ function consumeNdjsonChunk(buffer: string, chunk: Buffer) {
   return flushed ?? next;
 }
 
-async function commandIsHealthy(command: string, cwd?: string) {
+async function commandIsHealthy(command: string, cwd?: string): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const child = spawn(command, ["-version"], {
       cwd,
@@ -159,7 +180,7 @@ async function commandIsHealthy(command: string, cwd?: string) {
 async function resolveSystemCommand(
   commandName: string,
   excludedRoots: string[],
-) {
+): Promise<string> {
   const pathEntries = env.PATH?.split(path.delimiter).filter(Boolean) ?? [];
 
   for (const entry of pathEntries) {
@@ -181,7 +202,7 @@ async function resolveSystemCommand(
   return commandName;
 }
 
-function joinPythonPathEntries(...entries: Array<string | undefined>) {
+function joinPythonPathEntries(...entries: Array<string | undefined>): string {
   const uniqueEntries: string[] = [];
 
   for (const entry of entries) {
@@ -199,7 +220,7 @@ function joinPythonPathEntries(...entries: Array<string | undefined>) {
   return uniqueEntries.join(path.delimiter);
 }
 
-async function findWorkspaceRoot() {
+async function findWorkspaceRoot(): Promise<string | null> {
   const explicitRoot = env.STICKER_SMITH_ROOT;
   if (
     explicitRoot &&
@@ -233,7 +254,7 @@ async function findWorkspaceRoot() {
   return null;
 }
 
-async function resolveBundledBackend(backendDirectory: string) {
+async function resolveBundledBackend(backendDirectory: string): Promise<BackendCommand | null> {
   const command = path.join(backendDirectory, GUI_API_BINARY);
   const ffmpeg = path.join(backendDirectory, FFMPEG_BINARY);
   const ffprobe = path.join(backendDirectory, FFPROBE_BINARY);
@@ -289,11 +310,11 @@ export class ConverterService {
 
   constructor(private readonly libraryService: LibraryService) {}
 
-  setEventSink(eventSink: (event: ConversionJobEvent) => void) {
+  setEventSink(eventSink: (event: ConversionJobEvent) => void): void {
     this.eventSink = eventSink;
   }
 
-  private emit(event: ConversionJobEvent) {
+  private emit(event: ConversionJobEvent): void {
     this.eventSink?.(event);
   }
 
@@ -306,7 +327,7 @@ export class ConverterService {
       outputPath: string;
       sizeBytes: number;
     },
-  ) {
+  ): Promise<void> {
     await this.libraryService.recordConversionResult(packId, {
       assetId: event.assetId,
       mode: event.mode,
@@ -319,7 +340,7 @@ export class ConverterService {
     packId: string,
     outputRegistry: CanonicalOutputRegistry,
     event: ConversionJobEvent,
-  ) {
+  ): Promise<void> {
     this.emit(event);
 
     if (
@@ -345,7 +366,7 @@ export class ConverterService {
     packId: string,
     outputRegistry: CanonicalOutputRegistry,
     events: ConversionJobEvent[],
-  ) {
+  ): Promise<void> {
     for (const event of events) {
       await this.handleJobEvent(packId, outputRegistry, event);
     }
@@ -387,7 +408,7 @@ export class ConverterService {
     };
   }
 
-  private async resolveBackendCommand() {
+  private async resolveBackendCommand(): Promise<BackendCommand> {
     const backendOverride = env.STICKER_SMITH_BACKEND_DIR;
 
     if (app.isPackaged) {
@@ -411,7 +432,7 @@ export class ConverterService {
     return this.resolveDevelopmentBackendCommand(workspaceRoot);
   }
 
-  private buildTasks(details: StickerPackDetails, assetIds?: string[]) {
+  private buildTasks(details: StickerPackDetails, assetIds?: string[]): ConversionTask[] {
     const selectedAssetIds = assetIds ? new Set(assetIds) : null;
     const sortedAssets = [...details.assets].sort(
       (left, right) => left.order - right.order || left.id.localeCompare(right.id),
@@ -432,6 +453,7 @@ export class ConverterService {
           assetId: asset.id,
           sourcePath: asset.absolutePath,
           mode: "icon",
+          outputPath: path.join(details.pack.outputRoot, "icon.webm"),
         };
         continue;
       }
@@ -440,6 +462,7 @@ export class ConverterService {
         assetId: asset.id,
         sourcePath: asset.absolutePath,
         mode: "sticker",
+        outputPath: path.join(details.pack.outputRoot, `${asset.id}.webm`),
       });
     }
 
@@ -454,7 +477,7 @@ export class ConverterService {
     packId: string,
     outputRoot: string,
     tasks: ConversionTask[],
-  ) {
+  ): Promise<void> {
     await fs.mkdir(outputRoot, { recursive: true });
     const jobId = randomUUID();
     const request: ConversionJobRequest = {
@@ -478,7 +501,7 @@ export class ConverterService {
       let eventQueue = Promise.resolve();
       let settled = false;
 
-      const rejectOnce = (error: unknown) => {
+      const rejectOnce = (error: unknown): void => {
         if (settled) {
           return;
         }
@@ -490,7 +513,7 @@ export class ConverterService {
         }
       };
 
-      const resolveOnce = () => {
+      const resolveOnce = (): void => {
         if (settled) {
           return;
         }
@@ -499,7 +522,7 @@ export class ConverterService {
         resolve();
       };
 
-      const enqueueEvents = (events: ConversionJobEvent[]) => {
+      const enqueueEvents = (events: ConversionJobEvent[]): void => {
         if (events.length === 0 || settled) {
           return;
         }
@@ -511,9 +534,13 @@ export class ConverterService {
       };
 
       child.stdout.on("data", (chunk: Buffer) => {
-        const parsed = consumeNdjsonChunk(stdoutBuffer, chunk);
-        stdoutBuffer = parsed.buffer;
-        enqueueEvents(parsed.events);
+        try {
+          const parsed = consumeNdjsonChunk(stdoutBuffer, chunk);
+          stdoutBuffer = parsed.buffer;
+          enqueueEvents(parsed.events);
+        } catch (error) {
+          rejectOnce(error);
+        }
       });
 
       child.stderr.on("data", (chunk: Buffer) => {
@@ -547,7 +574,7 @@ export class ConverterService {
     });
   }
 
-  async convertPack(packId: string) {
+  async convertPack(packId: string): Promise<StickerPackDetails | null> {
     const details = await this.libraryService.getConversionContext(packId);
     await this.runJob(
       packId,
@@ -557,7 +584,7 @@ export class ConverterService {
     return this.libraryService.getPack(packId);
   }
 
-  async convertSelection(input: { packId: string; assetIds: string[] }) {
+  async convertSelection(input: { packId: string; assetIds: string[] }): Promise<StickerPackDetails | null> {
     const details = await this.libraryService.getConversionContext(
       input.packId,
     );
