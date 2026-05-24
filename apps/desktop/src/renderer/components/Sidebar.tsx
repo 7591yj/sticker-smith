@@ -4,14 +4,14 @@ import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import EditIcon from "@mui/icons-material/Edit";
+import ComputerIcon from "@mui/icons-material/Computer";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
-import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import SyncIcon from "@mui/icons-material/Sync";
+import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
-import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
@@ -157,15 +157,15 @@ function secondaryLabelForPack(pack: StickerPack) {
   return shortNameLabel;
 }
 
-function emptyTelegramStateLabel(options: {
-  telegramSyncBusy: boolean;
-}) {
+function emptyTelegramStateLabel(options: { telegramSyncBusy: boolean }) {
   if (options.telegramSyncBusy) {
     return appTokens.copy.labels.telegramSyncInProgress;
   }
 
   return appTokens.copy.emptyStates.noTelegramPacks;
 }
+
+type SidebarPackFilter = "local" | "telegram";
 
 export function Sidebar({
   packs,
@@ -207,7 +207,9 @@ export function Sidebar({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renamePack, setRenamePack] = useState<StickerPack | null>(null);
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
-  const [unsupportedTelegramOpen, setUnsupportedTelegramOpen] = useState(false);
+  const [activePackFilter, setActivePackFilter] =
+    useState<SidebarPackFilter>("telegram");
+  const [showUnsupportedTelegram, setShowUnsupportedTelegram] = useState(false);
   const [telegramMenuAnchor, setTelegramMenuAnchor] =
     useState<HTMLElement | null>(null);
   const syncActionLabel = telegramSyncBusy
@@ -221,6 +223,17 @@ export function Sidebar({
     telegramState?.status === "connected"
       ? appTokens.copy.actions.manageTelegram
       : appTokens.copy.actions.connectTelegram;
+
+  const visiblePacks =
+    activePackFilter === "local"
+      ? localPacks
+      : showUnsupportedTelegram
+        ? [...telegramPacks, ...unsupportedTelegramPacks]
+        : telegramPacks;
+  const emptyState =
+    activePackFilter === "local"
+      ? appTokens.copy.emptyStates.noLocalPacks
+      : emptyTelegramStateLabel({ telegramSyncBusy });
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, pack: StickerPack) => {
@@ -371,102 +384,94 @@ export function Sidebar({
           minHeight: appTokens.layout.panelHeaderMinHeight,
           display: "flex",
           alignItems: "center",
-          gap: appTokens.layout.spacing.compactGap,
           WebkitAppRegion: "drag",
         }}
       >
         <Typography
           variant="subtitle2"
           fontWeight={appTokens.typography.fontWeights.bold}
-          sx={{ flex: 1, letterSpacing: appTokens.typography.letterSpacing.tight }}
+          sx={{ letterSpacing: appTokens.typography.letterSpacing.tight }}
         >
           {appTokens.copy.appName}
         </Typography>
       </Box>
 
-      <Divider />
+      <Box
+        aria-label="Pack source filters"
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          gap: 0.25,
+          px: appTokens.layout.spacing.sidebarPaddingX,
+          pt: 0.75,
+          pb: 0.75,
+          WebkitAppRegion: "no-drag",
+        }}
+      >
+        <Tooltip title={appTokens.copy.labels.localPacks}>
+          <IconButton
+            size="small"
+            aria-label={appTokens.copy.labels.localPacks}
+            onClick={() => setActivePackFilter("local")}
+            color={activePackFilter === "local" ? "primary" : "default"}
+          >
+            <ComputerIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={appTokens.copy.labels.telegramPacks}>
+          <IconButton
+            size="small"
+            aria-label={appTokens.copy.labels.telegramPacks}
+            onClick={() => setActivePackFilter("telegram")}
+            color={activePackFilter === "telegram" ? "primary" : "default"}
+          >
+            <TelegramIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       <List sx={{ flex: 1, overflowY: "auto", py: 0.5, px: 0.5 }}>
-        <Typography
-          variant="overline"
-          color="text.secondary"
-          sx={{
-            display: "block",
-            px: appTokens.layout.spacing.sidebarPaddingX,
-            pt: appTokens.layout.spacing.sectionLabelTop,
-            pb: appTokens.layout.spacing.sectionLabelBottom,
-            letterSpacing: appTokens.typography.letterSpacing.overline,
-            fontSize: appTokens.typography.fontSizes.overline,
-          }}
-        >
-          {appTokens.copy.labels.localPacks}
-        </Typography>
-        {renderPackList(localPacks, appTokens.copy.emptyStates.noLocalPacks)}
+        {renderPackList(visiblePacks, emptyState)}
+      </List>
 
-        <Divider sx={{ my: 0.75 }} />
-
-        <Typography
-          variant="overline"
-          color="text.secondary"
-          sx={{
-            display: "block",
-            px: appTokens.layout.spacing.sidebarPaddingX,
-            pt: appTokens.layout.spacing.sectionLabelCompactTop,
-            pb: appTokens.layout.spacing.sectionLabelBottom,
-            letterSpacing: appTokens.typography.letterSpacing.overline,
-            fontSize: appTokens.typography.fontSizes.overline,
-          }}
-        >
-          {appTokens.copy.labels.telegramPacks}
-        </Typography>
-        <Box
-          sx={{
-            px: appTokens.layout.spacing.sidebarPaddingX,
-            pb: 1,
-            minHeight: 4,
-          }}
-        />
-        {renderPackList(
-          telegramPacks,
-          emptyTelegramStateLabel({ telegramSyncBusy }),
-        )}
-
-        {unsupportedTelegramPacks.length > 0 ? (
-          <>
-            <Divider sx={{ my: 0.75 }} />
-            <ListItemButton
-              dense
-              onClick={() => setUnsupportedTelegramOpen((open) => !open)}
-              sx={{
-                borderRadius: appTokens.shape.radius.panel,
-                px: appTokens.layout.spacing.sidebarPaddingX,
-                pt: appTokens.layout.spacing.sectionLabelCompactTop,
-                pb: appTokens.layout.spacing.sectionLabelBottom,
+      {activePackFilter === "telegram" && unsupportedTelegramPacks.length > 0 ? (
+        <Box sx={{ px: 0.5, py: 0.5 }}>
+          <ListItemButton
+            dense
+            onClick={() => setShowUnsupportedTelegram((show) => !show)}
+            sx={{
+              borderRadius: appTokens.shape.radius.panel,
+              justifyContent: "flex-start",
+              px: 1.5,
+            }}
+          >
+            <ListItemText
+              primary={
+                showUnsupportedTelegram
+                  ? "Hide unsupported stickers"
+                  : "Show unsupported stickers"
+              }
+              primaryTypographyProps={{
+                variant: "caption",
+                color: "text.secondary",
+                align: "left",
+                sx: { fontSize: appTokens.typography.fontSizes.caption },
               }}
-            >
-              <ListItemText
-                primary={appTokens.copy.labels.telegramUnsupportedPacks}
-                primaryTypographyProps={{
-                  variant: "overline",
+            />
+            <Tooltip title="Sticker Smith currently supports video stickers only.">
+              <HelpOutlineIcon
+                sx={{
+                  ml: 0.5,
+                  fontSize: 16,
                   color: "text.secondary",
-                  sx: {
-                    letterSpacing: appTokens.typography.letterSpacing.overline,
-                    fontSize: appTokens.typography.fontSizes.overline,
-                  },
                 }}
               />
-              {unsupportedTelegramOpen ? (
-                <KeyboardArrowDownIcon fontSize="small" color="disabled" />
-              ) : (
-                <KeyboardArrowRightIcon fontSize="small" color="disabled" />
-              )}
-            </ListItemButton>
-            <Collapse in={unsupportedTelegramOpen} timeout="auto" unmountOnExit>
-              {renderPackList(unsupportedTelegramPacks, "")}
-            </Collapse>
-          </>
-        ) : null}
-      </List>
+            </Tooltip>
+          </ListItemButton>
+        </Box>
+      ) : null}
 
       <Divider />
 
