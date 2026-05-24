@@ -22,6 +22,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
+    "emoji-picker-react": "^4.19.1",
     "keytar": "^7.9.0",
     "prebuilt-tdlib": "^0.1008062.2",
     "react": "^19.0.0",
@@ -30,11 +31,11 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@sticker-smith/shared": "workspace:*",
     "@tailwindcss/vite": "^4.0.14",
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "@sticker-smith/shared": "workspace:*",
     "@vitejs/plugin-react": "^4.4.1",
     "electron": "42.2.0",
     "electron-builder": "^25.1.8",

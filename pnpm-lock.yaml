@@ -26,6 +26,9 @@ importers:
       '@mui/material':
         specifier: ^7.3.9
         version: 7.3.11(@emotion/react@11.14.0(@types/react@19.2.15)(react@19.2.6))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.15)(react@19.2.6))(@types/react@19.2.15)(react@19.2.6))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      emoji-picker-react:
+        specifier: ^4.19.1
+        version: 4.19.1(react@19.2.6)
       keytar:
         specifier: ^7.9.0
         version: 7.9.0
@@ -1412,6 +1415,12 @@ packages:
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
+  emoji-picker-react@4.19.1:
+    resolution: {integrity: sha512-BmDdqInKFVYJpv7qS9WI6L9656cDAC+FkDvUjJds56nKHbaVTBNeDmLwKBytRnzu37zWHs9Isg7gt5PT43y6xA==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: '>=16'
+
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
 
@@ -1524,6 +1533,9 @@ packages:
 
   find-root@1.1.0:
     resolution: {integrity: sha512-NKfW6bec6GfKc0SGx1e07QZY9PE99u0Bft/0rzSD5k3sO/vwkVUpDUKVm5Gpp5Ue3YfShPFTX2070tDs5kB9Ng==}
+
+  flairup@1.0.0:
+    resolution: {integrity: sha512-IKlE+pNvL2R+kVL1kEhUYqRxVqeFnjiIvHWDMLFXNaqyUdFXQM2wte44EfMYJNHkW16X991t2Zg8apKkhv7OBA==}
 
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
@@ -4195,6 +4207,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  emoji-picker-react@4.19.1(react@19.2.6):
+    dependencies:
+      flairup: 1.0.0
+      react: 19.2.6
+
   emoji-regex@8.0.0: {}
 
   emoji-regex@9.2.2: {}
@@ -4315,6 +4332,8 @@ snapshots:
       minimatch: 5.1.9
 
   find-root@1.1.0: {}
+
+  flairup@1.0.0: {}
 
   foreground-child@3.3.1:
     dependencies:
