@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  convertSelectionSchema,
   createPackSchema,
+  conversionJobEventSchema,
   conversionJobRequestSchema,
   reorderAssetSchema,
   setPackTelegramShortNameSchema,
@@ -22,9 +24,54 @@ describe("shared schemas", () => {
       conversionJobRequestSchema.parse({
         jobId: "job",
         outputRoot: "/tmp/out",
-        tasks: [{ assetId: "a", sourcePath: "/tmp/a.png", mode: "icon" }],
+        tasks: [
+          {
+            assetId: "a",
+            sourcePath: "/tmp/a.png",
+            mode: "icon",
+            outputPath: "/tmp/out/icon.webm",
+          },
+        ],
       }).tasks,
     ).toHaveLength(1);
+
+    expect(() =>
+      conversionJobRequestSchema.parse({
+        jobId: "job",
+        outputRoot: "/tmp/out",
+        tasks: [
+          {
+            assetId: "a",
+            sourcePath: "/tmp/a.png",
+            mode: "icon",
+            outputPath: "/tmp/out/icon.gif",
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects empty conversion selections", () => {
+    expect(() =>
+      convertSelectionSchema.parse({ packId: "pack-1", assetIds: [] }),
+    ).toThrow();
+  });
+
+  it("validates conversion job events", () => {
+    expect(
+      conversionJobEventSchema.parse({
+        type: "asset_completed",
+        jobId: "job",
+        assetId: "asset-1",
+        mode: "sticker",
+        outputPath: "/tmp/out/asset-1.webm",
+        sizeBytes: 128,
+      }).type,
+    ).toBe("asset_completed");
+
+    expect(() =>
+      conversionJobEventSchema.parse({ type: "asset_started", jobId: "job" }),
+    ).toThrow();
   });
 
   it("validates telegram-compliant emoji lists", () => {

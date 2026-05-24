@@ -347,6 +347,7 @@ export interface ConversionTask {
   assetId: AssetId;
   sourcePath: string;
   mode: ConversionMode;
+  outputPath: string;
 }
 
 export interface ConversionJobEvent {
