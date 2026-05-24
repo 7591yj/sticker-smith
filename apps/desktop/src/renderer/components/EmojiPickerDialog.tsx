@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import EmojiPicker, {
+  EmojiClickData,
+  EmojiStyle,
+  SkinTonePickerLocation,
+  SuggestionMode,
+  Theme,
+} from "emoji-picker-react";
+import { alpha, useTheme } from "@mui/material/styles";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import GlobalStyles from "@mui/material/GlobalStyles";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { unicodeEmojiCatalog } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 
 interface Props {
@@ -26,8 +33,8 @@ export function EmojiPickerDialog({
   onConfirm,
   onClose,
 }: Props) {
+  const theme = useTheme();
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>(initialEmojis);
-  const [searchQuery, setSearchQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -36,23 +43,50 @@ export function EmojiPickerDialog({
     }
 
     setSelectedEmojis(initialEmojis);
-    setSearchQuery("");
     setSubmitting(false);
   }, [initialEmojis, open]);
 
-  const filteredEntries = useMemo(() => {
-    const queryTerms = normalizeSearch(searchQuery)
-      .split(/\s+/)
-      .filter((term) => term.length > 0);
+  const emojiPickerStyle = useMemo(() => {
+    const dialogBackground = "#38383D";
+    const dialogInputBackground = "#303035";
+    const dialogBorder = alpha(theme.palette.common.white, 0.12);
 
-    if (queryTerms.length === 0) {
-      return unicodeEmojiCatalog;
-    }
-
-    return unicodeEmojiCatalog.filter((entry) =>
-      queryTerms.every((term) => entry.searchText.includes(term)),
-    );
-  }, [searchQuery]);
+    return {
+      "--epr-bg-color": dialogBackground,
+      "--epr-picker-border-color": "transparent",
+      "--epr-highlight-color": theme.palette.primary.main,
+      "--epr-text-color": theme.palette.text.primary,
+      "--epr-hover-bg-color": alpha(theme.palette.primary.main, 0.14),
+      "--epr-focus-bg-color": alpha(theme.palette.primary.main, 0.2),
+      "--epr-search-input-bg-color": dialogInputBackground,
+      "--epr-search-input-bg-color-active": dialogInputBackground,
+      "--epr-search-input-text-color": theme.palette.text.primary,
+      "--epr-search-input-placeholder-color": theme.palette.text.secondary,
+      "--epr-search-border-color": dialogBorder,
+      "--epr-search-border-color-active": theme.palette.primary.main,
+      "--epr-category-label-bg-color": alpha(dialogBackground, 0.94),
+      "--epr-category-label-text-color": theme.palette.text.secondary,
+      "--epr-category-icon-active-color": theme.palette.primary.main,
+      "--epr-horizontal-padding": "0px",
+      "--epr-header-padding": "0 0 8px 0",
+      "--epr-category-padding": "0px",
+      "--epr-category-label-padding": "0px",
+      "--epr-picker-border-radius": `${appTokens.shape.radiusPx.panel}px`,
+      "--epr-search-input-border-radius": `${appTokens.shape.radiusPx.control}px`,
+      "--epr-search-input-padding": "0 30px",
+      "--epr-search-bar-inner-padding": "8px",
+      "--epr-search-input-height": "34px",
+      "--epr-category-label-height": "28px",
+      "--epr-category-navigation-button-size": "26px",
+      "--epr-preview-text-size": appTokens.typography.fontSizes.caption,
+      "--epr-emoji-size": "24px",
+      "--epr-emoji-padding": "4px",
+      fontFamily: theme.typography.fontFamily,
+      fontSize: appTokens.typography.fontSizes.caption,
+      border: 0,
+      boxShadow: "none",
+    } as CSSProperties;
+  }, [theme]);
 
   const toggleEmoji = (emoji: string) => {
     setSelectedEmojis((current) => {
@@ -66,6 +100,10 @@ export function EmojiPickerDialog({
 
       return [...current, emoji];
     });
+  };
+
+  const handleEmojiSelect = (emoji: EmojiClickData) => {
+    toggleEmoji(emoji.emoji);
   };
 
   const handleConfirm = async () => {
@@ -83,7 +121,23 @@ export function EmojiPickerDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <>
+      <GlobalStyles
+        styles={{
+          ".EmojiPickerReact, .EmojiPickerReact input, .EmojiPickerReact button:not(.epr-emoji), .EmojiPickerReact .epr-emoji-category-label":
+            {
+              fontFamily: `${theme.typography.fontFamily} !important`,
+            },
+          ".EmojiPickerReact input": {
+            fontSize: `${appTokens.typography.fontSizes.caption} !important`,
+          },
+          ".EmojiPickerReact .epr-emoji-category-label": {
+            fontSize: `${appTokens.typography.fontSizes.caption} !important`,
+            fontWeight: `${appTokens.typography.fontWeights.medium} !important`,
+          },
+        }}
+      />
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle
         sx={{
           fontSize: appTokens.typography.fontSizes.dialogTitle,
@@ -115,58 +169,25 @@ export function EmojiPickerDialog({
               </Typography>
             )}
           </Stack>
-          <TextField
-            size="small"
-            fullWidth
-            label="Search emojis"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search by name, group, or subgroup"
-          />
           <Typography
             variant="caption"
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            Pick up to 20 emjis from the list.
+            Pick up to 20 emojis from the list.
           </Typography>
-          {filteredEntries.length > 0 ? (
-            <Stack
-              direction="row"
-              spacing={0.75}
-              useFlexGap
-              flexWrap="wrap"
-              sx={{ maxHeight: 320, overflowY: "auto", pr: 0.5 }}
-            >
-              {filteredEntries.map((entry) => {
-                const selected = selectedEmojis.includes(entry.emoji);
-                return (
-                  <Button
-                    key={entry.emoji}
-                    size="small"
-                    variant={selected ? "contained" : "outlined"}
-                    onClick={() => toggleEmoji(entry.emoji)}
-                    title={entry.name}
-                    sx={{
-                      minWidth: 40,
-                      px: 0.75,
-                      fontSize: "1rem",
-                    }}
-                  >
-                    {entry.emoji}
-                  </Button>
-                );
-              })}
-            </Stack>
-          ) : (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
-            >
-              No matching emojis.
-            </Typography>
-          )}
+          <EmojiPicker
+            width="100%"
+            height={360}
+            emojiStyle={EmojiStyle.NATIVE}
+            emojiVersion="15.0"
+            theme={Theme.DARK}
+            style={emojiPickerStyle}
+            previewConfig={{ showPreview: false }}
+            skinTonePickerLocation={SkinTonePickerLocation.SEARCH}
+            suggestedEmojisMode={SuggestionMode.RECENT}
+            onEmojiClick={handleEmojiSelect}
+          />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -189,15 +210,7 @@ export function EmojiPickerDialog({
           {appTokens.copy.actions.apply}
         </Button>
       </DialogActions>
-    </Dialog>
+      </Dialog>
+    </>
   );
-}
-
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\uFE0F/g, "")
-    .toLowerCase()
-    .trim();
 }

@@ -393,7 +393,25 @@ describe("OutputsList", () => {
 });
 
 describe("EmojiPickerDialog", () => {
-  it("renders an expanded Telegram emoji catalog", async () => {
+  beforeEach(() => {
+    class TestIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds = [];
+
+      disconnect = vi.fn();
+      observe = vi.fn();
+      takeRecords = vi.fn(() => []);
+      unobserve = vi.fn();
+    }
+
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      writable: true,
+      value: TestIntersectionObserver,
+    });
+  });
+
+  it("renders the emoji picker", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -411,10 +429,9 @@ describe("EmojiPickerDialog", () => {
       await Promise.resolve();
     });
 
-    expect(document.body.textContent).toContain("Search emojis");
-    expect(document.body.textContent).toContain("🫶");
-    expect(document.body.textContent).toContain("🩷");
-    expect(document.body.textContent).toContain("🌮");
+    expect(document.body.textContent).toContain("Pick up to 20 emojis");
+    expect(document.body.textContent).toContain("Smileys & People");
+    expect(document.body.querySelector(".EmojiPickerReact")).not.toBeNull();
 
     await act(async () => {
       root.unmount();
