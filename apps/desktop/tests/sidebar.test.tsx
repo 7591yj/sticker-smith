@@ -50,7 +50,21 @@ describe("Sidebar", () => {
   it("renders a fallback pack icon when no thumbnail exists", () => {
     const markup = renderToStaticMarkup(
       <Sidebar
-        packs={[createPack()]}
+        packs={[
+          createPack({
+            source: "telegram",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "telegram_pack",
+              title: "Telegram Pack",
+              format: "video",
+              syncState: "synced",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
+        ]}
         telegramState={createTelegramState()}
         telegramSyncInProgress={false}
         telegramSyncRecommended={false}
@@ -69,14 +83,27 @@ describe("Sidebar", () => {
     );
 
     expect(markup).toContain("fallback pack icon");
-    expect(markup).toContain("Short name not set");
+    expect(markup).toContain("telegram_pack");
   });
 
   it("renders webm pack thumbnails as video previews", () => {
     const markup = renderToStaticMarkup(
       <Sidebar
         packs={[
-          createPack({ thumbnailPath: "/tmp/sample-pack/webm/icon.webm" }),
+          createPack({
+            source: "telegram",
+            thumbnailPath: "/tmp/sample-pack/webm/icon.webm",
+            telegram: {
+              stickerSetId: "100",
+              shortName: "telegram_pack",
+              title: "Telegram Pack",
+              format: "video",
+              syncState: "synced",
+              lastSyncedAt: "2026-03-12T00:00:00.000Z",
+              lastSyncError: null,
+              publishedFromLocalPackId: null,
+            },
+          }),
         ]}
         telegramState={createTelegramState()}
         telegramSyncInProgress={false}
@@ -126,7 +153,7 @@ describe("Sidebar", () => {
     expect(markup).not.toContain(">Logout<");
   });
 
-  it("renders separate local and telegram sections", () => {
+  it("renders telegram packs by default and keeps source filters in the header", () => {
     const markup = renderToStaticMarkup(
       <Sidebar
         packs={[
@@ -173,20 +200,21 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(markup).toContain("Local");
-    expect(markup).toContain("Telegram");
-    expect(markup).toContain("Local Pack");
+    expect(markup).toContain('aria-label="Local"');
+    expect(markup).toContain('aria-label="Telegram"');
+    expect(markup).not.toContain('aria-label="Telegram (Unsupported)"');
+    expect(markup).not.toContain("Local Pack");
     expect(markup).toContain("Telegram Pack");
     expect(markup).toContain('aria-label="Telegram account"');
     expect(markup).toContain('aria-label="Resync"');
-    expect(markup).toContain("Short name not set");
+    expect(markup).not.toContain("Short name not set");
     expect(markup).toContain("telegram_pack");
     expect(markup).toContain("Needs update");
     expect(markup).not.toContain("Telegram is connected.");
     expect(markup).not.toContain(">Connected<");
   });
 
-  it("renders unsupported telegram packs in a separate section", () => {
+  it("renders telegram packs by default when there are no local packs", () => {
     const markup = renderToStaticMarkup(
       <Sidebar
         packs={[
@@ -248,12 +276,12 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(markup).toContain("Telegram");
-    expect(markup).toContain("Telegram (Unsupported)");
+    expect(markup).toContain('aria-label="Telegram"');
+    expect(markup).not.toContain('aria-label="Telegram (Unsupported)"');
+    expect(markup).toContain("Show unsupported stickers");
     expect(markup).toContain("Telegram Pack");
-    expect(markup).toContain("Static Pack");
+    expect(markup).not.toContain("Static Pack");
     expect(markup).toContain("Needs update");
-    expect(markup).toContain("Unsupported");
   });
 
   it("renders sync-in-progress while telegram mirrors are syncing", () => {

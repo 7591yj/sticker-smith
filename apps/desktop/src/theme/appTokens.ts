@@ -109,7 +109,7 @@ export const appTokens = {
     radius: shapeRadius,
   },
   layout: {
-    sidebarWidth: 240,
+    sidebarWidth: 264,
     panelHeaderMinHeight: 48,
     tabsMinHeight: 40,
     spacing: layoutSpacing,
