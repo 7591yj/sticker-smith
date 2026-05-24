@@ -7,9 +7,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LayersIcon from "@mui/icons-material/Layers";
 import SyncIcon from "@mui/icons-material/Sync";
 import Box from "@mui/material/Box";
+import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
@@ -203,6 +206,7 @@ export function Sidebar({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renamePack, setRenamePack] = useState<StickerPack | null>(null);
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [unsupportedTelegramOpen, setUnsupportedTelegramOpen] = useState(false);
   const [telegramMenuAnchor, setTelegramMenuAnchor] =
     useState<HTMLElement | null>(null);
   const syncActionLabel = telegramSyncBusy
@@ -362,6 +366,7 @@ export function Sidebar({
         sx={{
           px: appTokens.layout.spacing.sidebarPaddingX,
           py: appTokens.layout.spacing.panelPaddingY,
+          minHeight: appTokens.layout.panelHeaderMinHeight,
           display: "flex",
           alignItems: "center",
           gap: appTokens.layout.spacing.compactGap,
@@ -381,57 +386,6 @@ export function Sidebar({
         >
           {appTokens.copy.appName}
         </Typography>
-        <Tooltip title={appTokens.copy.labels.importFolderAsNewPack}>
-          <IconButton size="small" onClick={handleImportDir}>
-            <DriveFileMoveIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={appTokens.copy.actions.newPack}>
-          <IconButton size="small" onClick={() => setCreateDialogOpen(true)}>
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={appTokens.copy.labels.telegramAccount}>
-          <IconButton
-            size="small"
-            aria-label={appTokens.copy.labels.telegramAccount}
-            onClick={(event) => setTelegramMenuAnchor(event.currentTarget)}
-            sx={{ color: telegramReady ? "text.secondary" : "error.main" }}
-          >
-            <ManageAccountsIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={syncActionLabel}>
-          <span>
-            <IconButton
-              size="small"
-              aria-label={syncActionLabel}
-              disabled={!telegramReady || telegramSyncBusy}
-              onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
-            >
-              <SyncIcon
-                fontSize="small"
-                sx={{
-                  color:
-                    telegramSyncRecommended && telegramReady && !telegramSyncBusy
-                      ? "error.main"
-                      : "text.secondary",
-                  animation: telegramSyncBusy
-                    ? "telegram-sync-spin 1s linear infinite"
-                    : "none",
-                  "@keyframes telegram-sync-spin": {
-                    from: {
-                      transform: "rotate(0deg)",
-                    },
-                    to: {
-                      transform: "rotate(360deg)",
-                    },
-                  },
-                }}
-              />
-            </IconButton>
-          </span>
-        </Tooltip>
       </Box>
 
       <Divider />
@@ -484,24 +438,106 @@ export function Sidebar({
         {unsupportedTelegramPacks.length > 0 ? (
           <>
             <Divider sx={{ my: 0.75 }} />
-            <Typography
-              variant="overline"
-              color="text.secondary"
+            <ListItemButton
+              dense
+              onClick={() => setUnsupportedTelegramOpen((open) => !open)}
               sx={{
-                display: "block",
+                borderRadius: appTokens.shape.radius.panel,
                 px: appTokens.layout.spacing.sidebarPaddingX,
                 pt: appTokens.layout.spacing.sectionLabelCompactTop,
                 pb: appTokens.layout.spacing.sectionLabelBottom,
-                letterSpacing: appTokens.typography.letterSpacing.overline,
-                fontSize: appTokens.typography.fontSizes.overline,
               }}
             >
-              {appTokens.copy.labels.telegramUnsupportedPacks}
-            </Typography>
-            {renderPackList(unsupportedTelegramPacks, "")}
+              <ListItemText
+                primary={appTokens.copy.labels.telegramUnsupportedPacks}
+                primaryTypographyProps={{
+                  variant: "overline",
+                  color: "text.secondary",
+                  sx: {
+                    letterSpacing: appTokens.typography.letterSpacing.overline,
+                    fontSize: appTokens.typography.fontSizes.overline,
+                  },
+                }}
+              />
+              {unsupportedTelegramOpen ? (
+                <KeyboardArrowDownIcon fontSize="small" color="disabled" />
+              ) : (
+                <KeyboardArrowRightIcon fontSize="small" color="disabled" />
+              )}
+            </ListItemButton>
+            <Collapse in={unsupportedTelegramOpen} timeout="auto" unmountOnExit>
+              {renderPackList(unsupportedTelegramPacks, "")}
+            </Collapse>
           </>
         ) : null}
       </List>
+
+      <Divider />
+
+      <Box
+        component="footer"
+        sx={{
+          px: appTokens.layout.spacing.sidebarPaddingX,
+          py: appTokens.layout.spacing.panelPaddingY,
+          minHeight: appTokens.layout.panelHeaderMinHeight,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: appTokens.layout.spacing.compactGap,
+        }}
+      >
+        <Tooltip title={appTokens.copy.labels.importFolderAsNewPack}>
+          <IconButton size="small" onClick={handleImportDir}>
+            <DriveFileMoveIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={appTokens.copy.actions.newPack}>
+          <IconButton size="small" onClick={() => setCreateDialogOpen(true)}>
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={appTokens.copy.labels.telegramAccount}>
+          <IconButton
+            size="small"
+            aria-label={appTokens.copy.labels.telegramAccount}
+            onClick={(event) => setTelegramMenuAnchor(event.currentTarget)}
+            sx={{ color: telegramReady ? "text.secondary" : "error.main" }}
+          >
+            <ManageAccountsIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={syncActionLabel}>
+          <span>
+            <IconButton
+              size="small"
+              aria-label={syncActionLabel}
+              disabled={!telegramReady || telegramSyncBusy}
+              onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
+            >
+              <SyncIcon
+                fontSize="small"
+                sx={{
+                  color:
+                    telegramSyncRecommended && telegramReady && !telegramSyncBusy
+                      ? "error.main"
+                      : "text.secondary",
+                  animation: telegramSyncBusy
+                    ? "telegram-sync-spin 1s linear infinite"
+                    : "none",
+                  "@keyframes telegram-sync-spin": {
+                    from: {
+                      transform: "rotate(0deg)",
+                    },
+                    to: {
+                      transform: "rotate(360deg)",
+                    },
+                  },
+                }}
+              />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Box>
 
       <Menu
         open={Boolean(contextMenu)}
