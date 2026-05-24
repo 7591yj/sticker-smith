@@ -1,3 +1,4 @@
+import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
 import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
@@ -8,6 +9,19 @@ import { Sidebar } from "./components/Sidebar";
 import { TelegramErrorDialog } from "./components/TelegramErrorDialog";
 import { useDesktopAppState } from "./hooks/useDesktopAppState";
 import { appTheme } from "./theme";
+import { appTokens } from "../theme/appTokens";
+
+const sidebarResize = {
+  minWidth: 200,
+  maxWidth: 460,
+} as const;
+
+function clampSidebarWidth(width: number) {
+  return Math.min(
+    Math.max(width, sidebarResize.minWidth),
+    sidebarResize.maxWidth,
+  );
+}
 
 export function App() {
   const {
@@ -41,6 +55,32 @@ export function App() {
     telegramUpdatingPackIds,
     updateTelegramPack,
   } = useDesktopAppState();
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    appTokens.layout.sidebarWidth,
+  );
+
+  const handleSidebarResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = sidebarWidth;
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        setSidebarWidth(
+          clampSidebarWidth(startWidth + moveEvent.clientX - startX),
+        );
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [sidebarWidth],
+  );
 
   return (
     <ThemeProvider theme={appTheme}>
@@ -59,6 +99,7 @@ export function App() {
           telegramSyncInProgress={telegramSyncInProgress}
           telegramSyncRecommended={telegramSyncRecommended}
           selectedPackId={selectedPackId}
+          width={sidebarWidth}
           onSelect={setSelectedPackId}
           onSubmitTelegramTdlibParameters={submitTelegramTdlibParameters}
           onSubmitTelegramPhoneNumber={submitTelegramPhoneNumber}
@@ -69,6 +110,25 @@ export function App() {
           onSyncTelegramPacks={syncTelegramPacks}
           refreshPacks={refreshPacks}
           setSelectedPackId={setSelectedPackId}
+        />
+        <Box
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          onMouseDown={handleSidebarResizeStart}
+          sx={{
+            width: 4,
+            ml: "-2px",
+            mr: "-2px",
+            flexShrink: 0,
+            cursor: "col-resize",
+            bgcolor: "transparent",
+            zIndex: 2,
+            WebkitAppRegion: "no-drag",
+            "&:hover": {
+              bgcolor: "action.hover",
+            },
+          }}
         />
         <Box
           sx={{

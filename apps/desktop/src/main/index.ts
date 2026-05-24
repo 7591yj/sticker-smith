@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol } from "electron";
+import { app, BrowserWindow, protocol, type BrowserWindowConstructorOptions } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -139,6 +139,27 @@ function parseRangeHeader(
   return { start, end: requestedEnd };
 }
 
+function getWindowTitleBarOptions(): Pick<
+  BrowserWindowConstructorOptions,
+  "titleBarOverlay" | "titleBarStyle" | "trafficLightPosition"
+> {
+  if (process.platform === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 16, y: 18 },
+    };
+  }
+
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: windowConfig.backgroundColor,
+      symbolColor: "#e4e4e7",
+      height: 48,
+    },
+  };
+}
+
 function createWindow() {
   const window = new BrowserWindow({
     width: windowConfig.width,
@@ -147,6 +168,7 @@ function createWindow() {
     minHeight: windowConfig.minHeight,
     backgroundColor: windowConfig.backgroundColor,
     autoHideMenuBar: true,
+    ...getWindowTitleBarOptions(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

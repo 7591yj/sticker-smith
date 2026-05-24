@@ -9,7 +9,6 @@ import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import LayersIcon from "@mui/icons-material/Layers";
 import SyncIcon from "@mui/icons-material/Sync";
 import Box from "@mui/material/Box";
 import Collapse from "@mui/material/Collapse";
@@ -99,6 +98,7 @@ interface Props {
   telegramSyncInProgress: boolean;
   telegramSyncRecommended: boolean;
   selectedPackId: string | null;
+  width: number;
   onSelect: (id: string) => void;
   onSubmitTelegramTdlibParameters: (input: {
     apiId: string;
@@ -173,6 +173,7 @@ export function Sidebar({
   telegramSyncInProgress,
   telegramSyncRecommended,
   selectedPackId,
+  width,
   onSelect,
   onSubmitTelegramTdlibParameters,
   onSubmitTelegramPhoneNumber,
@@ -352,7 +353,7 @@ export function Sidebar({
   return (
     <Box
       sx={{
-        width: appTokens.layout.sidebarWidth,
+        width,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
@@ -364,21 +365,16 @@ export function Sidebar({
     >
       <Box
         sx={{
-          px: appTokens.layout.spacing.sidebarPaddingX,
+          pl: "90px",
+          pr: appTokens.layout.spacing.sidebarPaddingX,
           py: appTokens.layout.spacing.panelPaddingY,
           minHeight: appTokens.layout.panelHeaderMinHeight,
           display: "flex",
           alignItems: "center",
           gap: appTokens.layout.spacing.compactGap,
+          WebkitAppRegion: "drag",
         }}
       >
-        <LayersIcon
-          sx={{
-            color: "primary.main",
-            fontSize: appTokens.sizes.icon.sidebarBrand,
-            mr: appTokens.layout.spacing.compactGap,
-          }}
-        />
         <Typography
           variant="subtitle2"
           fontWeight={appTokens.typography.fontWeights.bold}
