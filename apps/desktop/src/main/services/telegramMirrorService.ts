@@ -34,6 +34,7 @@ export class TelegramMirrorService {
       shortName: stickerSet.shortName,
       format: stickerSet.format,
       thumbnailPath: input.thumbnailPath,
+      thumbnailStickerId: stickerSet.thumbnailStickerId,
       hasThumbnail: input.hasThumbnail,
       thumbnailExtension: input.thumbnailExtension,
       syncState: input.syncState ?? "idle",

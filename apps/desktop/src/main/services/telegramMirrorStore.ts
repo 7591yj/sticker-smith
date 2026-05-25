@@ -43,6 +43,7 @@ export interface TelegramMirrorUpsertInput {
   shortName: string;
   format: TelegramPackSummary["format"];
   thumbnailPath: string | null;
+  thumbnailStickerId?: string | null;
   hasThumbnail?: boolean;
   thumbnailExtension?: string | null;
   syncState: TelegramPackSummary["syncState"];
@@ -85,14 +86,14 @@ async function syncTelegramThumbnailFile(
     preferredExtension?: string | null;
   } = {},
 ) {
-  const { sourceRoot } = resolvePackPaths(rootPath);
-  await fs.mkdir(sourceRoot, { recursive: true });
-  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  const { outputRoot } = resolvePackPaths(rootPath);
+  await fs.mkdir(outputRoot, { recursive: true });
+  const entries = await fs.readdir(outputRoot, { withFileTypes: true });
   const existingIconPaths = entries
     .filter(
       (entry) => entry.isFile() && entry.name.startsWith("telegram-pack-icon."),
     )
-    .map((entry) => path.join(sourceRoot, entry.name));
+    .map((entry) => path.join(outputRoot, entry.name));
 
   const removeExistingIcons = async (excludedPath?: string) =>
     Promise.all(
@@ -110,7 +111,7 @@ async function syncTelegramThumbnailFile(
       const expectedExtension =
         options.preferredExtension || path.extname(existingPath) || ".bin";
       const expectedPath = path.join(
-        sourceRoot,
+        outputRoot,
         `telegram-pack-icon${expectedExtension}`,
       );
 
@@ -129,7 +130,7 @@ async function syncTelegramThumbnailFile(
   }
 
   const extension = resolveThumbnailExtension(thumbnailPath);
-  const destination = path.join(sourceRoot, `telegram-pack-icon${extension}`);
+  const destination = path.join(outputRoot, `telegram-pack-icon${extension}`);
   if (thumbnailPath !== destination) {
     await fs.copyFile(thumbnailPath, destination);
   }
@@ -250,6 +251,24 @@ export class TelegramMirrorStore {
     };
   }
 
+  private resolveTelegramIconStickerId(
+    existing: StickerPackRecord | null,
+    input: TelegramMirrorUpsertInput,
+    assets: StickerAssetRecord[],
+  ) {
+    const thumbnailAsset = input.thumbnailStickerId
+      ? assets.find((asset) => asset.telegram?.stickerId === input.thumbnailStickerId)
+      : null;
+    if (thumbnailAsset) {
+      return thumbnailAsset.id;
+    }
+
+    return existing?.iconStickerId &&
+      assets.some((asset) => asset.id === existing.iconStickerId)
+      ? existing.iconStickerId
+      : null;
+  }
+
   private buildTelegramMirrorRecord(input: {
     existing: StickerPackRecord | null;
     upsertInput: TelegramMirrorUpsertInput;
@@ -260,16 +279,21 @@ export class TelegramMirrorStore {
     const allAssets = [...input.remoteAssets, ...input.localOnlyAssets];
 
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       id: input.existing?.id ?? `telegram-${input.upsertInput.stickerSetId}`,
       source: "telegram",
       name: input.upsertInput.title,
       slug: slugify(input.upsertInput.shortName || input.upsertInput.title),
-      iconAssetId:
-        input.existing?.iconAssetId &&
-        allAssets.some((asset) => asset.id === input.existing?.iconAssetId)
-          ? input.existing.iconAssetId
-          : null,
+      iconStickerId: this.resolveTelegramIconStickerId(
+        input.existing,
+        input.upsertInput,
+        allAssets,
+      ),
+      iconAssetId: this.resolveTelegramIconStickerId(
+        input.existing,
+        input.upsertInput,
+        allAssets,
+      ),
       telegramShortName: null,
       telegram: createDefaultTelegramSummary({
         stickerSetId: input.upsertInput.stickerSetId,
@@ -287,6 +311,26 @@ export class TelegramMirrorStore {
       }),
       createdAt: input.existing?.createdAt ?? nowIso(),
       updatedAt: input.existing?.updatedAt ?? nowIso(),
+      stickers: allAssets.map((asset) => {
+        const existingOutput = input.existing?.outputs.find(
+          (output) => output.sourceAssetId === asset.id && output.mode === "sticker",
+        );
+
+        return {
+          id: asset.id,
+          packId: asset.packId,
+          order: asset.order,
+          relativePath: existingOutput?.relativePath ?? stickerOutputRelativePath(asset.id),
+          originalFileName: asset.originalFileName,
+          emojiList: asset.emojiList,
+          sizeBytes: existingOutput?.sizeBytes ?? 0,
+          sha256: existingOutput?.sha256 ?? null,
+          importedAt: asset.importedAt,
+          updatedAt: existingOutput?.updatedAt ?? nowIso(),
+          downloadState: asset.downloadState,
+          telegram: asset.telegram,
+        };
+      }),
       assets: allAssets,
       outputs:
         input.existing?.outputs.filter((output) =>
@@ -306,10 +350,9 @@ export class TelegramMirrorStore {
       return;
     }
 
-    const baselineFallbackByAssetId =
-      options.baselineFallbackByAssetId ?? new Map<AssetId, string | null>();
-    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
-    const assetById = new Map(record.assets.map((asset) => [asset.id, asset]));
+    void options;
+    const { outputRoot } = resolvePackPaths(rootPath);
+    const stickerById = new Map(record.stickers.map((sticker) => [sticker.id, sticker]));
     const nextOutputs: StickerPackRecord["outputs"] = [];
 
     for (const output of record.outputs) {
@@ -318,113 +361,49 @@ export class TelegramMirrorStore {
         continue;
       }
 
-      const asset = assetById.get(output.sourceAssetId);
+      const sticker = stickerById.get(output.sourceAssetId);
       const outputPath = path.join(outputRoot, output.relativePath);
-      const outputExists = await pathExists(outputPath);
-
-      if (asset && !asset.telegram) {
-        if (outputExists) {
-          nextOutputs.push(output);
+      if (!sticker || !(await pathExists(outputPath))) {
+        if (sticker?.downloadState === "ready") {
+          sticker.downloadState = "missing";
         }
         continue;
       }
 
-      const sourcePath = asset
-        ? path.join(sourceRoot, asset.relativePath)
-        : null;
-      const sourceExists = sourcePath ? await pathExists(sourcePath) : false;
-      const eligible =
-        asset?.telegram &&
-        asset.kind === "webm" &&
-        asset.downloadState === "ready" &&
-        sourceExists;
-
-      if (eligible) {
-        nextOutputs.push(output);
-        continue;
-      }
-
-      if (asset?.telegram && asset.downloadState === "ready" && !sourceExists) {
-        asset.downloadState = "missing";
-      }
-
-      await fs.rm(outputPath, { force: true });
+      nextOutputs.push(output);
     }
 
     record.outputs = nextOutputs;
 
-    for (const asset of record.assets) {
-      if (!asset.telegram || asset.kind !== "webm") {
+    for (const sticker of record.stickers) {
+      if (!sticker.telegram || sticker.downloadState !== "ready") {
         continue;
       }
 
-      const sourcePath = path.join(sourceRoot, asset.relativePath);
-      if (asset.downloadState !== "ready" || !(await pathExists(sourcePath))) {
-        if (asset.downloadState === "ready") {
-          asset.downloadState = "missing";
-        }
+      const outputPath = path.join(outputRoot, sticker.relativePath);
+      if (!(await pathExists(outputPath))) {
+        sticker.downloadState = "missing";
         continue;
       }
 
-      const baselineHash =
-        asset.telegram.baselineOutputHash ?? (await sha256ForFile(sourcePath));
-      asset.telegram.baselineOutputHash = baselineHash;
-
-      let output = findStickerOutput(record.outputs, asset.id);
-      if (output) {
-        const outputPath = path.join(outputRoot, output.relativePath);
-        if (!(await pathExists(outputPath))) {
-          record.outputs = record.outputs.filter(
-            (item) =>
-              !(
-                item.mode === "sticker" &&
-                item.sourceAssetId === asset.id &&
-                item.relativePath === output!.relativePath
-              ),
-          );
-          output = undefined;
-        }
-      }
-
-      const priorBaselineHash =
-        baselineFallbackByAssetId.get(asset.id) ??
-        asset.telegram.baselineOutputHash;
-      const outputMatchesBaseline =
-        output !== undefined &&
-        (output.sha256 === baselineHash || output.sha256 === priorBaselineHash);
-
-      if (output && !outputMatchesBaseline) {
-        continue;
-      }
-
-      const nextRelativePath = stickerOutputRelativePath(asset.id);
-      const nextAbsolutePath = path.join(outputRoot, nextRelativePath);
-      const previousOutputPath =
-        output && output.relativePath !== nextRelativePath
-          ? path.join(outputRoot, output.relativePath)
-          : null;
-
-      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-      await fs.copyFile(sourcePath, nextAbsolutePath);
-      const stat = await fs.stat(nextAbsolutePath);
-      const sha256 = baselineHash ?? (await sha256ForFile(nextAbsolutePath));
-
-      if (previousOutputPath) {
-        await fs.rm(previousOutputPath, { force: true });
-      }
+      const stat = await fs.stat(outputPath);
+      const sha256 = sticker.sha256 ?? (await sha256ForFile(outputPath));
+      sticker.sizeBytes = stat.size;
+      sticker.sha256 = sha256;
+      sticker.telegram.baselineOutputHash ??= sha256;
 
       record.outputs = record.outputs.filter(
-        (item) => !(item.mode === "sticker" && item.sourceAssetId === asset.id),
+        (item) => !(item.mode === "sticker" && item.sourceAssetId === sticker.id),
       );
       record.outputs.push({
         packId: record.id,
-        sourceAssetId: asset.id,
-        order: asset.order,
+        sourceAssetId: sticker.id,
+        order: sticker.order,
         mode: "sticker",
-        relativePath: nextRelativePath,
+        relativePath: sticker.relativePath,
         sizeBytes: stat.size,
         sha256,
-        updatedAt: nowIso(),
+        updatedAt: sticker.updatedAt,
       });
     }
   }
@@ -569,34 +548,62 @@ export class TelegramMirrorStore {
   }) {
     return this.repo.withPackMutationLock(input.packId, async () => {
       const { record, rootPath } = await this.repo.readPackRecordById(input.packId);
-      const asset = record.assets.find((item) => item.id === input.assetId);
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
+      const sticker = record.stickers.find((item) => item.id === input.assetId);
+      if (!sticker) {
+        throw new Error(`Sticker not found: ${input.assetId}`);
       }
+      const asset = record.assets.find((item) => item.id === input.assetId);
       const baselineFallbackByAssetId = new Map<AssetId, string | null>();
-      if (asset.telegram) {
+      if (sticker.telegram) {
         baselineFallbackByAssetId.set(
-          asset.id,
-          asset.telegram.baselineOutputHash ?? null,
+          sticker.id,
+          sticker.telegram.baselineOutputHash ?? null,
         );
       }
 
-      const nextRelativePath = sourceAssetRelativePath(asset.id, asset.kind);
+      const nextRelativePath = input.relativePath ?? stickerOutputRelativePath(sticker.id);
       const destination = path.join(
-        resolvePackPaths(rootPath).sourceRoot,
+        resolvePackPaths(rootPath).outputRoot,
         nextRelativePath,
       );
 
       await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.copyFile(input.sourceFilePath, destination);
 
-      asset.relativePath = nextRelativePath;
-      asset.downloadState = "ready";
-      if (asset.telegram && input.baselineOutputHash !== undefined) {
-        asset.telegram.baselineOutputHash = input.baselineOutputHash;
-      } else if (asset.telegram) {
-        asset.telegram.baselineOutputHash = await sha256ForFile(destination);
+      const sizeBytes = (await fs.stat(destination)).size;
+      const sha256 = await sha256ForFile(destination);
+      sticker.relativePath = nextRelativePath;
+      sticker.downloadState = "ready";
+      sticker.sizeBytes = sizeBytes;
+      sticker.sha256 = sha256;
+      sticker.updatedAt = nowIso();
+      if (sticker.telegram && input.baselineOutputHash !== undefined) {
+        sticker.telegram.baselineOutputHash = input.baselineOutputHash;
+      } else if (sticker.telegram) {
+        sticker.telegram.baselineOutputHash = sha256;
       }
+
+      if (asset) {
+        asset.relativePath = nextRelativePath;
+        asset.downloadState = "ready";
+        if (asset.telegram && sticker.telegram) {
+          asset.telegram.baselineOutputHash = sticker.telegram.baselineOutputHash;
+        }
+      }
+      record.outputs = record.outputs.filter(
+        (output) => !(output.sourceAssetId === sticker.id && output.mode === "sticker"),
+      );
+      record.outputs.push({
+        packId: record.id,
+        sourceAssetId: sticker.id,
+        order: sticker.order,
+        mode: "sticker",
+        relativePath: nextRelativePath,
+        sizeBytes,
+        sha256,
+        updatedAt: sticker.updatedAt,
+      });
+
       await this.reconcileTelegramMirrorOutputs(record, rootPath, {
         baselineFallbackByAssetId,
       });
@@ -613,11 +620,15 @@ export class TelegramMirrorStore {
   }) {
     return this.repo.withPackMutationLock(input.packId, async () => {
       const { record, rootPath } = await this.repo.readPackRecordById(input.packId);
-      const asset = record.assets.find((item) => item.id === input.assetId);
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
+      const sticker = record.stickers.find((item) => item.id === input.assetId);
+      if (!sticker) {
+        throw new Error(`Sticker not found: ${input.assetId}`);
       }
-      asset.downloadState = input.downloadState;
+      sticker.downloadState = input.downloadState;
+      const asset = record.assets.find((item) => item.id === input.assetId);
+      if (asset) {
+        asset.downloadState = input.downloadState;
+      }
       await this.repo.writePackRecord(rootPath, record);
       return hydratePackDetails(record, rootPath);
     });
