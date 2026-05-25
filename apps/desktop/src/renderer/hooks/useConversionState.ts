@@ -32,7 +32,7 @@ export function useConversionState({
     Record<string, ConversionFailureDialogState["failures"]>
   >({});
   const jobPackNamesRef = useRef<Record<string, string | null>>({});
-  const jobAssetNamesRef = useRef<Record<string, Record<string, string>>>({});
+  const jobStickerNamesRef = useRef<Record<string, Record<string, string>>>({});
 
   const dismissFailureDialog = useCallback(() => {
     setFailureDialog(null);
@@ -43,28 +43,28 @@ export function useConversionState({
       return;
     }
 
-    const assetNames = Object.fromEntries(
-      (latestDetailsRef.current?.assets ?? []).map((asset) => [
-        asset.id,
-        getLeafName(asset.relativePath),
+    const stickerNames = Object.fromEntries(
+      (latestDetailsRef.current?.stickers ?? []).map((sticker) => [
+        sticker.id,
+        getLeafName(sticker.relativePath),
       ]),
     );
 
     setFailureDialog(null);
     jobFailuresRef.current[event.jobId] = [];
     jobPackNamesRef.current[event.jobId] = latestDetailsRef.current?.pack.name ?? null;
-    jobAssetNamesRef.current[event.jobId] = assetNames;
+    jobStickerNamesRef.current[event.jobId] = stickerNames;
     setConverting(true);
   }, [latestDetailsRef]);
 
   const captureConversionFailure = useCallback((event: ConversionJobEvent) => {
-    if (event.type !== "asset_failed") {
+    if (event.type !== "sticker_failed") {
       return;
     }
 
     const assetLabel =
-      (event.assetId ? jobAssetNamesRef.current[event.jobId]?.[event.assetId] : null) ??
-      event.assetId ??
+      (event.stickerId ? jobStickerNamesRef.current[event.jobId]?.[event.stickerId] : null) ??
+      event.stickerId ??
       "Unknown file";
 
     jobFailuresRef.current[event.jobId] = [
@@ -105,7 +105,7 @@ export function useConversionState({
 
       delete jobFailuresRef.current[event.jobId];
       delete jobPackNamesRef.current[event.jobId];
-      delete jobAssetNamesRef.current[event.jobId];
+      delete jobStickerNamesRef.current[event.jobId];
     },
     [latestDetailsRef, refreshDetails],
   );

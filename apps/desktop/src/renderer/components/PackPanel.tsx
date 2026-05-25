@@ -23,7 +23,7 @@ import {
 } from "../utils/telegramSyncState";
 import { actionIconSx, formatCountLabel } from "./browserStyles";
 import type { BrowserView } from "./fileBrowser";
-import { OutputsList } from "./OutputsList";
+import { StickerList } from "./StickerList";
 import { RenameDialog } from "./RenameDialog";
 import { TelegramPublishDialog } from "./TelegramPublishDialog";
 
@@ -102,22 +102,22 @@ export function PackPanel({
     [packId, refreshDetails],
   );
 
-  const convertImportedAssets = useCallback(
+  const convertImportedStickers = useCallback(
     async (
       importResult: Awaited<
         ReturnType<typeof window.stickerSmith.stickers.importFiles>
       >,
       currentPackId: string,
     ) => {
-      const assetIds = importResult.imported.map((asset) => asset.id);
-      if (assetIds.length === 0) {
+      const stickerIds = importResult.imported.map((sticker) => sticker.id);
+      if (stickerIds.length === 0) {
         await refreshDetails(currentPackId);
         return;
       }
 
       const next = await window.stickerSmith.conversion.convert({
         packId: currentPackId,
-        assetIds,
+        stickerIds,
       });
       setDetails(next);
     },
@@ -129,26 +129,26 @@ export function PackPanel({
       const importResult = await window.stickerSmith.stickers.importFiles({
         packId: currentPackId,
       });
-      await convertImportedAssets(importResult, currentPackId);
+      await convertImportedStickers(importResult, currentPackId);
     });
-  }, [convertImportedAssets, runPackAction]);
+  }, [convertImportedStickers, runPackAction]);
 
   const handleImportDir = useCallback(async () => {
     await runPackAction(async (currentPackId) => {
       const importResult = await window.stickerSmith.stickers.importDirectory({
         packId: currentPackId,
       });
-      await convertImportedAssets(importResult, currentPackId);
+      await convertImportedStickers(importResult, currentPackId);
     });
-  }, [convertImportedAssets, runPackAction]);
+  }, [convertImportedStickers, runPackAction]);
 
-  const handleOpenOutputs = useCallback(async () => {
+  const handleOpenStickers = useCallback(async () => {
     await runPackAction((currentPackId) =>
       window.stickerSmith.stickers.revealInFolder({ packId: currentPackId }),
     );
   }, [runPackAction]);
 
-  const handleExportOutputs = useCallback(async () => {
+  const handleExportStickers = useCallback(async () => {
     await runPackAction((currentPackId) =>
       window.stickerSmith.stickers.exportFolder({ packId: currentPackId }),
     );
@@ -193,7 +193,7 @@ export function PackPanel({
     );
   }
 
-  const { pack, assets, outputs } = details;
+  const { pack, stickers } = details;
   const telegramUnsupported =
     pack.source === "telegram" && pack.telegram?.syncState === "unsupported";
   const unsupportedTelegramTooltip =
@@ -213,17 +213,17 @@ export function PackPanel({
   const hasPendingTelegramMedia =
     pack.source === "telegram" &&
     !telegramUnsupported &&
-    assets.some(
-      (asset) =>
-        asset.downloadState === "missing" || asset.downloadState === "failed",
+    stickers.some(
+      (sticker) =>
+        sticker.downloadState === "missing" || sticker.downloadState === "failed",
     );
-  const telegramMediaBusy = assets.some(
-    (asset) =>
-      asset.downloadState === "queued" || asset.downloadState === "downloading",
+  const telegramMediaBusy = stickers.some(
+    (sticker) =>
+      sticker.downloadState === "queued" || sticker.downloadState === "downloading",
   );
   const telegramMediaActionLabel = telegramMediaBusy
     ? appTokens.copy.actions.downloadingMedia
-    : assets.some((asset) => asset.downloadState === "failed")
+    : stickers.some((sticker) => sticker.downloadState === "failed")
       ? appTokens.copy.actions.retryMedia
       : appTokens.copy.actions.downloadMedia;
 
@@ -491,7 +491,7 @@ export function PackPanel({
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            {formatCountLabel(outputs.length, "sticker")}
+            {formatCountLabel(stickers.length, "sticker")}
           </Typography>
           <Button
             size="small"
@@ -501,7 +501,7 @@ export function PackPanel({
                 sx={actionIconSx(appTokens.sizes.icon.compactAction)}
               />
             }
-            onClick={handleOpenOutputs}
+            onClick={handleOpenStickers}
             sx={{
               ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
@@ -517,8 +517,8 @@ export function PackPanel({
                 sx={actionIconSx(appTokens.sizes.icon.compactAction)}
               />
             }
-            onClick={handleExportOutputs}
-            disabled={outputs.length === 0}
+            onClick={handleExportStickers}
+            disabled={stickers.length === 0}
             sx={{
               ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
@@ -530,10 +530,10 @@ export function PackPanel({
       </Box>
 
       <Box sx={{ flex: 1, overflowY: "auto" }}>
-        <OutputsList
+        <StickerList
           packId={pack.id}
-          outputs={outputs}
-          assets={assets}
+          stickers={stickers}
+          iconStickerId={pack.iconStickerId}
           view={view}
           onViewChange={setView}
           refreshDetails={() => refreshDetails(pack.id)}

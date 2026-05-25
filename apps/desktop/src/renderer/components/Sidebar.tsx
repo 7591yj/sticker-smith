@@ -317,7 +317,7 @@ export function Sidebar({
     [refreshPacks, runContextPackAction, selectedPackId, setSelectedPackId],
   );
 
-  const handleOpenOutputs = useCallback(
+  const handleOpenStickers = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
         await window.stickerSmith.stickers.revealInFolder({ packId: pack.id });
@@ -325,7 +325,7 @@ export function Sidebar({
     [runContextPackAction],
   );
 
-  const handleExportOutputs = useCallback(
+  const handleExportStickers = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
         await window.stickerSmith.stickers.exportFolder({ packId: pack.id });
@@ -582,7 +582,7 @@ export function Sidebar({
           <EditIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.rename}
         </MenuItem>
-        <MenuItem onClick={handleOpenOutputs} dense>
+        <MenuItem onClick={handleOpenStickers} dense>
           <FolderOpenIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.openFolder}
         </MenuItem>
@@ -590,7 +590,7 @@ export function Sidebar({
           <PhotoIcon sx={browserMenuIconSx} />
           Change icon
         </MenuItem>
-        <MenuItem onClick={handleExportOutputs} dense>
+        <MenuItem onClick={handleExportStickers} dense>
           <IosShareIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.export}
         </MenuItem>

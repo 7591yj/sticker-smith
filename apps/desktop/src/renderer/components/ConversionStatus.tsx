@@ -14,9 +14,9 @@ export function ConversionStatus({ events, converting }: Props) {
 
   const jobStarted = events.find((e) => e.type === "job_started");
   const completedCount = events.filter(
-    (e) => e.type === "asset_completed",
+    (e) => e.type === "sticker_completed",
   ).length;
-  const failedCount = events.filter((e) => e.type === "asset_failed").length;
+  const failedCount = events.filter((e) => e.type === "sticker_failed").length;
   const totalCount = jobStarted?.taskCount ?? 0;
   const progress =
     totalCount > 0 ? ((completedCount + failedCount) / totalCount) * 100 : 0;
@@ -25,11 +25,11 @@ export function ConversionStatus({ events, converting }: Props) {
   let statusText: string | null = null;
   if (latest?.type === "job_started") {
     statusText = `Converting ${totalCount} file${totalCount !== 1 ? "s" : ""}…`;
-  } else if (latest?.type === "asset_started") {
+  } else if (latest?.type === "sticker_started") {
     statusText = `${completedCount + 1} / ${totalCount}`;
   } else if (
-    latest?.type === "asset_completed" ||
-    latest?.type === "asset_failed"
+    latest?.type === "sticker_completed" ||
+    latest?.type === "sticker_failed"
   ) {
     statusText = `${completedCount + failedCount} / ${totalCount}`;
   } else if (latest?.type === "job_finished") {

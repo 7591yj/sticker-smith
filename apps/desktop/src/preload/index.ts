@@ -3,19 +3,19 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   ConversionJobEvent,
   ConvertInput,
-  DeleteAssetInput,
-  DeleteManyAssetsInput,
+  DeleteStickerInput,
+  DeleteManyStickersInput,
   ImportResult,
-  MoveAssetInput,
+  MoveStickerInput,
   PublishLocalPackInput,
-  ReorderAssetInput,
-  RenameAssetInput,
-  RenameManyAssetsInput,
+  ReorderStickerInput,
+  RenameStickerInput,
+  RenameManyStickersInput,
   SetPackTelegramShortNameInput,
   SetTelegramPhoneNumberInput,
   SetTelegramTdlibParametersInput,
-  SetAssetEmojisInput,
-  SetManyAssetEmojisInput,
+  SetStickerEmojisInput,
+  SetManyStickerEmojisInput,
   StickerSmithApi,
   StickerPack,
   StickerPackDetails,
@@ -86,7 +86,7 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("packs.setTelegramShortName", input),
     setIcon: (input: {
       packId: string;
-      assetId: string | null;
+      stickerId: string | null;
     }): Promise<StickerPack> => ipcRenderer.invoke("packs.setIcon", input),
     chooseIcon: (input: {
       packId: string;
@@ -104,23 +104,23 @@ const stickerSmith: StickerSmithApi = {
       directoryPath?: string;
     }): Promise<ImportResult> =>
       ipcRenderer.invoke("stickers.importDirectory", input),
-    setEmojis: (input: SetAssetEmojisInput): Promise<StickerPackDetails> =>
+    setEmojis: (input: SetStickerEmojisInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.setEmojis", input),
     setEmojisMany: (
-      input: SetManyAssetEmojisInput,
+      input: SetManyStickerEmojisInput,
     ): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.setEmojisMany", input),
-    reorder: (input: ReorderAssetInput): Promise<StickerPackDetails> =>
+    reorder: (input: ReorderStickerInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.reorder", input),
-    rename: (input: RenameAssetInput): Promise<StickerPackDetails> =>
+    rename: (input: RenameStickerInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.rename", input),
-    renameMany: (input: RenameManyAssetsInput): Promise<StickerPackDetails> =>
+    renameMany: (input: RenameManyStickersInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.renameMany", input),
-    move: (input: MoveAssetInput): Promise<StickerPackDetails> =>
+    move: (input: MoveStickerInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.move", input),
-    delete: (input: DeleteAssetInput): Promise<StickerPackDetails> =>
+    delete: (input: DeleteStickerInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.delete", input),
-    deleteMany: (input: DeleteManyAssetsInput): Promise<StickerPackDetails> =>
+    deleteMany: (input: DeleteManyStickersInput): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("stickers.deleteMany", input),
     revealInFolder: (input: { packId: string; relativePath?: string }) =>
       ipcRenderer.invoke("stickers.revealInFolder", input),
