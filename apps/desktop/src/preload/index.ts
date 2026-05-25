@@ -88,6 +88,8 @@ const stickerSmith: StickerSmithApi = {
       packId: string;
       assetId: string | null;
     }): Promise<StickerPack> => ipcRenderer.invoke("packs.setIcon", input),
+    chooseIcon: (input: { packId: string }): Promise<StickerPackDetails | null> =>
+      ipcRenderer.invoke("packs.chooseIcon", input),
   },
   assets: {
     importFiles: (input: {

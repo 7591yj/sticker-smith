@@ -64,6 +64,7 @@ export interface StickerSmithApi {
       packId: string;
       assetId: string | null;
     }) => Promise<StickerPack>;
+    chooseIcon: (input: { packId: string }) => Promise<StickerPackDetails | null>;
   };
   assets: {
     importFiles: (input: {

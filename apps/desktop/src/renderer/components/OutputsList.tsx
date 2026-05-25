@@ -67,10 +67,13 @@ export function OutputsList({
 
   const sortedOutputs = useMemo(
     () =>
-      sortItemsWithPinnedFirst(outputs, {
-        getOrder: (output) => output.order,
-        isPinned: (output) => output.mode === "icon",
-      }),
+      sortItemsWithPinnedFirst(
+        outputs.filter((output) => output.mode === "sticker"),
+        {
+          getOrder: (output) => output.order,
+          isPinned: () => false,
+        },
+      ),
     [outputs],
   );
   const assetById = useMemo(

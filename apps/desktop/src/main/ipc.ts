@@ -145,6 +145,26 @@ export function registerIpc() {
   safeHandle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
   );
+  safeHandle("packs.chooseIcon", async (_event, input: unknown) => {
+    const payload = listOutputsSchema.parse(input);
+    const selected = await dialog.showOpenDialog({
+      properties: ["openFile"],
+    });
+    const filePath = selected.filePaths[0];
+    if (!filePath) {
+      return null;
+    }
+    const imported = await libraryService.importFiles(payload.packId, [filePath]);
+    const asset = imported.imported[0];
+    if (!asset) {
+      throw new Error("Selected file could not be imported as an icon.");
+    }
+    await libraryService.setPackIcon({ packId: payload.packId, assetId: asset.id });
+    return converterService.convertSelection({
+      packId: payload.packId,
+      assetIds: [asset.id],
+    });
+  });
 
   safeHandle("assets.importFiles", async (_event, input: unknown) => {
     const payload = importFilesSchema.parse(input);

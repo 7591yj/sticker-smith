@@ -9,6 +9,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import PhotoIcon from "@mui/icons-material/Photo";
 import SyncIcon from "@mui/icons-material/Sync";
 import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
@@ -237,9 +238,6 @@ export function Sidebar({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, pack: StickerPack) => {
-      if (pack.source !== "local") {
-        return;
-      }
       e.preventDefault();
       setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pack });
     },
@@ -287,6 +285,23 @@ export function Sidebar({
       await action(pack);
     },
     [contextMenu, handleCloseMenu],
+  );
+
+  const handleChooseIcon = useCallback(
+    async () =>
+      runContextPackAction(async (pack) => {
+        if (pack.thumbnailPath) {
+          const confirmed = window.confirm(
+            "Replace this pack's existing icon? The pack will need a Telegram update after the new icon is converted.",
+          );
+          if (!confirmed) {
+            return;
+          }
+        }
+        await window.stickerSmith.packs.chooseIcon({ packId: pack.id });
+        await refreshPacks();
+      }),
+    [refreshPacks, runContextPackAction],
   );
 
   const handleDelete = useCallback(
@@ -570,6 +585,10 @@ export function Sidebar({
         <MenuItem onClick={handleOpenOutputs} dense>
           <FolderOpenIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.openFolder}
+        </MenuItem>
+        <MenuItem onClick={handleChooseIcon} dense>
+          <PhotoIcon sx={browserMenuIconSx} />
+          Change icon
         </MenuItem>
         <MenuItem onClick={handleExportOutputs} dense>
           <IosShareIcon sx={browserMenuIconSx} />

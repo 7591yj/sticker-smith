@@ -254,5 +254,3 @@ export const appTokens = {
     },
   },
 } as const;
-
-export type AppTokens = typeof appTokens;
