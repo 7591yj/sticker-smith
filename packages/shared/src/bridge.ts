@@ -6,7 +6,6 @@ import type {
   ImportResult,
   LibraryConfig,
   MoveAssetInput,
-  OutputArtifact,
   PublishLocalPackInput,
   ReorderAssetInput,
   RenameAssetInput,
@@ -56,7 +55,6 @@ export interface StickerSmithApi {
     rename: (input: { packId: string; name: string }) => Promise<StickerPack>;
     delete: (input: { packId: string }) => Promise<void>;
     get: (packId: string) => Promise<StickerPackDetails>;
-    revealSourceFolder: (input: { packId: string }) => Promise<void>;
     setTelegramShortName: (
       input: SetPackTelegramShortNameInput,
     ) => Promise<StickerPack>;
@@ -64,9 +62,11 @@ export interface StickerSmithApi {
       packId: string;
       assetId: string | null;
     }) => Promise<StickerPack>;
-    chooseIcon: (input: { packId: string }) => Promise<StickerPackDetails | null>;
+    chooseIcon: (input: {
+      packId: string;
+    }) => Promise<StickerPackDetails | null>;
   };
-  assets: {
+  stickers: {
     importFiles: (input: {
       packId: string;
       filePaths?: string[];
@@ -85,9 +85,6 @@ export interface StickerSmithApi {
     move: (input: MoveAssetInput) => Promise<StickerPackDetails>;
     delete: (input: DeleteAssetInput) => Promise<StickerPackDetails>;
     deleteMany: (input: DeleteManyAssetsInput) => Promise<StickerPackDetails>;
-  };
-  outputs: {
-    list: (packId: string) => Promise<OutputArtifact[]>;
     revealInFolder: (input: {
       packId: string;
       relativePath?: string;
@@ -95,7 +92,6 @@ export interface StickerSmithApi {
     exportFolder: (input: { packId: string }) => Promise<string | null>;
   };
   conversion: {
-    convertPack: (input: { packId: string }) => Promise<StickerPackDetails>;
     convertSelection: (
       input: ConvertSelectionInput,
     ) => Promise<StickerPackDetails>;

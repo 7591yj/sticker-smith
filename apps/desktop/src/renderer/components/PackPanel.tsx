@@ -103,7 +103,12 @@ export function PackPanel({
   );
 
   const convertImportedAssets = useCallback(
-    async (importResult: Awaited<ReturnType<typeof window.stickerSmith.assets.importFiles>>, currentPackId: string) => {
+    async (
+      importResult: Awaited<
+        ReturnType<typeof window.stickerSmith.stickers.importFiles>
+      >,
+      currentPackId: string,
+    ) => {
       const assetIds = importResult.imported.map((asset) => asset.id);
       if (assetIds.length === 0) {
         await refreshDetails(currentPackId);
@@ -121,7 +126,7 @@ export function PackPanel({
 
   const handleImportFiles = useCallback(async () => {
     await runPackAction(async (currentPackId) => {
-      const importResult = await window.stickerSmith.assets.importFiles({
+      const importResult = await window.stickerSmith.stickers.importFiles({
         packId: currentPackId,
       });
       await convertImportedAssets(importResult, currentPackId);
@@ -130,7 +135,7 @@ export function PackPanel({
 
   const handleImportDir = useCallback(async () => {
     await runPackAction(async (currentPackId) => {
-      const importResult = await window.stickerSmith.assets.importDirectory({
+      const importResult = await window.stickerSmith.stickers.importDirectory({
         packId: currentPackId,
       });
       await convertImportedAssets(importResult, currentPackId);
@@ -139,13 +144,13 @@ export function PackPanel({
 
   const handleOpenOutputs = useCallback(async () => {
     await runPackAction((currentPackId) =>
-      window.stickerSmith.outputs.revealInFolder({ packId: currentPackId }),
+      window.stickerSmith.stickers.revealInFolder({ packId: currentPackId }),
     );
   }, [runPackAction]);
 
   const handleExportOutputs = useCallback(async () => {
     await runPackAction((currentPackId) =>
-      window.stickerSmith.outputs.exportFolder({ packId: currentPackId }),
+      window.stickerSmith.stickers.exportFolder({ packId: currentPackId }),
     );
   }, [runPackAction]);
 
@@ -311,7 +316,9 @@ export function PackPanel({
                 disabled
                 aria-label={appTokens.copy.tooltips.deleteTelegramPack}
               >
-                <DeleteIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
+                <DeleteIcon
+                  sx={{ fontSize: appTokens.sizes.icon.panelAction }}
+                />
               </IconButton>
             </span>
           </Tooltip>
@@ -348,8 +355,8 @@ export function PackPanel({
               telegramUnsupported
                 ? unsupportedTelegramTooltip
                 : telegramMirrorBusy
-                ? "Telegram is already syncing this mirror"
-                : "Push local mirror changes to Telegram"
+                  ? "Telegram is already syncing this mirror"
+                  : "Push local mirror changes to Telegram"
             }
           >
             <span>
@@ -359,7 +366,11 @@ export function PackPanel({
                 startIcon={
                   <UpdateIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
                 }
-                disabled={!telegramConnected || telegramMirrorBusy || telegramUnsupported}
+                disabled={
+                  !telegramConnected ||
+                  telegramMirrorBusy ||
+                  telegramUnsupported
+                }
                 onClick={() =>
                   void onUpdateTelegramPack({ packId: pack.id }).catch(
                     () => undefined,
@@ -379,8 +390,8 @@ export function PackPanel({
               telegramUnsupported
                 ? unsupportedTelegramTooltip
                 : telegramMirrorBusy || telegramMediaBusy
-                ? "Telegram media download is already in progress for this mirror"
-                : "Download missing Telegram sticker media for this mirror"
+                  ? "Telegram media download is already in progress for this mirror"
+                  : "Download missing Telegram sticker media for this mirror"
             }
           >
             <span>
@@ -388,7 +399,9 @@ export function PackPanel({
                 size="small"
                 variant="outlined"
                 startIcon={
-                  <DownloadIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
+                  <DownloadIcon
+                    sx={actionIconSx(appTokens.sizes.icon.action)}
+                  />
                 }
                 disabled={telegramMirrorBusy || telegramMediaBusy}
                 onClick={() =>
@@ -453,7 +466,9 @@ export function PackPanel({
           size="small"
           variant="outlined"
           startIcon={
-            <CreateNewFolderIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+            <CreateNewFolderIcon
+              sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+            />
           }
           onClick={handleImportDir}
           disabled={converting}
@@ -482,7 +497,9 @@ export function PackPanel({
             size="small"
             variant="outlined"
             startIcon={
-              <FolderOpenIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+              <FolderOpenIcon
+                sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+              />
             }
             onClick={handleOpenOutputs}
             sx={{
@@ -496,7 +513,9 @@ export function PackPanel({
             size="small"
             variant="outlined"
             startIcon={
-              <IosShareIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+              <IosShareIcon
+                sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+              />
             }
             onClick={handleExportOutputs}
             disabled={outputs.length === 0}

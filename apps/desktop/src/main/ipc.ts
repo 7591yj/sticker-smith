@@ -19,7 +19,6 @@ import {
   renameAssetSchema,
   renameManyAssetsSchema,
   renamePackSchema,
-  revealPackSourceFolderSchema,
   revealOutputSchema,
   setAssetEmojisSchema,
   setPackTelegramShortNameSchema,
@@ -71,15 +70,15 @@ export function registerIpc() {
 
   safeHandle("settings.getConfig", async () => settingsService.getConfig());
   safeHandle("telegram.getState", async () => telegramService.getState());
-  safeHandle(
-    "telegram.submitTdlibParameters",
-    async (_event, input: unknown) =>
-      telegramService.submitTdlibParameters(
-        setTelegramTdlibParametersSchema.parse(input),
-      ),
+  safeHandle("telegram.submitTdlibParameters", async (_event, input: unknown) =>
+    telegramService.submitTdlibParameters(
+      setTelegramTdlibParametersSchema.parse(input),
+    ),
   );
   safeHandle("telegram.submitPhoneNumber", async (_event, input: unknown) =>
-    telegramService.submitPhoneNumber(setTelegramPhoneNumberSchema.parse(input)),
+    telegramService.submitPhoneNumber(
+      setTelegramPhoneNumberSchema.parse(input),
+    ),
   );
   safeHandle("telegram.submitCode", async (_event, input: unknown) =>
     telegramService.submitCode(submitTelegramCodeSchema.parse(input)),
@@ -134,9 +133,6 @@ export function registerIpc() {
   safeHandle("packs.delete", async (_event, input: unknown) =>
     libraryService.deletePack(deletePackSchema.parse(input)),
   );
-  safeHandle("packs.revealSourceFolder", async (_event, input: unknown) =>
-    shellService.revealSourceFolder(revealPackSourceFolderSchema.parse(input)),
-  );
   safeHandle("packs.setTelegramShortName", async (_event, input: unknown) =>
     libraryService.setPackTelegramShortName(
       setPackTelegramShortNameSchema.parse(input),
@@ -154,19 +150,24 @@ export function registerIpc() {
     if (!filePath) {
       return null;
     }
-    const imported = await libraryService.importFiles(payload.packId, [filePath]);
+    const imported = await libraryService.importFiles(payload.packId, [
+      filePath,
+    ]);
     const asset = imported.imported[0];
     if (!asset) {
       throw new Error("Selected file could not be imported as an icon.");
     }
-    await libraryService.setPackIcon({ packId: payload.packId, assetId: asset.id });
+    await libraryService.setPackIcon({
+      packId: payload.packId,
+      assetId: asset.id,
+    });
     return converterService.convertSelection({
       packId: payload.packId,
       assetIds: [asset.id],
     });
   });
 
-  safeHandle("assets.importFiles", async (_event, input: unknown) => {
+  safeHandle("stickers.importFiles", async (_event, input: unknown) => {
     const payload = importFilesSchema.parse(input);
     const filePaths =
       payload.filePaths ??
@@ -179,7 +180,7 @@ export function registerIpc() {
     return libraryService.importFiles(payload.packId, filePaths);
   });
 
-  safeHandle("assets.importDirectory", async (_event, input: unknown) => {
+  safeHandle("stickers.importDirectory", async (_event, input: unknown) => {
     const payload = importDirectorySchema.parse(input);
     const directoryPath =
       payload.directoryPath ??
@@ -194,38 +195,35 @@ export function registerIpc() {
       : { imported: [], skipped: [] };
   });
 
-  safeHandle("assets.rename", async (_event, input: unknown) =>
+  safeHandle("stickers.rename", async (_event, input: unknown) =>
     libraryService.renameAsset(renameAssetSchema.parse(input)),
   );
-  safeHandle("assets.renameMany", async (_event, input: unknown) =>
+  safeHandle("stickers.renameMany", async (_event, input: unknown) =>
     libraryService.renameManyAssets(renameManyAssetsSchema.parse(input)),
   );
-  safeHandle("assets.setEmojis", async (_event, input: unknown) =>
+  safeHandle("stickers.setEmojis", async (_event, input: unknown) =>
     libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
   );
-  safeHandle("assets.setEmojisMany", async (_event, input: unknown) =>
+  safeHandle("stickers.setEmojisMany", async (_event, input: unknown) =>
     libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
   );
-  safeHandle("assets.reorder", async (_event, input: unknown) =>
+  safeHandle("stickers.reorder", async (_event, input: unknown) =>
     libraryService.reorderAsset(reorderAssetSchema.parse(input)),
   );
-  safeHandle("assets.move", async (_event, input: unknown) =>
+  safeHandle("stickers.move", async (_event, input: unknown) =>
     libraryService.moveAsset(moveAssetSchema.parse(input)),
   );
-  safeHandle("assets.delete", async (_event, input: unknown) =>
+  safeHandle("stickers.delete", async (_event, input: unknown) =>
     libraryService.deleteAsset(deleteAssetSchema.parse(input)),
   );
-  safeHandle("assets.deleteMany", async (_event, input: unknown) =>
+  safeHandle("stickers.deleteMany", async (_event, input: unknown) =>
     libraryService.deleteManyAssets(deleteManyAssetsSchema.parse(input)),
   );
 
-  safeHandle("outputs.list", async (_event, input: unknown) =>
-    libraryService.listOutputs(listOutputsSchema.parse(input).packId),
-  );
-  safeHandle("outputs.revealInFolder", async (_event, input: unknown) =>
+  safeHandle("stickers.revealInFolder", async (_event, input: unknown) =>
     shellService.revealOutput(revealOutputSchema.parse(input)),
   );
-  safeHandle("outputs.exportFolder", async (event, input: unknown) => {
+  safeHandle("stickers.exportFolder", async (event, input: unknown) => {
     const payload = exportOutputFolderSchema.parse(input);
     const ownerWindow =
       BrowserWindow.fromWebContents(event.sender) ?? undefined;
@@ -250,14 +248,7 @@ export function registerIpc() {
     });
   });
 
-  safeHandle(
-    "conversion.convertPack",
-    async (_event, input: { packId: string }) =>
-      converterService.convertPack(input.packId),
-  );
-  safeHandle(
-    "conversion.convertSelection",
-    async (_event, input: unknown) =>
-      converterService.convertSelection(convertSelectionSchema.parse(input)),
+  safeHandle("conversion.convertSelection", async (_event, input: unknown) =>
+    converterService.convertSelection(convertSelectionSchema.parse(input)),
   );
 }

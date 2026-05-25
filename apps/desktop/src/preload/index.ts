@@ -31,7 +31,8 @@ const stickerSmith: StickerSmithApi = {
     getConfig: () => ipcRenderer.invoke("settings.getConfig"),
   },
   telegram: {
-    getState: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.getState"),
+    getState: (): Promise<TelegramState> =>
+      ipcRenderer.invoke("telegram.getState"),
     submitTdlibParameters: (
       input: SetTelegramTdlibParametersInput,
     ): Promise<TelegramState> =>
@@ -48,7 +49,8 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("telegram.submitPassword", input),
     logout: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.logout"),
     reset: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.reset"),
-    syncOwnedPacks: (): Promise<void> => ipcRenderer.invoke("telegram.syncOwnedPacks"),
+    syncOwnedPacks: (): Promise<void> =>
+      ipcRenderer.invoke("telegram.syncOwnedPacks"),
     downloadPackMedia: (input: { packId: string }): Promise<void> =>
       ipcRenderer.invoke("telegram.downloadPackMedia", input),
     publishLocalPack: (input: PublishLocalPackInput): Promise<void> =>
@@ -78,8 +80,6 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("packs.delete", input),
     get: (packId: string): Promise<StickerPackDetails> =>
       ipcRenderer.invoke("packs.get", { packId }),
-    revealSourceFolder: (input: { packId: string }): Promise<void> =>
-      ipcRenderer.invoke("packs.revealSourceFolder", input),
     setTelegramShortName: (
       input: SetPackTelegramShortNameInput,
     ): Promise<StickerPack> =>
@@ -88,49 +88,46 @@ const stickerSmith: StickerSmithApi = {
       packId: string;
       assetId: string | null;
     }): Promise<StickerPack> => ipcRenderer.invoke("packs.setIcon", input),
-    chooseIcon: (input: { packId: string }): Promise<StickerPackDetails | null> =>
+    chooseIcon: (input: {
+      packId: string;
+    }): Promise<StickerPackDetails | null> =>
       ipcRenderer.invoke("packs.chooseIcon", input),
   },
-  assets: {
+  stickers: {
     importFiles: (input: {
       packId: string;
       filePaths?: string[];
     }): Promise<ImportResult> =>
-      ipcRenderer.invoke("assets.importFiles", input),
+      ipcRenderer.invoke("stickers.importFiles", input),
     importDirectory: (input: {
       packId: string;
       directoryPath?: string;
     }): Promise<ImportResult> =>
-      ipcRenderer.invoke("assets.importDirectory", input),
+      ipcRenderer.invoke("stickers.importDirectory", input),
     setEmojis: (input: SetAssetEmojisInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.setEmojis", input),
+      ipcRenderer.invoke("stickers.setEmojis", input),
     setEmojisMany: (
       input: SetManyAssetEmojisInput,
     ): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.setEmojisMany", input),
+      ipcRenderer.invoke("stickers.setEmojisMany", input),
     reorder: (input: ReorderAssetInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.reorder", input),
+      ipcRenderer.invoke("stickers.reorder", input),
     rename: (input: RenameAssetInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.rename", input),
+      ipcRenderer.invoke("stickers.rename", input),
     renameMany: (input: RenameManyAssetsInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.renameMany", input),
+      ipcRenderer.invoke("stickers.renameMany", input),
     move: (input: MoveAssetInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.move", input),
+      ipcRenderer.invoke("stickers.move", input),
     delete: (input: DeleteAssetInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.delete", input),
+      ipcRenderer.invoke("stickers.delete", input),
     deleteMany: (input: DeleteManyAssetsInput): Promise<StickerPackDetails> =>
-      ipcRenderer.invoke("assets.deleteMany", input),
-  },
-  outputs: {
-    list: (packId: string) => ipcRenderer.invoke("outputs.list", { packId }),
+      ipcRenderer.invoke("stickers.deleteMany", input),
     revealInFolder: (input: { packId: string; relativePath?: string }) =>
-      ipcRenderer.invoke("outputs.revealInFolder", input),
+      ipcRenderer.invoke("stickers.revealInFolder", input),
     exportFolder: (input: { packId: string }) =>
-      ipcRenderer.invoke("outputs.exportFolder", input),
+      ipcRenderer.invoke("stickers.exportFolder", input),
   },
   conversion: {
-    convertPack: (input: { packId: string }) =>
-      ipcRenderer.invoke("conversion.convertPack", input),
     convertSelection: (input: ConvertSelectionInput) =>
       ipcRenderer.invoke("conversion.convertSelection", input),
     subscribe: (listener: (event: ConversionJobEvent) => void) => {

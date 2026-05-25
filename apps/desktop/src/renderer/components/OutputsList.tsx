@@ -56,14 +56,18 @@ export function OutputsList({
   refreshDetails,
 }: Props) {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
-  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(
+    null,
+  );
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
     assetIds: string[];
     primaryAssetId: string;
   } | null>(null);
-  const [emojiEditAssetIds, setEmojiEditAssetIds] = useState<string[] | null>(null);
+  const [emojiEditAssetIds, setEmojiEditAssetIds] = useState<string[] | null>(
+    null,
+  );
 
   const sortedOutputs = useMemo(
     () =>
@@ -83,7 +87,10 @@ export function OutputsList({
   const selectableAssetIds = useMemo(
     () =>
       sortedOutputs
-        .filter((output) => output.mode === "sticker" && assetById.has(output.sourceAssetId))
+        .filter(
+          (output) =>
+            output.mode === "sticker" && assetById.has(output.sourceAssetId),
+        )
         .map((output) => output.sourceAssetId),
     [assetById, sortedOutputs],
   );
@@ -208,13 +215,13 @@ export function OutputsList({
       }
 
       if (emojiEditAssetIds.length === 1) {
-        await window.stickerSmith.assets.setEmojis({
+        await window.stickerSmith.stickers.setEmojis({
           packId,
           assetId: emojiEditAssetIds[0]!,
           emojis,
         });
       } else {
-        await window.stickerSmith.assets.setEmojisMany({
+        await window.stickerSmith.stickers.setEmojisMany({
           packId,
           assetIds: emojiEditAssetIds,
           emojis,
@@ -293,37 +300,48 @@ export function OutputsList({
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{ px: 2.5, py: 3, fontSize: appTokens.typography.fontSizes.bodyDefault }}
+            sx={{
+              px: 2.5,
+              py: 3,
+              fontSize: appTokens.typography.fontSizes.bodyDefault,
+            }}
           >
             {appTokens.copy.emptyStates.noAssets}
           </Typography>
         ) : (
-          <Box sx={view === "list" ? browserListContainerSx : browserGridContainerSx}>
+          <Box
+            sx={
+              view === "list" ? browserListContainerSx : browserGridContainerSx
+            }
+          >
             {sortedOutputs.map((out) => {
-            const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
-            const selectable = out.mode === "sticker" && sourceAsset !== null;
+              const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
+              const selectable = out.mode === "sticker" && sourceAsset !== null;
 
-            return renderBrowserItem(view, {
-              key: out.relativePath,
-              title: buildOutputTitle(out, sourceAsset),
-              label: formatOutputLabel(out),
-              isPinned: out.mode === "icon",
-              selected: selectable && selectedAssetIds.includes(out.sourceAssetId),
-              onClick: selectable ? (event) => handleOutputClick(event, out) : undefined,
-              onDoubleClick:
-                selectable
+              return renderBrowserItem(view, {
+                key: out.relativePath,
+                title: buildOutputTitle(out, sourceAsset),
+                label: formatOutputLabel(out),
+                isPinned: out.mode === "icon",
+                selected:
+                  selectable && selectedAssetIds.includes(out.sourceAssetId),
+                onClick: selectable
+                  ? (event) => handleOutputClick(event, out)
+                  : undefined,
+                onDoubleClick: selectable
                   ? (event) => handleOutputDoubleClick(event, out)
                   : undefined,
-              onContextMenu:
-                selectable ? (event) => handleContextMenu(event, out) : undefined,
-              preview: (
-                <FilePreview
-                  absolutePath={out.absolutePath}
-                  relativePath={out.relativePath}
-                />
-              ),
-              metadata: buildOutputMetadata(out, sourceAsset),
-            });
+                onContextMenu: selectable
+                  ? (event) => handleContextMenu(event, out)
+                  : undefined,
+                preview: (
+                  <FilePreview
+                    absolutePath={out.absolutePath}
+                    relativePath={out.relativePath}
+                  />
+                ),
+                metadata: buildOutputMetadata(out, sourceAsset),
+              });
             })}
           </Box>
         )}

@@ -50,7 +50,9 @@ function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
   };
 }
 
-function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPackDetails {
+function createDetails(
+  overrides: Partial<StickerPackDetails> = {},
+): StickerPackDetails {
   return {
     pack: createPack(),
     assets: [
@@ -89,7 +91,9 @@ function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPack
 function createBridge(options: {
   packs?: StickerPack[];
   details?: StickerPackDetails;
-  onConversionSubscribe?: (listener: (event: ConversionJobEvent) => void) => void;
+  onConversionSubscribe?: (
+    listener: (event: ConversionJobEvent) => void,
+  ) => void;
   onTelegramSubscribe?: (listener: (event: TelegramEvent) => void) => void;
 }) {
   const packs = options.packs ?? [createPack()];
@@ -121,9 +125,8 @@ function createBridge(options: {
       rename: vi.fn(),
       delete: vi.fn(),
       setIcon: vi.fn(),
-      revealSourceFolder: vi.fn(),
     },
-    assets: {
+    stickers: {
       importFiles: vi.fn(),
       importDirectory: vi.fn(),
       delete: vi.fn(),
@@ -132,17 +135,15 @@ function createBridge(options: {
       renameMany: vi.fn(),
       setEmojis: vi.fn(),
       setEmojisMany: vi.fn(),
+      revealInFolder: vi.fn(),
+      exportFolder: vi.fn(),
     },
     conversion: {
       subscribe: vi.fn((listener: (event: ConversionJobEvent) => void) => {
         options.onConversionSubscribe?.(listener);
         return () => undefined;
       }),
-      convertPack: vi.fn(async () => details),
-    },
-    outputs: {
-      revealInFolder: vi.fn(),
-      exportFolder: vi.fn(),
+      convertSelection: vi.fn(async () => details),
     },
     settings: {},
   };
@@ -230,9 +231,9 @@ describe("desktop app state", () => {
     expect(container.firstElementChild?.getAttribute("data-event-count")).toBe(
       "50",
     );
-    expect(container.firstElementChild?.getAttribute("data-failure-count")).toBe(
-      "1",
-    );
+    expect(
+      container.firstElementChild?.getAttribute("data-failure-count"),
+    ).toBe("1");
     expect(container.textContent).toContain(
       "One or more files failed while stickers were being added.",
     );
@@ -290,7 +291,9 @@ describe("desktop app state", () => {
       await flushEffects();
     });
 
-    expect(document.body.textContent).toContain("Some files could not be added");
+    expect(document.body.textContent).toContain(
+      "Some files could not be added",
+    );
     expect(document.body.textContent).toContain(
       'Sticker Smith tried to add files to "Cats", but 1 file failed.',
     );
