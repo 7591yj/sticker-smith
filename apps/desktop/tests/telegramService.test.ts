@@ -1050,7 +1050,7 @@ describe("TelegramService", () => {
     expect(await secretsService.getSecret("default", "api_hash")).toBeNull();
   });
 
-  it("rejects telegram publish when a sticker output file is missing", async () => {
+  it("rejects telegram publish when a sticker file is missing", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1075,7 +1075,7 @@ describe("TelegramService", () => {
         title: "Upload Pack",
         shortName: "upload_pack",
       }),
-    ).rejects.toThrow(/Sticker output for .* is missing/);
+    ).rejects.toThrow(/Sticker file for .* is missing/);
   });
 
   it("publishes a local pack when the icon asset has no sticker emoji metadata", async () => {
@@ -1111,7 +1111,7 @@ describe("TelegramService", () => {
     expect(packs[0]?.id).toBe(pack.id);
   });
 
-  it("rejects telegram publish when the selected icon has no icon output", async () => {
+  it("rejects telegram publish when the selected icon file is missing", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1143,7 +1143,7 @@ describe("TelegramService", () => {
         shortName: "upload_pack",
       }),
     ).rejects.toThrow(
-      "The selected icon asset must have a current icon output before Telegram upload.",
+      "The selected icon file is missing. Choose the icon again before Telegram upload.",
     );
   });
 
@@ -1208,7 +1208,7 @@ describe("TelegramService", () => {
         title: "Upload Pack",
         shortName: "upload_pack",
       }),
-    ).rejects.toThrow("The pack needs at least one sticker asset before upload.");
+    ).rejects.toThrow("The pack needs at least one sticker before upload.");
   });
 
   it("recovers a published telegram mirror when a later publish step fails", async () => {
@@ -1746,13 +1746,13 @@ describe("TelegramService", () => {
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
     ).rejects.toThrow(
-      "Every sticker asset must have at least one emoji before update.",
+      "Every sticker must have at least one emoji before update.",
     );
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      "Every sticker asset must have at least one emoji before update.",
+      "Every sticker must have at least one emoji before update.",
     );
   });
 
@@ -1791,7 +1791,7 @@ describe("TelegramService", () => {
     );
   });
 
-  it("rejects telegram mirror updates when a changed sticker output file is missing", async () => {
+  it("rejects telegram mirror updates when a changed sticker file is missing", async () => {
     const { root, downloadRoot, libraryService, telegramService } =
       await createTelegramService();
     cleanup.push(root, downloadRoot);
@@ -1820,12 +1820,12 @@ describe("TelegramService", () => {
 
     await expect(
       telegramService.updateTelegramPack({ packId: mirrorPack!.id }),
-    ).rejects.toThrow(`Sticker output for ${details.assets[0]!.relativePath} is missing`);
+    ).rejects.toThrow(`Sticker file for ${details.assets[0]!.relativePath} is missing`);
 
     const updated = await libraryService.getPack(mirrorPack!.id);
     expect(updated.pack.telegram?.syncState).toBe("error");
     expect(updated.pack.telegram?.lastSyncError).toContain(
-      `Sticker output for ${details.assets[0]!.relativePath} is missing`,
+      `Sticker file for ${details.assets[0]!.relativePath} is missing`,
     );
   });
 

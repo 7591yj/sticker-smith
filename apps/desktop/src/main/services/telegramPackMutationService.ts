@@ -48,7 +48,7 @@ export class TelegramPackMutationService {
           stickers: this.getStickerAssets(details).map((asset) => {
             const output = findStickerOutput(details.outputs, asset.id);
             if (!output) {
-              throw new Error(`Missing sticker output for ${asset.relativePath}.`);
+              throw new Error(`Sticker file for ${asset.relativePath} is missing.`);
             }
 
             return {
@@ -63,7 +63,7 @@ export class TelegramPackMutationService {
       if (iconOutput) {
         await this.ensureOutputFileExists(
           iconOutput.absolutePath,
-          `Icon output for ${details.pack.name}`,
+          `Icon file for ${details.pack.name}`,
         );
         await this.options.auth.tdlibService.setStickerSetThumbnail({
           shortName: input.shortName,
@@ -390,7 +390,7 @@ export class TelegramPackMutationService {
     const stickerAssets = this.getStickerAssets(details);
     const stickerAssetIds = new Set(stickerAssets.map((asset) => asset.id));
     const stickerOutputs = this.getStickerOutputs(details);
-    const mismatchMessage = `Pack outputs do not match the current assets. Run Convert before Telegram ${options.operation}.`;
+    const mismatchMessage = `Pack stickers are out of sync. Refresh the pack or add the missing stickers again before Telegram ${options.operation}.`;
 
     if (stickerOutputs.some((output) => !stickerAssetIds.has(output.sourceAssetId))) {
       throw new Error(mismatchMessage);
@@ -403,12 +403,12 @@ export class TelegramPackMutationService {
       if (matchingOutputs.length === 0) {
         if (options.operation === "upload") {
           throw new Error(
-            `Every sticker asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
+            `Sticker file for ${asset.relativePath} is missing. Add the sticker again before Telegram upload.`,
           );
         }
 
         throw new Error(
-          `Sticker output for ${asset.relativePath} is missing. Run Convert before Telegram update.`,
+          `Sticker file for ${asset.relativePath} is missing. Add the sticker again before Telegram update.`,
         );
       }
       if (matchingOutputs.length > 1) {
@@ -426,7 +426,7 @@ export class TelegramPackMutationService {
       }
     } else if (options.requireIconOutput && details.pack.iconAssetId !== null) {
       throw new Error(
-        `The selected icon asset must have a current icon output before Telegram ${options.operation}.`,
+        `The selected icon file is missing. Choose the icon again before Telegram ${options.operation}.`,
       );
     }
   }
@@ -443,7 +443,7 @@ export class TelegramPackMutationService {
   ) {
     if (asset.emojiList.length === 0) {
       throw new Error(
-        `Every sticker asset must have at least one emoji before ${context}. Missing emoji for ${asset.relativePath}.`,
+        `Every sticker must have at least one emoji before ${context}. Missing emoji for ${asset.relativePath}.`,
       );
     }
   }
@@ -456,7 +456,7 @@ export class TelegramPackMutationService {
       throw new Error("Only local packs can be uploaded to Telegram.");
     }
     if (stickerAssets.length === 0) {
-      throw new Error("The pack needs at least one sticker asset before upload.");
+      throw new Error("The pack needs at least one sticker before upload.");
     }
 
     await this.validateTelegramPackOutputs(details, {
@@ -468,12 +468,12 @@ export class TelegramPackMutationService {
       const output = findStickerOutput(details.outputs, asset.id);
       if (!output) {
         throw new Error(
-          `Every sticker asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
+          `Sticker file for ${asset.relativePath} is missing. Add the sticker again before Telegram upload.`,
         );
       }
       await this.ensureOutputFileExists(
         output.absolutePath,
-        `Sticker output for ${asset.relativePath}`,
+        `Sticker file for ${asset.relativePath}`,
       );
       this.assertAssetHasEmojis(asset, "upload");
     }
@@ -587,12 +587,12 @@ export class TelegramPackMutationService {
 
         if (!output) {
           throw new Error(
-            `Added Telegram mirror asset ${asset.relativePath} is missing a sticker output.`,
+            `Sticker file for ${asset.relativePath} is missing. Add the sticker again before Telegram update.`,
           );
         }
         await this.ensureOutputFileExists(
           output.absolutePath,
-          `Sticker output for ${asset.relativePath}`,
+          `Sticker file for ${asset.relativePath}`,
         );
 
         await this.options.auth.tdlibService.addStickerToSet({
@@ -613,7 +613,7 @@ export class TelegramPackMutationService {
       if (output) {
         await this.ensureOutputFileExists(
           output.absolutePath,
-          `Sticker output for ${asset.relativePath}`,
+          `Sticker file for ${asset.relativePath}`,
         );
       }
 
@@ -670,7 +670,7 @@ export class TelegramPackMutationService {
     if (iconOutput) {
       await this.ensureOutputFileExists(
         iconOutput.absolutePath,
-        `Icon output for ${input.details.pack.name}`,
+        `Icon file for ${input.details.pack.name}`,
       );
       await this.options.auth.tdlibService.setStickerSetThumbnail({
         shortName: input.telegramShortName,

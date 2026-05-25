@@ -234,7 +234,7 @@ describe("desktop app state", () => {
       "1",
     );
     expect(container.textContent).toContain(
-      "One or more assets failed while the conversion ran in the background.",
+      "One or more files failed while stickers were being added.",
     );
 
     await act(async () => {
@@ -242,7 +242,7 @@ describe("desktop app state", () => {
     });
   });
 
-  it("shows conversion progress and a failure dialog with leaf asset names", async () => {
+  it("shows conversion progress and a failure dialog with leaf file names", async () => {
     let conversionListener: ((event: ConversionJobEvent) => void) | null = null;
 
     Object.assign(window, {
@@ -271,7 +271,7 @@ describe("desktop app state", () => {
       await flushEffects();
     });
 
-    expect(document.body.textContent).toContain("Converting 2 assets");
+    expect(document.body.textContent).toContain("Converting 2 files");
 
     await act(async () => {
       conversionListener?.({
@@ -290,9 +290,9 @@ describe("desktop app state", () => {
       await flushEffects();
     });
 
-    expect(document.body.textContent).toContain("Conversion failed");
+    expect(document.body.textContent).toContain("Some files could not be added");
     expect(document.body.textContent).toContain(
-      'Sticker Smith finished converting "Cats" in the background, but 1 asset failed.',
+      'Sticker Smith tried to add files to "Cats", but 1 file failed.',
     );
     expect(document.body.textContent).toContain("cat.png");
     expect(document.body.textContent).toContain("ffmpeg crashed");

@@ -26,7 +26,7 @@ function createDetails(): StickerPackDetails {
 }
 
 describe("PackPanel", () => {
-  it("renders the outputs export action", () => {
+  it("renders the sticker folder and export actions", () => {
     const markup = renderToStaticMarkup(
       <PackPanel
         details={createDetails()}
@@ -44,8 +44,7 @@ describe("PackPanel", () => {
       />,
     );
 
-    expect(markup).toContain("Open Assets");
-    expect(markup).toContain("Open Outputs");
+    expect(markup).toContain("Open Folder");
     expect(markup).toContain("Export");
     expect(markup).toContain("Upload");
     expect(markup).toContain('aria-label="Delete pack"');
@@ -191,8 +190,7 @@ describe("PackPanel", () => {
     );
 
     expect(markup).toContain("Syncing");
-    expect(markup).toContain("Telegram media downloading");
-    expect(markup).toContain("downloading");
+    expect(markup).toContain("Telegram is already syncing this mirror");
   });
 
   it("renders unsupported non-video telegram mirrors as disabled", () => {

@@ -12,7 +12,7 @@ function createFallbackFailure(
         {
           assetLabel: "Conversion job",
           error:
-            "One or more assets failed while the conversion ran in the background.",
+            "One or more files failed while stickers were being added.",
         },
       ];
 }
@@ -65,7 +65,7 @@ export function useConversionState({
     const assetLabel =
       (event.assetId ? jobAssetNamesRef.current[event.jobId]?.[event.assetId] : null) ??
       event.assetId ??
-      "Unknown asset";
+      "Unknown file";
 
     jobFailuresRef.current[event.jobId] = [
       ...(jobFailuresRef.current[event.jobId] ?? []),
