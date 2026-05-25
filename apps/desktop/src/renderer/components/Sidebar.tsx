@@ -569,7 +569,7 @@ export function Sidebar({
         </MenuItem>
         <MenuItem onClick={handleOpenOutputs} dense>
           <FolderOpenIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.openOutputs}
+          {appTokens.copy.actions.openFolder}
         </MenuItem>
         <MenuItem onClick={handleExportOutputs} dense>
           <IosShareIcon sx={browserMenuIconSx} />

@@ -24,7 +24,7 @@ export function ConversionStatus({ events, converting }: Props) {
   const latest = events[0];
   let statusText: string | null = null;
   if (latest?.type === "job_started") {
-    statusText = `Converting ${totalCount} asset${totalCount !== 1 ? "s" : ""}…`;
+    statusText = `Converting ${totalCount} file${totalCount !== 1 ? "s" : ""}…`;
   } else if (latest?.type === "asset_started") {
     statusText = `${completedCount + 1} / ${totalCount}`;
   } else if (
@@ -33,7 +33,7 @@ export function ConversionStatus({ events, converting }: Props) {
   ) {
     statusText = `${completedCount + failedCount} / ${totalCount}`;
   } else if (latest?.type === "job_finished") {
-    statusText = `Done ・ ${latest.successCount ?? 0} converted${failedCount > 0 ? `, ${failedCount} failed` : ""}`;
+    statusText = `Done ・ ${latest.successCount ?? 0} sticker${latest.successCount === 1 ? "" : "s"} added${failedCount > 0 ? `, ${failedCount} failed` : ""}`;
   } else if (converting) {
     statusText = appTokens.copy.status.starting;
   }

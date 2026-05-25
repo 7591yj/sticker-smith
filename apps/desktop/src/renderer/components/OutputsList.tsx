@@ -25,6 +25,7 @@ import {
   formatCountLabel,
 } from "./browserStyles";
 import {
+  BrowserViewToggle,
   type BrowserView,
   FilePreview,
   sortItemsWithPinnedFirst,
@@ -42,6 +43,7 @@ interface Props {
   outputs: OutputArtifact[];
   assets: SourceAsset[];
   view: BrowserView;
+  onViewChange: (view: BrowserView) => void;
   refreshDetails: () => Promise<StickerPackDetails>;
 }
 
@@ -50,6 +52,7 @@ export function OutputsList({
   outputs,
   assets,
   view,
+  onViewChange,
   refreshDetails,
 }: Props) {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
@@ -241,8 +244,8 @@ export function OutputsList({
           sx={browserCountLabelSx}
         >
           {selectedAssetIds.length > 0
-            ? formatCountLabel(selectedAssetIds.length, "selected output")
-            : formatCountLabel(sortedOutputs.length, "output")}
+            ? formatCountLabel(selectedAssetIds.length, "selected sticker")
+            : formatCountLabel(sortedOutputs.length, "sticker")}
         </Typography>
         <Button
           size="small"
@@ -272,11 +275,28 @@ export function OutputsList({
             {appTokens.copy.actions.editEmojis}
           </Button>
         ) : null}
+        <Box sx={{ ml: "auto" }}>
+          <BrowserViewToggle
+            compact
+            ariaLabel={`${appTokens.copy.labels.stickers} view`}
+            view={view}
+            onChange={onViewChange}
+          />
+        </Box>
       </Box>
 
       <Box sx={{ pb: 2.5 }}>
-        <Box sx={view === "list" ? browserListContainerSx : browserGridContainerSx}>
-          {sortedOutputs.map((out) => {
+        {sortedOutputs.length === 0 ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ px: 2.5, py: 3, fontSize: appTokens.typography.fontSizes.bodyDefault }}
+          >
+            {appTokens.copy.emptyStates.noAssets}
+          </Typography>
+        ) : (
+          <Box sx={view === "list" ? browserListContainerSx : browserGridContainerSx}>
+            {sortedOutputs.map((out) => {
             const sourceAsset = assetById.get(out.sourceAssetId) ?? null;
             const selectable = out.mode === "sticker" && sourceAsset !== null;
 
@@ -301,8 +321,9 @@ export function OutputsList({
               ),
               metadata: buildOutputMetadata(out, sourceAsset),
             });
-          })}
-        </Box>
+            })}
+          </Box>
+        )}
       </Box>
 
       <Menu
@@ -322,7 +343,7 @@ export function OutputsList({
           <MenuItem disabled dense sx={browserMenuTitleSx}>
             {contextAssets.length === 1
               ? formatOrderLabel(contextAssets[0]!.order)
-              : formatCountLabel(contextAssets.length, "selected output")}
+              : formatCountLabel(contextAssets.length, "selected sticker")}
           </MenuItem>
         ) : null}
         <Divider />
