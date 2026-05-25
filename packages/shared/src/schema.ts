@@ -45,6 +45,34 @@ export const importConversionTaskSchema = z.object({
   outputPath: z.string().min(1).regex(/\.webm$/i),
 });
 
+export const downloadStateSchema = z.enum([
+  "missing",
+  "queued",
+  "downloading",
+  "ready",
+  "failed",
+]);
+
+export const telegramStickerMetadataSchema = z.object({
+  stickerId: z.string().min(1),
+  fileId: z.string().nullable(),
+  fileUniqueId: z.string().nullable(),
+  position: z.number().int().nonnegative(),
+  baselineStickerHash: z.string().min(1).nullable(),
+}).strict();
+
+export const telegramPackSummarySchema = z.object({
+  stickerSetId: z.string().min(1),
+  shortName: z.string(),
+  title: z.string(),
+  format: z.enum(["video", "static", "animated", "mixed", "unknown"]),
+  thumbnailPath: z.string().nullable().optional(),
+  syncState: z.enum(["idle", "syncing", "stale", "error", "unsupported"]),
+  lastSyncedAt: z.string().nullable(),
+  lastSyncError: z.string().nullable(),
+  publishedFromLocalPackId: z.string().nullable(),
+}).strict();
+
 export const stickerItemSchema = z.object({
   id: stickerIdSchema,
   packId: packIdSchema,
@@ -56,7 +84,9 @@ export const stickerItemSchema = z.object({
   sha256: z.string().min(1).nullable(),
   importedAt: z.string().min(1),
   updatedAt: z.string().min(1),
-});
+  downloadState: downloadStateSchema.optional(),
+  telegram: telegramStickerMetadataSchema.optional(),
+}).strict();
 
 export const stickerPackRecordSchema = z.object({
   schemaVersion: z.literal(4),
@@ -66,10 +96,11 @@ export const stickerPackRecordSchema = z.object({
   slug: z.string().min(1),
   iconStickerId: stickerIdSchema.nullable(),
   telegramShortName: z.string().nullable().optional(),
+  telegram: telegramPackSummarySchema.optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   stickers: z.array(stickerItemSchema),
-});
+}).strict();
 
 export const conversionJobRequestSchema = z.object({
   jobId: z.string().min(1),

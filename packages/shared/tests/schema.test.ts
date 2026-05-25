@@ -182,11 +182,11 @@ describe("shared schemas", () => {
     ).toBeNull();
   });
 
-  it("validates asset reorder inputs", () => {
+  it("validates sticker reorder inputs", () => {
     expect(
       reorderStickerSchema.parse({
         packId: "pack-1",
-        stickerId: "asset-1",
+        stickerId: "sticker-1",
         beforeStickerId: null,
       }).beforeStickerId,
     ).toBeNull();

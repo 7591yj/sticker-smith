@@ -3,14 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  PackSource,
   StickerPack,
   StickerPackDetails,
   StickerPackRecord,
 } from "@sticker-smith/shared";
+import { stickerPackRecordSchema } from "@sticker-smith/shared";
 
 import type { SettingsService } from "./settingsService";
-import { normalizePackRecord, sortPackRecord } from "./packNormalizer";
+import { sortPackRecord } from "./packNormalizer";
 import { pathExists } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
 
@@ -95,13 +95,13 @@ export class PackRepository {
     const backupFilePath = `${packFilePath}.bak`;
     try {
       const raw = await fs.readFile(packFilePath, "utf8");
-      return normalizePackRecord(JSON.parse(raw) as Partial<StickerPackRecord> & { source?: PackSource });
+      return stickerPackRecordSchema.parse(JSON.parse(raw));
     } catch (error) {
       if (!isJsonParseError(error) || !(await pathExists(backupFilePath))) {
         throw error;
       }
       const raw = await fs.readFile(backupFilePath, "utf8");
-      const record = normalizePackRecord(JSON.parse(raw) as Partial<StickerPackRecord> & { source?: PackSource });
+      const record = stickerPackRecordSchema.parse(JSON.parse(raw));
       await this.writePackRecord(rootPath, record);
       return record;
     }
