@@ -1,6 +1,6 @@
 import type {
   ConversionJobEvent,
-  ConvertSelectionInput,
+  ConvertInput,
   DeleteAssetInput,
   DeleteManyAssetsInput,
   ImportResult,
@@ -92,8 +92,8 @@ export interface StickerSmithApi {
     exportFolder: (input: { packId: string }) => Promise<string | null>;
   };
   conversion: {
-    convertSelection: (
-      input: ConvertSelectionInput,
+    convert: (
+      input: ConvertInput,
     ) => Promise<StickerPackDetails>;
     subscribe: (listener: (event: ConversionJobEvent) => void) => () => void;
   };

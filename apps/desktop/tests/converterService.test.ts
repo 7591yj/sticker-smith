@@ -278,7 +278,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -352,7 +355,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -418,7 +424,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     const payload = `${JSON.stringify(
       createEvent("asset-1", getExpectedStickerOutputPath(details, "asset-1")),
@@ -464,7 +473,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -508,7 +520,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -551,7 +566,10 @@ describe("ConverterService", () => {
     });
 
     const wrongOutputPath = path.join(details.pack.outputRoot, "stale-name.webm");
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -595,7 +613,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     child.stdout.emit(
       "data",
@@ -636,7 +657,10 @@ describe("ConverterService", () => {
       env: process.env,
     });
 
-    const conversion = service.convertPack(details.pack.id);
+    const conversion = service.convert({
+      packId: details.pack.id,
+      assetIds: details.assets.map((asset) => asset.id),
+    });
     await waitForSpawn();
     const stdinEnd = child.stdin.end as unknown as { mock: { calls: unknown[][] } };
     const request = JSON.parse(

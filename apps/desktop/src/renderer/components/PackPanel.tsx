@@ -115,7 +115,7 @@ export function PackPanel({
         return;
       }
 
-      const next = await window.stickerSmith.conversion.convertSelection({
+      const next = await window.stickerSmith.conversion.convert({
         packId: currentPackId,
         assetIds,
       });

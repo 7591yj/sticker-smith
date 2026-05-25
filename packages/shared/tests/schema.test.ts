@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  convertSelectionSchema,
+  convertSchema,
   createPackSchema,
   conversionJobEventSchema,
   conversionJobRequestSchema,
@@ -70,9 +70,9 @@ describe("shared schemas", () => {
     ).toThrow();
   });
 
-  it("rejects empty conversion selections", () => {
+  it("rejects empty conversion inputs", () => {
     expect(() =>
-      convertSelectionSchema.parse({ packId: "pack-1", assetIds: [] }),
+      convertSchema.parse({ packId: "pack-1", assetIds: [] }),
     ).toThrow();
   });
 

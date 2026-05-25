@@ -363,7 +363,7 @@ export interface DeleteManyAssetsInput {
   assetIds: AssetId[];
 }
 
-export interface ConvertSelectionInput {
+export interface ConvertInput {
   packId: PackId;
   assetIds: AssetId[];
 }

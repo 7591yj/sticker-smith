@@ -192,7 +192,7 @@ export const deleteManyAssetsSchema = z.object({
   assetIds: z.array(assetIdSchema).min(1),
 });
 
-export const convertSelectionSchema = z.object({
+export const convertSchema = z.object({
   packId: packIdSchema,
   assetIds: z.array(assetIdSchema).min(1),
 });

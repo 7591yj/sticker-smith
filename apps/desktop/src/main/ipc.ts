@@ -3,7 +3,7 @@ import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import path from "node:path";
 
 import {
-  convertSelectionSchema,
+  convertSchema,
   createPackSchema,
   deleteAssetSchema,
   deleteManyAssetsSchema,
@@ -161,7 +161,7 @@ export function registerIpc() {
       packId: payload.packId,
       assetId: asset.id,
     });
-    return converterService.convertSelection({
+    return converterService.convert({
       packId: payload.packId,
       assetIds: [asset.id],
     });
@@ -248,7 +248,7 @@ export function registerIpc() {
     });
   });
 
-  safeHandle("conversion.convertSelection", async (_event, input: unknown) =>
-    converterService.convertSelection(convertSelectionSchema.parse(input)),
+  safeHandle("conversion.convert", async (_event, input: unknown) =>
+    converterService.convert(convertSchema.parse(input)),
   );
 }

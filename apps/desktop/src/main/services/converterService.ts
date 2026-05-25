@@ -574,17 +574,7 @@ export class ConverterService {
     });
   }
 
-  async convertPack(packId: string): Promise<StickerPackDetails | null> {
-    const details = await this.libraryService.getConversionContext(packId);
-    await this.runJob(
-      packId,
-      details.pack.outputRoot,
-      this.buildTasks(details),
-    );
-    return this.libraryService.getPack(packId);
-  }
-
-  async convertSelection(input: { packId: string; assetIds: string[] }): Promise<StickerPackDetails | null> {
+  async convert(input: { packId: string; assetIds: string[] }): Promise<StickerPackDetails | null> {
     const details = await this.libraryService.getConversionContext(
       input.packId,
     );

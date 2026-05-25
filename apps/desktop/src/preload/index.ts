@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import type {
   ConversionJobEvent,
-  ConvertSelectionInput,
+  ConvertInput,
   DeleteAssetInput,
   DeleteManyAssetsInput,
   ImportResult,
@@ -128,8 +128,8 @@ const stickerSmith: StickerSmithApi = {
       ipcRenderer.invoke("stickers.exportFolder", input),
   },
   conversion: {
-    convertSelection: (input: ConvertSelectionInput) =>
-      ipcRenderer.invoke("conversion.convertSelection", input),
+    convert: (input: ConvertInput) =>
+      ipcRenderer.invoke("conversion.convert", input),
     subscribe: (listener: (event: ConversionJobEvent) => void) => {
       const wrapped = (_event: unknown, payload: ConversionJobEvent) => {
         listener(payload);

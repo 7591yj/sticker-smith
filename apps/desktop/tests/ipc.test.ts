@@ -45,7 +45,7 @@ const hoisted = vi.hoisted(() => {
   };
   const converterService = {
     setEventSink: vi.fn(),
-    convertSelection: vi.fn(),
+    convert: vi.fn(),
   };
   const telegramService = {
     subscribe: vi.fn(),

@@ -143,7 +143,7 @@ function createBridge(options: {
         options.onConversionSubscribe?.(listener);
         return () => undefined;
       }),
-      convertSelection: vi.fn(async () => details),
+      convert: vi.fn(async () => details),
     },
     settings: {},
   };
