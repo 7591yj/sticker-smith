@@ -147,9 +147,9 @@ async function migrateTelegramAssetFile(
     return;
   }
 
-  const { sourceRoot } = resolvePackPaths(rootPath);
-  const currentAbsolutePath = path.join(sourceRoot, currentRelativePath);
-  const nextAbsolutePath = path.join(sourceRoot, nextRelativePath);
+  const { outputRoot } = resolvePackPaths(rootPath);
+  const currentAbsolutePath = path.join(outputRoot, currentRelativePath);
+  const nextAbsolutePath = path.join(outputRoot, nextRelativePath);
   if (!(await pathExists(currentAbsolutePath))) {
     return;
   }
@@ -208,7 +208,7 @@ export class TelegramMirrorStore {
           );
 
           const localFileExists = await pathExists(
-            path.join(resolvePackPaths(rootPath).sourceRoot, relativePath),
+            path.join(resolvePackPaths(rootPath).outputRoot, relativePath),
           );
 
           return {
@@ -416,7 +416,7 @@ export class TelegramMirrorStore {
       return;
     }
 
-    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
+    const { outputRoot } = resolvePackPaths(rootPath);
     const remoteSignatures = new Set<string>();
     const duplicateAssetIds = new Set<AssetId>();
 
@@ -426,9 +426,9 @@ export class TelegramMirrorStore {
       }
 
       const output = findStickerOutput(record.outputs, asset.id);
-      const sourcePath = path.join(sourceRoot, asset.relativePath);
+      const outputPath = path.join(outputRoot, output?.relativePath ?? asset.relativePath);
       const sourceSha256 =
-        asset.telegram.baselineOutputHash ?? (await sha256ForFile(sourcePath));
+        asset.telegram.baselineOutputHash ?? output?.sha256 ?? (await sha256ForFile(outputPath));
 
       for (const signature of collectTelegramAssetSignatures({
         emojis: asset.emojiList,
@@ -484,7 +484,9 @@ export class TelegramMirrorStore {
         continue;
       }
 
-      await fs.rm(path.join(sourceRoot, asset.relativePath), { force: true });
+      if (!asset.originalImportPath) {
+        await fs.rm(path.join(outputRoot, asset.relativePath), { force: true });
+      }
     }
 
     for (const output of removedOutputs) {

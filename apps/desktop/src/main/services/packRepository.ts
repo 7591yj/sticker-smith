@@ -152,7 +152,9 @@ export function hydratePackDetails(
         .filter((asset) => !stickerIds.has(asset.id))
         .map((asset) => ({
           ...asset,
-          absolutePath: asset.originalImportPath,
+          absolutePath:
+            asset.originalImportPath ??
+            path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath),
         })),
     ],
     outputs: [

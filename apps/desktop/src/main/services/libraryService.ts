@@ -37,6 +37,33 @@ const supportedMediaKindsSet = new Set<SourceMediaKind>(supportedMediaKinds);
 type StickerAssetRecord = StickerPackRecord["assets"][number];
 type StickerOutputRecord = StickerPackRecord["outputs"][number];
 
+function assetSourcePath(rootPath: string, asset: StickerAssetRecord) {
+  return asset.originalImportPath ?? path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath);
+}
+
+async function removeLegacyCopiedSourceFileIfUnreferenced(
+  record: StickerPackRecord,
+  rootPath: string,
+  asset: StickerAssetRecord,
+) {
+  if (asset.originalImportPath) {
+    return;
+  }
+
+  if (
+    record.assets.some(
+      (candidate) =>
+        candidate.id !== asset.id &&
+        !candidate.originalImportPath &&
+        candidate.relativePath === asset.relativePath,
+    )
+  ) {
+    return;
+  }
+
+  await fs.rm(assetSourcePath(rootPath, asset), { force: true });
+}
+
 function slugify(value: string) {
   return (
     value
@@ -239,10 +266,7 @@ export class LibraryService {
     }
 
     const [asset] = record.assets.splice(assetIndex, 1);
-    await fs.rm(
-      path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath),
-      { force: true },
-    );
+    await removeLegacyCopiedSourceFileIfUnreferenced(record, rootPath, asset);
     await this.deleteOutputsForAsset(record, rootPath, asset.id);
 
     if (record.iconAssetId === asset.id) {
@@ -285,18 +309,23 @@ export class LibraryService {
     asset: StickerPackRecord["assets"][number],
     nextRelativePath: string,
   ) {
-    const { sourceRoot } = resolvePackPaths(rootPath);
     const resolvedRelativePath = this.resolveUniqueRelativePath(
       record,
       nextRelativePath,
       asset.id,
     );
-    const currentAbsolutePath = path.join(sourceRoot, asset.relativePath);
-    const nextAbsolutePath = path.join(sourceRoot, resolvedRelativePath);
 
-    await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-    if (await pathExists(currentAbsolutePath)) {
-      await fs.rename(currentAbsolutePath, nextAbsolutePath);
+    if (!asset.originalImportPath) {
+      const currentAbsolutePath = assetSourcePath(rootPath, asset);
+      const nextAbsolutePath = path.join(
+        resolvePackPaths(rootPath).sourceRoot,
+        resolvedRelativePath,
+      );
+
+      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+      if (await pathExists(currentAbsolutePath)) {
+        await fs.rename(currentAbsolutePath, nextAbsolutePath);
+      }
     }
 
     asset.relativePath = resolvedRelativePath;
@@ -575,14 +604,12 @@ export class LibraryService {
       });
 
       for (const stagedMove of stagedMoves) {
-        const currentAbsolutePath = path.join(
-          rootPath,
-          "source",
-          stagedMove.currentRelativePath,
-        );
+        if (stagedMove.asset.originalImportPath) {
+          continue;
+        }
+        const currentAbsolutePath = assetSourcePath(rootPath, stagedMove.asset);
         const tempAbsolutePath = path.join(
-          rootPath,
-          "source",
+          resolvePackPaths(rootPath).sourceRoot,
           stagedMove.tempRelativePath,
         );
         if (!(await pathExists(currentAbsolutePath))) {
@@ -593,19 +620,19 @@ export class LibraryService {
       }
 
       for (const stagedMove of stagedMoves) {
-        const tempAbsolutePath = path.join(
-          rootPath,
-          "source",
-          stagedMove.tempRelativePath,
-        );
-        const nextAbsolutePath = path.join(
-          rootPath,
-          "source",
-          stagedMove.nextRelativePath,
-        );
-        if (await pathExists(tempAbsolutePath)) {
-          await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-          await fs.rename(tempAbsolutePath, nextAbsolutePath);
+        if (!stagedMove.asset.originalImportPath) {
+          const tempAbsolutePath = path.join(
+            resolvePackPaths(rootPath).sourceRoot,
+            stagedMove.tempRelativePath,
+          );
+          const nextAbsolutePath = path.join(
+            resolvePackPaths(rootPath).sourceRoot,
+            stagedMove.nextRelativePath,
+          );
+          if (await pathExists(tempAbsolutePath)) {
+            await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
+            await fs.rename(tempAbsolutePath, nextAbsolutePath);
+          }
         }
         stagedMove.asset.relativePath = stagedMove.nextRelativePath;
       }

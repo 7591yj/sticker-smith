@@ -99,7 +99,7 @@ export class ShellService {
 
   async revealSourceFolder(input: { packId: string }) {
     const details = await this.libraryService.getPack(input.packId);
-    await this.revealFolder(details.pack.sourceRoot);
+    await this.revealFolder(details.pack.rootPath);
   }
 
   async exportOutputFolder(input: {
