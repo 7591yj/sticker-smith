@@ -389,7 +389,6 @@ export class TelegramPackMutationService {
   ) {
     const stickerStickers = this.getStickerStickers(details);
     const stickerStickerIds = new Set(stickerStickers.map((sticker) => sticker.id));
-    const stickerStickers = this.getStickerStickers(details);
     const mismatchMessage = `Pack stickers are out of sync. Refresh the pack or add the missing stickers again before Telegram ${options.operation}.`;
 
     if (stickerStickers.some((output) => !stickerStickerIds.has(output.stickerId))) {

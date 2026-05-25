@@ -276,9 +276,9 @@ describe("desktop app state", () => {
 
     await act(async () => {
       conversionListener?.({
-        type: "asset_failed",
+        type: "sticker_failed",
         jobId: "job-2",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         mode: "sticker",
         error: "ffmpeg crashed",
       });
@@ -297,7 +297,7 @@ describe("desktop app state", () => {
     expect(document.body.textContent).toContain(
       'Sticker Smith tried to add files to "Cats", but 1 file failed.',
     );
-    expect(document.body.textContent).toContain("cat.png");
+    expect(document.body.textContent).toContain("asset-1");
     expect(document.body.textContent).toContain("ffmpeg crashed");
 
     await act(async () => {

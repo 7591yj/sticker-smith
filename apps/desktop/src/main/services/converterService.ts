@@ -437,6 +437,7 @@ export class ConverterService {
     const sortedStickers = [...details.stickers].sort(
       (left, right) => left.order - right.order || left.id.localeCompare(right.id),
     );
+    const outputRoot = details.pack.outputRoot;
     const tasks: ConversionTask[] = [];
     let iconTask: ConversionTask | null = null;
 
@@ -453,7 +454,7 @@ export class ConverterService {
           stickerId: sticker.id,
           sourcePath: sticker.absolutePath,
           mode: "icon",
-          stickerPath: path.join(details.pack.stickerRoot, "icon.webm"),
+          stickerPath: path.join(outputRoot, "icon.webm"),
         };
         continue;
       }
@@ -462,7 +463,7 @@ export class ConverterService {
         stickerId: sticker.id,
         sourcePath: sticker.absolutePath,
         mode: "sticker",
-        stickerPath: path.join(details.pack.stickerRoot, `${sticker.id}.webm`),
+        stickerPath: path.join(outputRoot, `${sticker.id}.webm`),
       });
     }
 
@@ -580,7 +581,7 @@ export class ConverterService {
     );
     await this.runJob(
       input.packId,
-      details.pack.stickerRoot,
+      details.pack.outputRoot,
       this.buildTasks(details, input.stickerIds),
     );
     return this.libraryService.getPack(input.packId);

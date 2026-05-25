@@ -193,7 +193,8 @@ export function PackPanel({
     );
   }
 
-  const { pack, stickers } = details;
+  const { pack } = details;
+  const stickers = details.stickers ?? [];
   const telegramUnsupported =
     pack.source === "telegram" && pack.telegram?.syncState === "unsupported";
   const unsupportedTelegramTooltip =
