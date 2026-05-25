@@ -210,9 +210,9 @@ describe("desktop app state", () => {
       });
       for (let index = 0; index < 55; index += 1) {
         conversionListener?.({
-          type: "asset_started",
+          type: "sticker_started",
           jobId: "job-1",
-          assetId: `asset-${index}`,
+          stickerId: `sticker-${index}`,
           mode: "sticker",
         });
       }
