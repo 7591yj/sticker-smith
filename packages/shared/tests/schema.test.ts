@@ -6,11 +6,11 @@ import {
   conversionJobEventSchema,
   conversionJobRequestSchema,
   importConversionTaskSchema,
-  reorderAssetSchema,
+  reorderStickerSchema,
   setPackTelegramShortNameSchema,
   setTelegramPhoneNumberSchema,
   setTelegramTdlibParametersSchema,
-  setAssetEmojisSchema,
+  setStickerEmojisSchema,
   submitTelegramCodeSchema,
   submitTelegramPasswordSchema,
 } from "../src/schema";
@@ -27,7 +27,7 @@ describe("shared schemas", () => {
         outputRoot: "/tmp/out",
         tasks: [
           {
-            assetId: "a",
+            stickerId: "a",
             sourcePath: "/tmp/a.png",
             mode: "icon",
             outputPath: "/tmp/out/icon.webm",
@@ -42,7 +42,7 @@ describe("shared schemas", () => {
         outputRoot: "/tmp/out",
         tasks: [
           {
-            assetId: "a",
+            stickerId: "a",
             sourcePath: "/tmp/a.png",
             mode: "icon",
             outputPath: "/tmp/out/icon.gif",
@@ -52,7 +52,7 @@ describe("shared schemas", () => {
     ).toThrow();
   });
 
-  it("validates output-first import conversion tasks", () => {
+  it("validates sticker-first import conversion tasks", () => {
     expect(
       importConversionTaskSchema.parse({
         sourcePath: "/tmp/cat.mov",
@@ -72,32 +72,32 @@ describe("shared schemas", () => {
 
   it("rejects empty conversion inputs", () => {
     expect(() =>
-      convertSchema.parse({ packId: "pack-1", assetIds: [] }),
+      convertSchema.parse({ packId: "pack-1", stickerIds: [] }),
     ).toThrow();
   });
 
   it("validates conversion job events", () => {
     expect(
       conversionJobEventSchema.parse({
-        type: "asset_completed",
+        type: "sticker_completed",
         jobId: "job",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         mode: "sticker",
         outputPath: "/tmp/out/asset-1.webm",
         sizeBytes: 128,
       }).type,
-    ).toBe("asset_completed");
+    ).toBe("sticker_completed");
 
     expect(() =>
-      conversionJobEventSchema.parse({ type: "asset_started", jobId: "job" }),
+      conversionJobEventSchema.parse({ type: "sticker_started", jobId: "job" }),
     ).toThrow();
   });
 
   it("validates telegram-compliant emoji lists", () => {
     expect(
-      setAssetEmojisSchema.parse({
+      setStickerEmojisSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         emojis: ["🙂", "✨"],
       }).emojis,
     ).toEqual(["🙂", "✨"]);
@@ -105,9 +105,9 @@ describe("shared schemas", () => {
 
   it("rejects non-emoji telegram sticker keywords", () => {
     expect(() =>
-      setAssetEmojisSchema.parse({
+      setStickerEmojisSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         emojis: ["smile"],
       }),
     ).toThrow("Expected a Telegram-compatible emoji.");
@@ -115,9 +115,9 @@ describe("shared schemas", () => {
 
   it("accepts telegram emoji sequences such as keycaps and flags", () => {
     expect(
-      setAssetEmojisSchema.parse({
+      setStickerEmojisSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         emojis: ["1️⃣", "🇺🇸"],
       }).emojis,
     ).toEqual(["1️⃣", "🇺🇸"]);
@@ -125,9 +125,9 @@ describe("shared schemas", () => {
 
   it("rejects emoji strings that are not a single Unicode RGI emoji", () => {
     expect(() =>
-      setAssetEmojisSchema.parse({
+      setStickerEmojisSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         emojis: ["😀😀"],
       }),
     ).toThrow("Expected a Telegram-compatible emoji.");
@@ -135,9 +135,9 @@ describe("shared schemas", () => {
 
   it("allows clearing local emoji edits to an empty list", () => {
     expect(
-      setAssetEmojisSchema.parse({
+      setStickerEmojisSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         emojis: [],
       }).emojis,
     ).toEqual([]);
@@ -184,11 +184,11 @@ describe("shared schemas", () => {
 
   it("validates asset reorder inputs", () => {
     expect(
-      reorderAssetSchema.parse({
+      reorderStickerSchema.parse({
         packId: "pack-1",
-        assetId: "asset-1",
-        beforeAssetId: null,
-      }).beforeAssetId,
+        stickerId: "asset-1",
+        beforeStickerId: null,
+      }).beforeStickerId,
     ).toBeNull();
   });
 

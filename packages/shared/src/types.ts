@@ -40,7 +40,6 @@ export type DownloadState =
   | "ready"
   | "failed";
 export type PackId = string;
-export type AssetId = string;
 export type StickerId = string;
 
 export interface TelegramPackSummary {
@@ -55,12 +54,12 @@ export interface TelegramPackSummary {
   publishedFromLocalPackId: string | null;
 }
 
-export interface TelegramAssetMetadata {
+export interface TelegramStickerMetadata {
   stickerId: string;
   fileId: string | null;
   fileUniqueId: string | null;
   position: number;
-  baselineOutputHash: string | null;
+  baselineStickerHash: string | null;
 }
 
 export interface StickerPack {
@@ -72,39 +71,10 @@ export interface StickerPack {
   sourceRoot: string;
   outputRoot: string;
   iconStickerId: StickerId | null;
-  /** @deprecated compatibility alias while renderer/main APIs are renamed */
-  iconAssetId: AssetId | null;
   thumbnailPath: string | null;
   telegramShortName?: string | null;
   telegram?: TelegramPackSummary;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface SourceAsset {
-  id: AssetId;
-  packId: PackId;
-  order: number;
-  relativePath: string;
-  absolutePath: string | null;
-  originalFileName: string | null;
-  emojiList: string[];
-  kind: SourceMediaKind;
-  importedAt: string;
-  originalImportPath: string | null;
-  downloadState: DownloadState;
-  telegram?: TelegramAssetMetadata;
-}
-
-export interface OutputArtifact {
-  packId: PackId;
-  sourceAssetId: AssetId;
-  order: number;
-  mode: ConversionMode;
-  relativePath: string;
-  absolutePath: string;
-  sizeBytes: number;
-  sha256: string | null;
   updatedAt: string;
 }
 
@@ -121,7 +91,7 @@ export interface StickerItem {
   importedAt: string;
   updatedAt: string;
   downloadState?: DownloadState;
-  telegram?: TelegramAssetMetadata;
+  telegram?: TelegramStickerMetadata;
 }
 
 export interface StickerPackRecord {
@@ -136,19 +106,11 @@ export interface StickerPackRecord {
   createdAt: string;
   updatedAt: string;
   stickers: Omit<StickerItem, "absolutePath">[];
-  /** @deprecated compatibility mirror; not part of schema v4 persistence */
-  iconAssetId: AssetId | null;
-  /** @deprecated compatibility mirror; not part of schema v4 persistence */
-  assets: Omit<SourceAsset, "absolutePath">[];
-  /** @deprecated compatibility mirror; not part of schema v4 persistence */
-  outputs: Omit<OutputArtifact, "absolutePath">[];
 }
 
 export interface StickerPackDetails {
   pack: StickerPack;
   stickers: StickerItem[];
-  assets: SourceAsset[];
-  outputs: OutputArtifact[];
 }
 
 export interface LibraryConfig {
@@ -213,7 +175,7 @@ export interface TelegramPackSyncFailedEvent {
 export interface TelegramFileDownloadProgressEvent {
   type: "file_download_progress";
   packId: string;
-  assetId: string;
+  stickerId: string;
   stickerSetId: string;
   downloadedSize: number;
   totalSize: number;
@@ -277,37 +239,37 @@ export type TelegramEvent =
   | TelegramUpdateFailedEvent;
 
 export interface ImportResult {
-  imported: SourceAsset[];
+  imported: StickerItem[];
   skipped: string[];
 }
 
-export interface RenameAssetInput {
+export interface RenameStickerInput {
   packId: PackId;
-  assetId: AssetId;
+  stickerId: StickerId;
   nextRelativePath: string;
 }
 
-export interface RenameManyAssetsInput {
+export interface RenameManyStickersInput {
   packId: PackId;
-  assetIds: AssetId[];
+  stickerIds: StickerId[];
   baseName: string;
 }
 
-export interface SetAssetEmojisInput {
+export interface SetStickerEmojisInput {
   packId: PackId;
-  assetId: AssetId;
+  stickerId: StickerId;
   emojis: string[];
 }
 
-export interface ReorderAssetInput {
+export interface ReorderStickerInput {
   packId: PackId;
-  assetId: AssetId;
-  beforeAssetId: AssetId | null;
+  stickerId: StickerId;
+  beforeStickerId: StickerId | null;
 }
 
-export interface SetManyAssetEmojisInput {
+export interface SetManyStickerEmojisInput {
   packId: PackId;
-  assetIds: AssetId[];
+  stickerIds: StickerId[];
   emojis: string[];
 }
 
@@ -347,29 +309,29 @@ export interface UpdateTelegramPackInput {
   packId: PackId;
 }
 
-export interface MoveAssetInput {
+export interface MoveStickerInput {
   packId: PackId;
-  assetId: AssetId;
+  stickerId: StickerId;
   nextDirectory: string;
 }
 
-export interface DeleteAssetInput {
+export interface DeleteStickerInput {
   packId: PackId;
-  assetId: AssetId;
+  stickerId: StickerId;
 }
 
-export interface DeleteManyAssetsInput {
+export interface DeleteManyStickersInput {
   packId: PackId;
-  assetIds: AssetId[];
+  stickerIds: StickerId[];
 }
 
 export interface ConvertInput {
   packId: PackId;
-  assetIds: AssetId[];
+  stickerIds: StickerId[];
 }
 
 export interface ConversionTask {
-  assetId: AssetId;
+  stickerId: StickerId;
   sourcePath: string;
   mode: ConversionMode;
   outputPath: string;
@@ -384,12 +346,12 @@ export interface ImportConversionTask {
 export interface ConversionJobEvent {
   type:
     | "job_started"
-    | "asset_started"
-    | "asset_completed"
-    | "asset_failed"
+    | "sticker_started"
+    | "sticker_completed"
+    | "sticker_failed"
     | "job_finished";
   jobId: string;
-  assetId?: AssetId;
+  stickerId?: StickerId;
   mode?: ConversionMode;
   outputPath?: string;
   error?: string;

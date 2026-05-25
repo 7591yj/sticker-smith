@@ -1,20 +1,20 @@
 import type {
   ConversionJobEvent,
   ConvertInput,
-  DeleteAssetInput,
-  DeleteManyAssetsInput,
+  DeleteStickerInput,
+  DeleteManyStickersInput,
   ImportResult,
   LibraryConfig,
-  MoveAssetInput,
+  MoveStickerInput,
   PublishLocalPackInput,
-  ReorderAssetInput,
-  RenameAssetInput,
-  RenameManyAssetsInput,
+  ReorderStickerInput,
+  RenameStickerInput,
+  RenameManyStickersInput,
   SetTelegramPhoneNumberInput,
   SetPackTelegramShortNameInput,
   SetTelegramTdlibParametersInput,
-  SetAssetEmojisInput,
-  SetManyAssetEmojisInput,
+  SetStickerEmojisInput,
+  SetManyStickerEmojisInput,
   StickerPack,
   StickerPackDetails,
   SubmitTelegramCodeInput,
@@ -60,7 +60,7 @@ export interface StickerSmithApi {
     ) => Promise<StickerPack>;
     setIcon: (input: {
       packId: string;
-      assetId: string | null;
+      stickerId: string | null;
     }) => Promise<StickerPack>;
     chooseIcon: (input: {
       packId: string;
@@ -75,16 +75,16 @@ export interface StickerSmithApi {
       packId: string;
       directoryPath?: string;
     }) => Promise<ImportResult>;
-    setEmojis: (input: SetAssetEmojisInput) => Promise<StickerPackDetails>;
+    setEmojis: (input: SetStickerEmojisInput) => Promise<StickerPackDetails>;
     setEmojisMany: (
-      input: SetManyAssetEmojisInput,
+      input: SetManyStickerEmojisInput,
     ) => Promise<StickerPackDetails>;
-    reorder: (input: ReorderAssetInput) => Promise<StickerPackDetails>;
-    rename: (input: RenameAssetInput) => Promise<StickerPackDetails>;
-    renameMany: (input: RenameManyAssetsInput) => Promise<StickerPackDetails>;
-    move: (input: MoveAssetInput) => Promise<StickerPackDetails>;
-    delete: (input: DeleteAssetInput) => Promise<StickerPackDetails>;
-    deleteMany: (input: DeleteManyAssetsInput) => Promise<StickerPackDetails>;
+    reorder: (input: ReorderStickerInput) => Promise<StickerPackDetails>;
+    rename: (input: RenameStickerInput) => Promise<StickerPackDetails>;
+    renameMany: (input: RenameManyStickersInput) => Promise<StickerPackDetails>;
+    move: (input: MoveStickerInput) => Promise<StickerPackDetails>;
+    delete: (input: DeleteStickerInput) => Promise<StickerPackDetails>;
+    deleteMany: (input: DeleteManyStickersInput) => Promise<StickerPackDetails>;
     revealInFolder: (input: {
       packId: string;
       relativePath?: string;
