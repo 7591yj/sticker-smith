@@ -146,19 +146,13 @@ export class LibraryService {
 
     const assetId = randomUUID();
     const nextRelativePath = sourceAssetRelativePath(assetId, kind);
-    const destination = path.join(
-      resolvePackPaths(rootPath).sourceRoot,
-      nextRelativePath,
-    );
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.copyFile(absolutePath, destination);
 
     const asset: SourceAsset = {
       id: assetId,
       packId: record.id,
       order: nextStickerOrder(record),
       relativePath: nextRelativePath,
-      absolutePath: destination,
+      absolutePath,
       originalFileName: path.basename(absolutePath),
       emojiList: [],
       kind,
@@ -381,15 +375,17 @@ export class LibraryService {
 
     const now = nowIso();
     const record: StickerPackRecord = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       id,
       source: "local",
       name: input.name,
       slug,
+      iconStickerId: null,
       iconAssetId: null,
       telegramShortName: null,
       createdAt: now,
       updatedAt: now,
+      stickers: [],
       assets: [],
       outputs: [],
     };
@@ -443,6 +439,7 @@ export class LibraryService {
           input.assetId === null
             ? null
             : record.assets.find((asset) => asset.id === input.assetId) ?? null;
+        record.iconStickerId = null;
         record.iconAssetId = input.assetId;
         compactStickerOrders(record);
         if (
@@ -455,11 +452,19 @@ export class LibraryService {
             (output) =>
               output.sourceAssetId === input.assetId && output.mode === "sticker",
           );
+          record.stickers = record.stickers.filter(
+            (sticker) => sticker.id !== input.assetId,
+          );
         }
         await this.clearIconOutput(record, rootPath);
         if (record.telegram) {
           if (input.assetId === null) {
             record.telegram.thumbnailPath = null;
+          } else if (selectedAsset) {
+            record.telegram.thumbnailPath = path.join(
+              resolvePackPaths(rootPath).outputRoot,
+              selectedAsset.relativePath,
+            );
           }
           this.markTelegramMirrorStale(record);
         }
@@ -781,6 +786,7 @@ export class LibraryService {
           output.sourceAssetId === result.assetId && output.mode === result.mode
         ),
     );
+    const updatedAt = nowIso();
     record.outputs.push({
       packId: record.id,
       sourceAssetId: result.assetId,
@@ -789,8 +795,37 @@ export class LibraryService {
       relativePath,
       sizeBytes: result.sizeBytes,
       sha256,
-      updatedAt: nowIso(),
+      updatedAt,
     });
+    if (result.mode === "sticker") {
+      record.stickers = record.stickers.filter((sticker) => sticker.id !== result.assetId);
+      record.stickers.push({
+        id: result.assetId,
+        packId: record.id,
+        order: sourceAsset?.order ?? 0,
+        relativePath,
+        originalFileName: sourceAsset?.originalFileName ?? null,
+        emojiList: sourceAsset?.emojiList ?? [],
+        sizeBytes: result.sizeBytes,
+        sha256,
+        importedAt: sourceAsset?.importedAt ?? updatedAt,
+        updatedAt,
+        downloadState: "ready",
+        telegram: sourceAsset?.telegram,
+      });
+      record.assets = record.assets.filter((asset) => asset.id !== result.assetId);
+      record.outputs = record.outputs.filter(
+        (output) => !(output.sourceAssetId === result.assetId && output.mode === "sticker"),
+      );
+    } else {
+      record.iconAssetId = result.assetId;
+      record.iconStickerId = null;
+      record.assets = record.assets.filter((asset) => asset.id !== result.assetId);
+      record.stickers = record.stickers.filter((sticker) => sticker.id !== result.assetId);
+      if (record.telegram) {
+        record.telegram.thumbnailPath = absolutePath;
+      }
+    }
     if (record.telegram) {
       this.markTelegramMirrorStale(record);
     }

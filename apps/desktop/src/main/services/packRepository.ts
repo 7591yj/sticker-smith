@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
+  OutputArtifact,
   PackSource,
+  SourceAsset,
   StickerPack,
   StickerPackDetails,
   StickerPackRecord,
@@ -11,10 +13,8 @@ import type {
 
 import type { SettingsService } from "./settingsService";
 import {
-  enforcePackOutputRoleInvariants,
   normalizePackRecord,
   sortPackRecord,
-  syncOutputOrders,
 } from "./packNormalizer";
 import { pathExists } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
@@ -39,20 +39,19 @@ function buildStickerPack(
   record: StickerPackRecord,
   rootPath: string,
 ): StickerPack {
-  const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
-  const iconOutput = record.outputs.find((output) => output.mode === "icon");
-  const iconAsset =
-    record.iconAssetId === null
+  const { outputRoot } = resolvePackPaths(rootPath);
+  const iconSticker =
+    record.iconStickerId === null
       ? null
-      : record.assets.find((asset) => asset.id === record.iconAssetId) ?? null;
-  const thumbnailPath =
-    iconOutput
-      ? path.join(outputRoot, iconOutput.relativePath)
-      : iconAsset && iconAsset.downloadState === "ready"
-        ? path.join(sourceRoot, iconAsset.relativePath)
-        : record.source === "telegram"
-          ? record.telegram?.thumbnailPath ?? null
-          : null;
+      : record.stickers.find((sticker) => sticker.id === record.iconStickerId) ?? null;
+  const iconOutput = record.outputs.find((output) => output.mode === "icon");
+  const thumbnailPath = iconOutput
+    ? path.join(outputRoot, iconOutput.relativePath)
+    : iconSticker
+      ? path.join(outputRoot, iconSticker.relativePath)
+      : record.source === "telegram"
+        ? record.telegram?.thumbnailPath ?? null
+        : null;
 
   return {
     id: record.id,
@@ -60,8 +59,9 @@ function buildStickerPack(
     name: record.name,
     slug: record.slug,
     rootPath,
-    sourceRoot,
+    sourceRoot: resolvePackPaths(rootPath).sourceRoot,
     outputRoot,
+    iconStickerId: record.iconStickerId,
     iconAssetId: record.iconAssetId,
     thumbnailPath,
     telegramShortName:
@@ -74,16 +74,46 @@ function buildStickerPack(
   };
 }
 
-function resolveAssetAbsolutePath(
+function stickerToCompatAsset(
   record: StickerPackRecord,
   rootPath: string,
-  asset: StickerPackRecord["assets"][number],
-) {
-  if (record.source === "telegram" && asset.downloadState !== "ready") {
-    return null;
-  }
+  sticker: StickerPackRecord["stickers"][number],
+): SourceAsset {
+  return {
+    id: sticker.id,
+    packId: sticker.packId,
+    order: sticker.order,
+    relativePath: sticker.relativePath,
+    absolutePath:
+      record.source === "telegram" && sticker.downloadState !== "ready"
+        ? null
+        : path.join(resolvePackPaths(rootPath).outputRoot, sticker.relativePath),
+    originalFileName: sticker.originalFileName,
+    emojiList: sticker.emojiList,
+    kind: "webm",
+    importedAt: sticker.importedAt,
+    originalImportPath: null,
+    downloadState: sticker.downloadState ?? "ready",
+    telegram: sticker.telegram,
+  };
+}
 
-  return path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath);
+function stickerToCompatOutput(
+  record: StickerPackRecord,
+  rootPath: string,
+  sticker: StickerPackRecord["stickers"][number],
+): OutputArtifact {
+  return {
+    packId: sticker.packId,
+    sourceAssetId: sticker.id,
+    order: sticker.order,
+    mode: sticker.id === record.iconStickerId ? "icon" : "sticker",
+    relativePath: sticker.relativePath,
+    absolutePath: path.join(resolvePackPaths(rootPath).outputRoot, sticker.relativePath),
+    sizeBytes: sticker.sizeBytes,
+    sha256: sticker.sha256,
+    updatedAt: sticker.updatedAt,
+  };
 }
 
 export function hydratePackDetails(
@@ -91,17 +121,52 @@ export function hydratePackDetails(
   rootPath: string,
 ): StickerPackDetails {
   const { outputRoot } = resolvePackPaths(rootPath);
+  const stickers = record.stickers.map((sticker) => ({
+    ...sticker,
+    absolutePath: path.join(outputRoot, sticker.relativePath),
+  }));
+  const standaloneIconOutput =
+    record.iconAssetId === null && record.telegram?.thumbnailPath
+      ? {
+          packId: record.id,
+          sourceAssetId: "__pack_icon__",
+          order: -1,
+          mode: "icon" as const,
+          relativePath: path.basename(record.telegram.thumbnailPath),
+          absolutePath: record.telegram.thumbnailPath,
+          sizeBytes: 0,
+          sha256: null,
+          updatedAt: record.updatedAt,
+        }
+      : null;
 
+  const stickerIds = new Set(record.stickers.map((sticker) => sticker.id));
   return {
     pack: buildStickerPack(record, rootPath),
-    assets: record.assets.map((asset) => ({
-      ...asset,
-      absolutePath: resolveAssetAbsolutePath(record, rootPath, asset),
-    })),
-    outputs: record.outputs.map((output) => ({
-      ...output,
-      absolutePath: path.join(outputRoot, output.relativePath),
-    })),
+    stickers,
+    assets: [
+      ...record.stickers.map((sticker) =>
+        stickerToCompatAsset(record, rootPath, sticker),
+      ),
+      ...record.assets
+        .filter((asset) => !stickerIds.has(asset.id))
+        .map((asset) => ({
+          ...asset,
+          absolutePath: asset.originalImportPath,
+        })),
+    ],
+    outputs: [
+      ...(standaloneIconOutput ? [standaloneIconOutput] : []),
+      ...record.stickers.map((sticker) =>
+        stickerToCompatOutput(record, rootPath, sticker),
+      ),
+      ...record.outputs
+        .filter((output) => output.mode === "icon" || !stickerIds.has(output.sourceAssetId))
+        .map((output) => ({
+          ...output,
+          absolutePath: path.join(outputRoot, output.relativePath),
+        })),
+    ],
   };
 }
 
@@ -119,8 +184,7 @@ export class PackRepository {
   }
 
   async ensurePackDirectories(rootPath: string) {
-    const { sourceRoot, outputRoot } = resolvePackPaths(rootPath);
-    await fs.mkdir(sourceRoot, { recursive: true });
+    const { outputRoot } = resolvePackPaths(rootPath);
     await fs.mkdir(outputRoot, { recursive: true });
   }
 
@@ -133,9 +197,6 @@ export class PackRepository {
         source?: PackSource;
       };
       const record = normalizePackRecord(parsed);
-      if ((parsed.schemaVersion ?? 2) < 3) {
-        await this.writePackRecord(rootPath, record);
-      }
       return record;
     } catch (error) {
       if (!isJsonParseError(error) || !(await pathExists(backupFilePath))) {
@@ -154,17 +215,34 @@ export class PackRepository {
   }
 
   async writePackRecord(rootPath: string, record: StickerPackRecord) {
-    const removedOutputs = enforcePackOutputRoleInvariants(record);
-    await this.deleteOutputFilesIfUnreferenced(record, rootPath, removedOutputs);
-    syncOutputOrders(record);
     sortPackRecord(record);
-    record.schemaVersion = 3;
+    record.schemaVersion = 4;
     record.updatedAt = nowIso();
     await this.ensurePackDirectories(rootPath);
     const { packFilePath } = resolvePackPaths(rootPath);
     const tempFilePath = `${packFilePath}.${process.pid}.${randomUUID()}.tmp`;
     const backupFilePath = `${packFilePath}.bak`;
-    const serialized = JSON.stringify(record, null, 2);
+    const persistentRecord: StickerPackRecord = {
+      schemaVersion: 4,
+      id: record.id,
+      source: record.source,
+      name: record.name,
+      slug: record.slug,
+      iconStickerId: record.iconStickerId,
+      iconAssetId: record.iconAssetId,
+      telegramShortName: record.telegramShortName,
+      telegram: record.telegram,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      stickers: record.stickers,
+      assets: record.assets.filter((asset) =>
+        record.stickers.every((sticker) => sticker.id !== asset.id),
+      ),
+      outputs: record.outputs.filter((output) =>
+        record.stickers.every((sticker) => sticker.id !== output.sourceAssetId),
+      ),
+    };
+    const serialized = JSON.stringify(persistentRecord, null, 2);
 
     if (await pathExists(packFilePath)) {
       await fs.copyFile(packFilePath, backupFilePath);
@@ -237,10 +315,6 @@ export class PackRepository {
     rootPath: string,
     outputs: StickerPackRecord["outputs"],
   ) {
-    if (outputs.length === 0) {
-      return;
-    }
-
     const { outputRoot } = resolvePackPaths(rootPath);
     await Promise.all(
       outputs.map(async (output) => {

@@ -1,36 +1,17 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 
 import type {
   PackSource,
-  SourceAsset,
+  StickerItem,
   StickerPackRecord,
   TelegramPackSummary,
 } from "@sticker-smith/shared";
 
 import { nowIso } from "../utils/timeUtils";
 
-function getOriginalFileName(
-  asset: Partial<StickerPackRecord["assets"][number]>,
-) {
-  if (asset.originalFileName !== undefined) {
-    return asset.originalFileName;
-  }
-
-  if (asset.originalImportPath) {
-    return path.basename(asset.originalImportPath);
-  }
-
-  if (asset.relativePath) {
-    return path.basename(asset.relativePath);
-  }
-
-  return null;
-}
-
-export function compareAssetsByOrder(
-  left: Pick<SourceAsset, "id" | "order" | "importedAt">,
-  right: Pick<SourceAsset, "id" | "order" | "importedAt">,
+export function compareStickersByOrder(
+  left: Pick<StickerItem, "id" | "order" | "importedAt">,
+  right: Pick<StickerItem, "id" | "order" | "importedAt">,
 ) {
   return (
     left.order - right.order ||
@@ -39,52 +20,22 @@ export function compareAssetsByOrder(
   );
 }
 
-export function syncOutputOrders(record: StickerPackRecord) {
-  const assetOrderById = new Map(record.assets.map((asset) => [asset.id, asset.order]));
-
-  for (const output of record.outputs) {
-    output.order = assetOrderById.get(output.sourceAssetId) ?? output.order ?? 0;
-  }
-}
+export const compareAssetsByOrder = compareStickersByOrder;
 
 export function compactStickerOrders(record: StickerPackRecord) {
-  const stickerAssets = record.assets
-    .filter((asset) => asset.id !== record.iconAssetId)
-    .sort(compareAssetsByOrder);
+  const stickers = [...record.stickers].sort(compareStickersByOrder);
 
-  stickerAssets.forEach((asset, index) => {
-    asset.order = index;
+  stickers.forEach((sticker, index) => {
+    sticker.order = index;
   });
+}
 
-  syncOutputOrders(record);
+export function syncOutputOrders(_record: StickerPackRecord) {
+  // Compatibility no-op while renderer/service APIs are renamed from assets/outputs.
 }
 
 export function sortPackRecord(record: StickerPackRecord) {
-  record.assets.sort((left, right) => {
-    const leftIsIcon = left.id === record.iconAssetId;
-    const rightIsIcon = right.id === record.iconAssetId;
-
-    if (leftIsIcon !== rightIsIcon) {
-      return leftIsIcon ? -1 : 1;
-    }
-
-    return compareAssetsByOrder(left, right);
-  });
-
-  record.outputs.sort((left, right) => {
-    const leftIsIcon = left.mode === "icon";
-    const rightIsIcon = right.mode === "icon";
-
-    if (leftIsIcon !== rightIsIcon) {
-      return leftIsIcon ? -1 : 1;
-    }
-
-    return (
-      left.order - right.order ||
-      left.updatedAt.localeCompare(right.updatedAt) ||
-      left.sourceAssetId.localeCompare(right.sourceAssetId)
-    );
-  });
+  record.stickers.sort(compareStickersByOrder);
 }
 
 export function createDefaultTelegramSummary(
@@ -103,135 +54,8 @@ export function createDefaultTelegramSummary(
   };
 }
 
-export function enforcePackOutputRoleInvariants(record: StickerPackRecord) {
-  const assetById = new Map(record.assets.map((asset) => [asset.id, asset]));
-  const currentIconAsset =
-    record.iconAssetId === null
-      ? null
-      : assetById.get(record.iconAssetId) ?? null;
-
-  if (record.source === "telegram" && currentIconAsset?.telegram) {
-    record.iconAssetId = null;
-  }
-
-  const iconAssetId = record.iconAssetId;
-  const removedOutputs: StickerPackRecord["outputs"] = [];
-  const nextOutputs: StickerPackRecord["outputs"] = [];
-
-  for (const output of record.outputs) {
-    const sourceAsset = assetById.get(output.sourceAssetId);
-    const isStickerOutputForExplicitIcon =
-      iconAssetId !== null &&
-      output.mode === "sticker" &&
-      output.sourceAssetId === iconAssetId;
-    const isLegacyTelegramIconOutput =
-      output.mode === "icon" && Boolean(sourceAsset?.telegram);
-
-    if (isStickerOutputForExplicitIcon || isLegacyTelegramIconOutput) {
-      removedOutputs.push(output);
-      continue;
-    }
-
-    nextOutputs.push(output);
-  }
-
-  record.outputs = nextOutputs;
-  return removedOutputs;
-}
-
-export function normalizePackRecord(
-  record:
-    | (Partial<StickerPackRecord> & {
-        source?: PackSource;
-        assets?: Array<Partial<StickerPackRecord["assets"][number]>>;
-        outputs?: Array<Partial<StickerPackRecord["outputs"][number]>>;
-      })
-    | null
-    | undefined,
-): StickerPackRecord {
-  const now = nowIso();
-  const source = record?.source ?? "local";
-  const schemaVersion = record?.schemaVersion ?? 2;
-  const normalized: StickerPackRecord = {
-    schemaVersion: 3,
-    id: record?.id ?? randomUUID(),
-    source,
-    name: record?.name ?? "Untitled Pack",
-    slug: record?.slug ?? slugify(record?.name ?? "Untitled Pack"),
-    iconAssetId: record?.iconAssetId ?? null,
-    telegramShortName: record?.telegramShortName ?? null,
-    telegram:
-      source === "telegram" && record?.telegram
-        ? createDefaultTelegramSummary(record.telegram)
-        : undefined,
-    createdAt: record?.createdAt ?? now,
-    updatedAt: record?.updatedAt ?? now,
-    assets: (record?.assets ?? []).map((asset, index) => ({
-      id: asset.id ?? randomUUID(),
-      packId: asset.packId ?? (record?.id ?? ""),
-      order: asset.order ?? index,
-      relativePath: asset.relativePath ?? `sticker-${index + 1}.webm`,
-      originalFileName: getOriginalFileName(asset),
-      emojiList: asset.emojiList ?? [],
-      kind: asset.kind ?? "png",
-      importedAt: asset.importedAt ?? now,
-      originalImportPath: asset.originalImportPath ?? null,
-      downloadState:
-        asset.downloadState ?? (source === "telegram" ? "missing" : "ready"),
-      telegram:
-        source === "telegram" && asset.telegram
-          ? {
-              stickerId: asset.telegram.stickerId ?? String(index + 1),
-              fileId: asset.telegram.fileId ?? null,
-              fileUniqueId: asset.telegram.fileUniqueId ?? null,
-              position: asset.telegram.position ?? index,
-              baselineOutputHash: asset.telegram.baselineOutputHash ?? null,
-            }
-          : undefined,
-    })),
-    outputs: (record?.outputs ?? []).map((output) => ({
-      packId: output.packId ?? (record?.id ?? ""),
-      sourceAssetId: output.sourceAssetId ?? "",
-      order: output.order ?? 0,
-      mode: output.mode ?? "sticker",
-      relativePath: output.relativePath ?? "",
-      sizeBytes: output.sizeBytes ?? 0,
-      sha256: output.sha256 ?? null,
-      updatedAt: output.updatedAt ?? now,
-    })),
-  };
-
-  if (schemaVersion < 3) {
-    if (source === "telegram") {
-      const remoteAssets = normalized.assets
-        .filter((asset) => asset.telegram)
-        .sort(
-          (left, right) =>
-            (left.telegram?.position ?? 0) - (right.telegram?.position ?? 0) ||
-            left.importedAt.localeCompare(right.importedAt) ||
-            left.id.localeCompare(right.id),
-        );
-      const localOnlyAssets = normalized.assets
-        .filter((asset) => !asset.telegram)
-        .sort(compareAssetsByOrder);
-
-      remoteAssets.forEach((asset, index) => {
-        asset.order = index;
-      });
-      localOnlyAssets.forEach((asset, index) => {
-        asset.order = remoteAssets.length + index;
-      });
-    } else {
-      normalized.assets.forEach((asset, index) => {
-        asset.order = index;
-      });
-    }
-  }
-
-  enforcePackOutputRoleInvariants(normalized);
-  compactStickerOrders(normalized);
-  sortPackRecord(normalized);
-  return normalized;
+export function enforcePackOutputRoleInvariants(_record: StickerPackRecord) {
+  return [];
 }
 
 function slugify(value: string) {
@@ -242,4 +66,112 @@ function slugify(value: string) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "pack"
   );
+}
+
+export function normalizePackRecord(
+  record:
+    | (Partial<StickerPackRecord> & {
+        source?: PackSource;
+        stickers?: Array<Partial<StickerPackRecord["stickers"][number]>>;
+      assets?: Array<Partial<StickerPackRecord["assets"][number]>>;
+      outputs?: Array<Partial<StickerPackRecord["outputs"][number]>>;
+      })
+    | null
+    | undefined,
+): StickerPackRecord {
+  const now = nowIso();
+  const source = record?.source ?? "local";
+  const id = record?.id ?? randomUUID();
+  const normalized: StickerPackRecord = {
+    schemaVersion: 4,
+    id,
+    source,
+    name: record?.name ?? "Untitled Pack",
+    slug: record?.slug ?? slugify(record?.name ?? "Untitled Pack"),
+    iconStickerId: record?.iconStickerId ?? null,
+    iconAssetId: record?.iconAssetId ?? record?.iconStickerId ?? null,
+    telegramShortName: record?.telegramShortName ?? null,
+    telegram:
+      source === "telegram" && record?.telegram
+        ? createDefaultTelegramSummary(record.telegram)
+        : undefined,
+    createdAt: record?.createdAt ?? now,
+    updatedAt: record?.updatedAt ?? now,
+    assets: [],
+    outputs: [],
+    stickers: (record?.stickers ?? []).map((sticker, index) => ({
+      id: sticker.id ?? randomUUID(),
+      packId: sticker.packId ?? id,
+      order: sticker.order ?? index,
+      relativePath: sticker.relativePath ?? `${sticker.id ?? randomUUID()}.webm`,
+      originalFileName: sticker.originalFileName ?? null,
+      emojiList: sticker.emojiList ?? [],
+      sizeBytes: sticker.sizeBytes ?? 0,
+      sha256: sticker.sha256 ?? null,
+      importedAt: sticker.importedAt ?? now,
+      updatedAt: sticker.updatedAt ?? now,
+      downloadState:
+        sticker.downloadState ?? (source === "telegram" ? "missing" : "ready"),
+      telegram: sticker.telegram,
+    })),
+  };
+
+  if (
+    normalized.iconStickerId !== null &&
+    !normalized.stickers.some((sticker) => sticker.id === normalized.iconStickerId)
+  ) {
+    normalized.iconStickerId = null;
+  }
+
+  normalized.iconAssetId = normalized.iconAssetId ?? normalized.iconStickerId;
+  normalized.assets = normalized.stickers.map((sticker) => ({
+    id: sticker.id,
+    packId: sticker.packId,
+    order: sticker.order,
+    relativePath: sticker.relativePath,
+    originalFileName: sticker.originalFileName,
+    emojiList: sticker.emojiList,
+    kind: "webm",
+    importedAt: sticker.importedAt,
+    originalImportPath: null,
+    downloadState: sticker.downloadState ?? "ready",
+    telegram: sticker.telegram,
+  }));
+  normalized.assets.push(
+    ...(record?.assets ?? [])
+      .filter((asset) => asset.id && normalized.stickers.every((sticker) => sticker.id !== asset.id))
+      .map((asset, index) => ({
+        id: asset.id!,
+        packId: asset.packId ?? normalized.id,
+        order: asset.order ?? normalized.stickers.length + index,
+        relativePath: asset.relativePath ?? `${asset.id}.webm`,
+        originalFileName: asset.originalFileName ?? null,
+        emojiList: asset.emojiList ?? [],
+        kind: asset.kind ?? "webm",
+        importedAt: asset.importedAt ?? now,
+        originalImportPath: asset.originalImportPath ?? null,
+        downloadState: asset.downloadState ?? "ready",
+        telegram: asset.telegram,
+      })),
+  );
+  normalized.outputs = normalized.stickers.map((sticker) => ({
+    packId: sticker.packId,
+    sourceAssetId: sticker.id,
+    order: sticker.order,
+    mode: "sticker",
+    relativePath: sticker.relativePath,
+    sizeBytes: sticker.sizeBytes,
+    sha256: sticker.sha256,
+    updatedAt: sticker.updatedAt,
+  }));
+
+  normalized.outputs.push(
+    ...(record?.outputs ?? []).filter((output) =>
+      normalized.stickers.every((sticker) => sticker.id !== output.sourceAssetId),
+    ),
+  );
+
+  compactStickerOrders(normalized);
+  sortPackRecord(normalized);
+  return normalized;
 }
