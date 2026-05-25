@@ -20,18 +20,12 @@ export function compareStickersByOrder(
   );
 }
 
-export const compareAssetsByOrder = compareStickersByOrder;
-
 export function compactStickerOrders(record: StickerPackRecord) {
-  const stickers = [...record.stickers].sort(compareStickersByOrder);
-
-  stickers.forEach((sticker, index) => {
-    sticker.order = index;
-  });
-}
-
-export function syncOutputOrders(_record: StickerPackRecord) {
-  // Compatibility no-op while renderer/service APIs are renamed from assets/outputs.
+  [...record.stickers]
+    .sort(compareStickersByOrder)
+    .forEach((sticker, index) => {
+      sticker.order = index;
+    });
 }
 
 export function sortPackRecord(record: StickerPackRecord) {
@@ -54,10 +48,6 @@ export function createDefaultTelegramSummary(
   };
 }
 
-export function enforcePackOutputRoleInvariants(_record: StickerPackRecord) {
-  return [];
-}
-
 function slugify(value: string) {
   return (
     value
@@ -68,20 +58,26 @@ function slugify(value: string) {
   );
 }
 
-export function normalizePackRecord(
-  record:
-    | (Partial<StickerPackRecord> & {
-        source?: PackSource;
-        stickers?: Array<Partial<StickerPackRecord["stickers"][number]>>;
-      assets?: Array<Partial<StickerPackRecord["assets"][number]>>;
-      outputs?: Array<Partial<StickerPackRecord["outputs"][number]>>;
-      })
-    | null
-    | undefined,
-): StickerPackRecord {
+export function normalizePackRecord(record: Partial<StickerPackRecord> | null | undefined): StickerPackRecord {
   const now = nowIso();
   const source = record?.source ?? "local";
   const id = record?.id ?? randomUUID();
+
+  const stickers = (record?.stickers ?? []).map((sticker, index) => ({
+    id: sticker.id ?? randomUUID(),
+    packId: sticker.packId ?? id,
+    order: sticker.order ?? index,
+    relativePath: sticker.relativePath ?? `${sticker.id ?? randomUUID()}.webm`,
+    originalFileName: sticker.originalFileName ?? null,
+    emojiList: sticker.emojiList ?? [],
+    sizeBytes: sticker.sizeBytes ?? 0,
+    sha256: sticker.sha256 ?? null,
+    importedAt: sticker.importedAt ?? now,
+    updatedAt: sticker.updatedAt ?? now,
+    downloadState: sticker.downloadState ?? (source === "telegram" ? "missing" : "ready"),
+    telegram: sticker.telegram,
+  }));
+
   const normalized: StickerPackRecord = {
     schemaVersion: 4,
     id,
@@ -89,88 +85,16 @@ export function normalizePackRecord(
     name: record?.name ?? "Untitled Pack",
     slug: record?.slug ?? slugify(record?.name ?? "Untitled Pack"),
     iconStickerId: record?.iconStickerId ?? null,
-    iconAssetId: record?.iconAssetId ?? record?.iconStickerId ?? null,
     telegramShortName: record?.telegramShortName ?? null,
-    telegram:
-      source === "telegram" && record?.telegram
-        ? createDefaultTelegramSummary(record.telegram)
-        : undefined,
+    telegram: source === "telegram" && record?.telegram ? createDefaultTelegramSummary(record.telegram) : undefined,
     createdAt: record?.createdAt ?? now,
     updatedAt: record?.updatedAt ?? now,
-    assets: [],
-    outputs: [],
-    stickers: (record?.stickers ?? []).map((sticker, index) => ({
-      id: sticker.id ?? randomUUID(),
-      packId: sticker.packId ?? id,
-      order: sticker.order ?? index,
-      relativePath: sticker.relativePath ?? `${sticker.id ?? randomUUID()}.webm`,
-      originalFileName: sticker.originalFileName ?? null,
-      emojiList: sticker.emojiList ?? [],
-      sizeBytes: sticker.sizeBytes ?? 0,
-      sha256: sticker.sha256 ?? null,
-      importedAt: sticker.importedAt ?? now,
-      updatedAt: sticker.updatedAt ?? now,
-      downloadState:
-        sticker.downloadState ?? (source === "telegram" ? "missing" : "ready"),
-      telegram: sticker.telegram,
-    })),
+    stickers,
   };
 
-  if (
-    normalized.iconStickerId !== null &&
-    !normalized.stickers.some((sticker) => sticker.id === normalized.iconStickerId)
-  ) {
+  if (normalized.iconStickerId && !normalized.stickers.some((sticker) => sticker.id === normalized.iconStickerId)) {
     normalized.iconStickerId = null;
   }
-
-  normalized.iconAssetId = normalized.iconAssetId ?? normalized.iconStickerId;
-  normalized.assets = normalized.stickers.map((sticker) => ({
-    id: sticker.id,
-    packId: sticker.packId,
-    order: sticker.order,
-    relativePath: sticker.relativePath,
-    originalFileName: sticker.originalFileName,
-    emojiList: sticker.emojiList,
-    kind: "webm",
-    importedAt: sticker.importedAt,
-    originalImportPath: null,
-    downloadState: sticker.downloadState ?? "ready",
-    telegram: sticker.telegram,
-  }));
-  normalized.assets.push(
-    ...(record?.assets ?? [])
-      .filter((asset) => asset.id && normalized.stickers.every((sticker) => sticker.id !== asset.id))
-      .map((asset, index) => ({
-        id: asset.id!,
-        packId: asset.packId ?? normalized.id,
-        order: asset.order ?? normalized.stickers.length + index,
-        relativePath: asset.relativePath ?? `${asset.id}.webm`,
-        originalFileName: asset.originalFileName ?? null,
-        emojiList: asset.emojiList ?? [],
-        kind: asset.kind ?? "webm",
-        importedAt: asset.importedAt ?? now,
-        originalImportPath: asset.originalImportPath ?? null,
-        downloadState: asset.downloadState ?? "ready",
-        telegram: asset.telegram,
-      })),
-  );
-  normalized.outputs = normalized.stickers.map((sticker) => ({
-    packId: sticker.packId,
-    sourceAssetId: sticker.id,
-    order: sticker.order,
-    mode: "sticker",
-    relativePath: sticker.relativePath,
-    sizeBytes: sticker.sizeBytes,
-    sha256: sticker.sha256,
-    updatedAt: sticker.updatedAt,
-  }));
-
-  normalized.outputs.push(
-    ...(record?.outputs ?? []).filter((output) =>
-      normalized.stickers.every((sticker) => sticker.id !== output.sourceAssetId),
-    ),
-  );
-
   compactStickerOrders(normalized);
   sortPackRecord(normalized);
   return normalized;

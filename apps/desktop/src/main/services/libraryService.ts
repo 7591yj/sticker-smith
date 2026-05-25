@@ -3,12 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  AssetId,
   DownloadState,
   ImportResult,
-  OutputArtifact,
-  SourceAsset,
   SourceMediaKind,
+  StickerItem,
   StickerPack,
   StickerPackDetails,
   StickerPackRecord,
@@ -17,391 +15,80 @@ import type {
 import { supportedMediaKinds } from "@sticker-smith/shared";
 
 import type { SettingsService } from "./settingsService";
-import {
-  compareAssetsByOrder,
-  compactStickerOrders,
-  syncOutputOrders,
-} from "./packNormalizer";
-import {
-  hydratePackDetails,
-  PackRepository,
-  resolvePackPaths,
-} from "./packRepository";
+import { compactStickerOrders } from "./packNormalizer";
+import { hydratePackDetails, PackRepository, resolvePackPaths } from "./packRepository";
 import { TelegramMirrorStore } from "./telegramMirrorStore";
 import { pathExists, sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
-import { findStickerOutput } from "../utils/packQueries";
 
 const supportedMediaKindsSet = new Set<SourceMediaKind>(supportedMediaKinds);
 
-type StickerAssetRecord = StickerPackRecord["assets"][number];
-type StickerOutputRecord = StickerPackRecord["outputs"][number];
-
-function assetSourcePath(rootPath: string, asset: StickerAssetRecord) {
-  return asset.originalImportPath ?? path.join(resolvePackPaths(rootPath).sourceRoot, asset.relativePath);
-}
-
-async function removeLegacyCopiedSourceFileIfUnreferenced(
-  record: StickerPackRecord,
-  rootPath: string,
-  asset: StickerAssetRecord,
-) {
-  if (asset.originalImportPath) {
-    return;
-  }
-
-  if (
-    record.assets.some(
-      (candidate) =>
-        candidate.id !== asset.id &&
-        !candidate.originalImportPath &&
-        candidate.relativePath === asset.relativePath,
-    )
-  ) {
-    return;
-  }
-
-  await fs.rm(assetSourcePath(rootPath, asset), { force: true });
-}
-
 function slugify(value: string) {
-  return (
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "pack"
-  );
-}
-
-function normalizeRelativePath(input: string) {
-  return input.replace(/\\/g, "/").replace(/^\/+/, "");
-}
-
-export function sourceAssetRelativePath(assetId: string, kind: SourceMediaKind) {
-  return `${assetId}.${kind}`;
-}
-
-function stickerOutputRelativePath(assetId: string) {
-  return `${assetId}.webm`;
-}
-
-function iconOutputRelativePath() {
-  return "icon.webm";
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "pack";
 }
 
 function extToKind(filePath: string): SourceMediaKind | null {
   const extension = path.extname(filePath).slice(1).toLowerCase();
-  return supportedMediaKindsSet.has(extension as SourceMediaKind)
-    ? (extension as SourceMediaKind)
-    : null;
+  return supportedMediaKindsSet.has(extension as SourceMediaKind) ? (extension as SourceMediaKind) : null;
 }
 
-function nextStickerOrder(record: StickerPackRecord) {
-  return (
-    record.assets
-      .filter((asset) => asset.id !== record.iconAssetId)
-      .reduce((maxOrder, asset) => Math.max(maxOrder, asset.order), -1) + 1
-  );
+function stickerRelativePath(stickerId: string) {
+  return `${stickerId}.webm`;
 }
 
 async function collectFiles(directoryPath: string): Promise<string[]> {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
   const result: string[] = [];
-
   for (const entry of entries) {
     const absolutePath = path.join(directoryPath, entry.name);
-    if (entry.isDirectory()) {
-      result.push(...(await collectFiles(absolutePath)));
-    } else if (entry.isFile()) {
-      result.push(absolutePath);
-    }
+    if (entry.isDirectory()) result.push(...(await collectFiles(absolutePath)));
+    else if (entry.isFile()) result.push(absolutePath);
   }
+  return result.sort((a, b) => a.localeCompare(b));
+}
 
-  return result;
+function nextStickerOrder(record: StickerPackRecord) {
+  return record.stickers.reduce((max, sticker) => Math.max(max, sticker.order), -1) + 1;
 }
 
 export class LibraryService {
   private readonly repo: PackRepository;
   private readonly telegramMirrorStore: TelegramMirrorStore;
 
-  constructor(private readonly settingsService: SettingsService) {
+  constructor(settingsService: SettingsService) {
     this.repo = new PackRepository(settingsService);
     this.telegramMirrorStore = new TelegramMirrorStore(this.repo, settingsService);
   }
 
-  private buildUpdatedPackDetails(record: StickerPackRecord, rootPath: string) {
-    return hydratePackDetails(record, rootPath);
-  }
-
-  private markTelegramMirrorStale(record: StickerPackRecord) {
-    if (record.telegram) {
-      record.telegram.syncState = "stale";
-    }
-  }
-
-  private async reconcileStaleTelegramMirror(
-    record: StickerPackRecord,
-    rootPath: string,
-  ) {
-    if (!record.telegram) {
-      return;
-    }
-
-    this.markTelegramMirrorStale(record);
-    await this.telegramMirrorStore.reconcileTelegramMirrorOutputs(record, rootPath);
-  }
-
-  private async finalizeStickerOrderMutation(
-    record: StickerPackRecord,
-    rootPath: string,
-  ) {
-    compactStickerOrders(record);
-    await this.reconcileStaleTelegramMirror(record, rootPath);
-  }
-
-  private async importAbsoluteFile(
-    record: StickerPackRecord,
-    rootPath: string,
-    absolutePath: string,
-    _relativePath: string,
-  ): Promise<SourceAsset | null> {
-    const kind = extToKind(absolutePath);
-    if (!kind) {
-      return null;
-    }
-
-    const assetId = randomUUID();
-    const nextRelativePath = sourceAssetRelativePath(assetId, kind);
-
-    const asset: SourceAsset = {
-      id: assetId,
-      packId: record.id,
-      order: nextStickerOrder(record),
-      relativePath: nextRelativePath,
-      absolutePath,
-      originalFileName: path.basename(absolutePath),
-      emojiList: [],
-      kind,
-      importedAt: nowIso(),
-      originalImportPath: absolutePath,
-      downloadState: "ready",
-    };
-
-    record.assets.push({
-      id: asset.id,
-      packId: asset.packId,
-      order: asset.order,
-      relativePath: asset.relativePath,
-      originalFileName: asset.originalFileName,
-      emojiList: asset.emojiList,
-      kind: asset.kind,
-      importedAt: asset.importedAt,
-      originalImportPath: asset.originalImportPath,
-      downloadState: asset.downloadState,
-    });
-
-    return asset;
-  }
-
-  private async deleteOutputsForAsset(
-    record: StickerPackRecord,
-    rootPath: string,
-    assetId: AssetId,
-  ) {
-    await this.removeOutputs(
-      record,
-      rootPath,
-      (output) => output.sourceAssetId === assetId,
-    );
-  }
-
-  private async clearIconOutput(
-    record: StickerPackRecord,
-    rootPath: string,
-  ) {
-    await this.removeOutputs(record, rootPath, (output) => output.mode === "icon");
-    await fs.rm(path.join(resolvePackPaths(rootPath).outputRoot, "icon.webm"), {
-      force: true,
-    });
-  }
-
-  private async removeOutputs(
-    record: StickerPackRecord,
-    rootPath: string,
-    predicate: (output: StickerOutputRecord) => boolean,
-  ) {
-    const removedOutputs = record.outputs.filter(predicate);
-    if (removedOutputs.length === 0) {
-      return;
-    }
-
-    record.outputs = record.outputs.filter((output) => !predicate(output));
-    await this.repo.deleteOutputFilesIfUnreferenced(record, rootPath, removedOutputs);
-  }
-
-  private async finalizeAssetMutation(
-    record: StickerPackRecord,
-    rootPath: string,
-    assetIds: AssetId[],
-  ) {
-    if (record.telegram) {
-      await this.reconcileStaleTelegramMirror(record, rootPath);
-      return;
-    }
-
-    for (const assetId of assetIds) {
-      await this.deleteOutputsForAsset(record, rootPath, assetId);
-    }
-  }
-
-  private async deleteAssetRecord(
-    record: StickerPackRecord,
-    rootPath: string,
-    assetId: AssetId,
-  ) {
-    const assetIndex = record.assets.findIndex((item) => item.id === assetId);
-    if (assetIndex === -1) {
-      throw new Error(`Asset not found: ${assetId}`);
-    }
-
-    const [asset] = record.assets.splice(assetIndex, 1);
-    await removeLegacyCopiedSourceFileIfUnreferenced(record, rootPath, asset);
-    await this.deleteOutputsForAsset(record, rootPath, asset.id);
-
-    if (record.iconAssetId === asset.id) {
-      record.iconAssetId = null;
-      await this.clearIconOutput(record, rootPath);
-    }
-
-    return asset;
-  }
-
-  private resolveUniqueRelativePath(
-    record: StickerPackRecord,
-    relativePath: string,
-    excludedAssetId?: string,
-  ) {
-    const normalized = normalizeRelativePath(relativePath);
-    const parsed = path.posix.parse(normalized);
-    let candidate = normalized;
-    let index = 1;
-
-    while (
-      record.assets.some(
-        (asset) =>
-          asset.relativePath === candidate && asset.id !== excludedAssetId,
-      )
-    ) {
-      candidate = path.posix.join(
-        parsed.dir,
-        `${parsed.name}-${index}${parsed.ext}`,
-      );
-      index += 1;
-    }
-
-    return candidate;
-  }
-
-  private async relocateAsset(
-    record: StickerPackRecord,
-    rootPath: string,
-    asset: StickerPackRecord["assets"][number],
-    nextRelativePath: string,
-  ) {
-    const resolvedRelativePath = this.resolveUniqueRelativePath(
-      record,
-      nextRelativePath,
-      asset.id,
-    );
-
-    if (!asset.originalImportPath) {
-      const currentAbsolutePath = assetSourcePath(rootPath, asset);
-      const nextAbsolutePath = path.join(
-        resolvePackPaths(rootPath).sourceRoot,
-        resolvedRelativePath,
-      );
-
-      await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-      if (await pathExists(currentAbsolutePath)) {
-        await fs.rename(currentAbsolutePath, nextAbsolutePath);
-      }
-    }
-
-    asset.relativePath = resolvedRelativePath;
-    await this.finalizeAssetMutation(record, rootPath, [asset.id]);
-  }
-
-  private async importEntries(
-    record: StickerPackRecord,
-    rootPath: string,
-    files: Array<{ absolutePath: string; relativePath: string }>,
-  ) {
-    const imported: SourceAsset[] = [];
-    const skipped: string[] = [];
-
-    for (const file of files) {
-      const asset = await this.importAbsoluteFile(
-        record,
-        rootPath,
-        file.absolutePath,
-        file.relativePath,
-      );
-      if (asset) {
-        imported.push(asset);
-      } else {
-        skipped.push(file.absolutePath);
-      }
-    }
-
-    if (record.telegram && imported.length > 0) {
-      this.markTelegramMirrorStale(record);
-    }
-
-    await this.repo.writePackRecord(rootPath, record);
-    return { imported, skipped };
-  }
-
-  async listPacks(): Promise<StickerPack[]> {
-    return this.repo.listPacks();
-  }
-
-  async getPack(packId: string): Promise<StickerPackDetails> {
-    return this.repo.getPack(packId);
-  }
-
-  async getPackRecord(packId: string) {
-    return this.repo.readPackRecordById(packId);
-  }
-
-  async findPackByTelegramStickerSetId(stickerSetId: string) {
-    return this.repo.findPackByTelegramStickerSetId(stickerSetId);
-  }
-
-  async mutatePackRecord(
+  private async mutatePackRecord(
     packId: string,
-    mutate: (
-      record: StickerPackRecord,
-      rootPath: string,
-    ) => Promise<void> | void,
+    action: (record: StickerPackRecord, rootPath: string) => Promise<void> | void,
   ) {
     return this.repo.withPackMutationLock(packId, async () => {
       const { record, rootPath } = await this.repo.readPackRecordById(packId);
-      await mutate(record, rootPath);
+      await action(record, rootPath);
+      compactStickerOrders(record);
       await this.repo.writePackRecord(rootPath, record);
-      return this.buildUpdatedPackDetails(record, rootPath);
+      return hydratePackDetails(record, rootPath);
     });
   }
+
+  private markTelegramMirrorStale(record: StickerPackRecord) {
+    if (record.telegram && record.telegram.syncState !== "unsupported") {
+      record.telegram.syncState = "stale";
+      record.telegram.lastSyncError = null;
+    }
+  }
+
+  async listPacks(): Promise<StickerPack[]> { return this.repo.listPacks(); }
+  async getPack(packId: string): Promise<StickerPackDetails> { return this.repo.getPack(packId); }
+  async findPackByTelegramStickerSetId(stickerSetId: string) { return this.repo.findPackByTelegramStickerSetId(stickerSetId); }
 
   async createPack(input: { name: string }): Promise<StickerPack> {
     await this.repo.ensureReady();
     const id = randomUUID();
-    const slug = slugify(input.name);
-    const directoryName = `${slug}-${id}`;
-    const rootPath = this.settingsService.getPackRoot(directoryName);
-
-    await this.repo.ensurePackDirectories(rootPath);
-
+    const slug = `${slugify(input.name)}-${id}`;
+    const rootPath = path.join(this.repo.getPacksRoot(), slug);
     const now = nowIso();
     const record: StickerPackRecord = {
       schemaVersion: 4,
@@ -410,38 +97,22 @@ export class LibraryService {
       name: input.name,
       slug,
       iconStickerId: null,
-      iconAssetId: null,
       telegramShortName: null,
       createdAt: now,
       updatedAt: now,
       stickers: [],
-      assets: [],
-      outputs: [],
     };
-
     await this.repo.writePackRecord(rootPath, record);
     return hydratePackDetails(record, rootPath).pack;
   }
 
-  async upsertTelegramMirror(input: Parameters<TelegramMirrorStore["upsertTelegramMirror"]>[0]) {
-    return this.telegramMirrorStore.upsertTelegramMirror(input);
-  }
-
-  async renamePack(input: {
-    packId: string;
-    name: string;
-  }): Promise<StickerPack> {
-    const details = await this.mutatePackRecord(
-      input.packId,
-      (record) => {
-        record.name = input.name;
-        record.slug = slugify(input.name);
-        if (record.telegram) {
-          record.telegram.title = input.name;
-          this.markTelegramMirrorStale(record);
-        }
-      },
-    );
+  async renamePack(input: { packId: string; name: string }) {
+    const details = await this.mutatePackRecord(input.packId, (record) => {
+      record.name = input.name;
+      record.slug = slugify(input.name);
+      if (record.telegram) record.telegram.title = input.name;
+      this.markTelegramMirrorStale(record);
+    });
     return details.pack;
   }
 
@@ -450,456 +121,170 @@ export class LibraryService {
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 
-  async setPackIcon(input: {
-    packId: string;
-    assetId: string | null;
-  }): Promise<StickerPack> {
-    const details = await this.mutatePackRecord(
-      input.packId,
-      async (record, rootPath) => {
-        if (
-          input.assetId !== null &&
-          !record.assets.some((asset) => asset.id === input.assetId)
-        ) {
-          throw new Error(`Asset not found in pack: ${input.assetId}`);
-        }
-
-        const selectedAsset =
-          input.assetId === null
-            ? null
-            : record.assets.find((asset) => asset.id === input.assetId) ?? null;
-        record.iconStickerId = null;
-        record.iconAssetId = input.assetId;
-        compactStickerOrders(record);
-        if (
-          selectedAsset &&
-          !(record.source === "telegram" && selectedAsset.telegram)
-        ) {
-          await this.removeOutputs(
-            record,
-            rootPath,
-            (output) =>
-              output.sourceAssetId === input.assetId && output.mode === "sticker",
-          );
-          record.stickers = record.stickers.filter(
-            (sticker) => sticker.id !== input.assetId,
-          );
-        }
-        await this.clearIconOutput(record, rootPath);
-        if (record.telegram) {
-          if (input.assetId === null) {
-            record.telegram.thumbnailPath = null;
-          } else if (selectedAsset) {
-            record.telegram.thumbnailPath = path.join(
-              resolvePackPaths(rootPath).outputRoot,
-              selectedAsset.relativePath,
-            );
-          }
-          this.markTelegramMirrorStale(record);
-        }
-      },
-    );
-
-    return details.pack;
-  }
-
-  async setPackTelegramShortName(input: {
-    packId: string;
-    shortName: string | null;
-  }): Promise<StickerPack> {
+  async setPackTelegramShortName(input: { packId: string; shortName: string | null }) {
     const details = await this.mutatePackRecord(input.packId, (record) => {
-      if (record.source !== "local") {
-        throw new Error("Only local packs can store a Telegram short name.");
-      }
-
+      if (record.source !== "local") throw new Error("Only local packs can store a Telegram short name.");
       record.telegramShortName = input.shortName;
     });
-
     return details.pack;
   }
 
-  async importFiles(
-    packId: string,
-    filePaths: string[],
-  ): Promise<ImportResult> {
-    const { record, rootPath } = await this.repo.readPackRecordById(packId);
-    return this.importEntries(
-      record,
-      rootPath,
-      [...filePaths].map((filePath) => ({
-        absolutePath: filePath,
-        relativePath: path.basename(filePath),
-      })),
-    );
-  }
-
-  async importDirectory(
-    packId: string,
-    directoryPath: string,
-  ): Promise<ImportResult> {
-    const { record, rootPath } = await this.repo.readPackRecordById(packId);
-    const files = (await collectFiles(directoryPath)).sort();
-    return this.importEntries(
-      record,
-      rootPath,
-      files.map((filePath) => ({
-        absolutePath: filePath,
-        relativePath: normalizeRelativePath(path.relative(directoryPath, filePath)),
-      })),
-    );
-  }
-
-  async renameAsset(input: {
-    packId: string;
-    assetId: string;
-    nextRelativePath: string;
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const asset = record.assets.find((item) => item.id === input.assetId);
-
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
+  async setPackIcon(input: { packId: string; stickerId: string | null }) {
+    const details = await this.mutatePackRecord(input.packId, (record, rootPath) => {
+      if (input.stickerId && !record.stickers.some((sticker) => sticker.id === input.stickerId)) {
+        throw new Error(`Sticker not found in pack: ${input.stickerId}`);
       }
-
-      await this.relocateAsset(record, rootPath, asset, input.nextRelativePath);
-    });
-  }
-
-  async renameManyAssets(input: {
-    packId: string;
-    assetIds: string[];
-    baseName: string;
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const selectedAssetIds = [...new Set(input.assetIds)];
-      const assets = selectedAssetIds.map((assetId) => {
-        const asset = record.assets.find((item) => item.id === assetId);
-        if (!asset) {
-          throw new Error(`Asset not found: ${assetId}`);
-        }
-        return asset;
-      });
-
-      const stagedMoves = assets.map((asset, index) => {
-        const parsed = path.posix.parse(asset.relativePath);
-        const candidate = path.posix.join(
-          parsed.dir,
-          `${input.baseName}-${String(index + 1).padStart(3, "0")}${parsed.ext}`,
-        );
-        const nextRelativePath = this.resolveUniqueRelativePath(
-          record,
-          candidate,
-          asset.id,
-        );
-
-        return {
-          asset,
-          currentRelativePath: asset.relativePath,
-          nextRelativePath,
-          tempRelativePath: path.posix.join(
-            parsed.dir,
-            `.rename-${randomUUID()}${parsed.ext}`,
-          ),
-        };
-      });
-
-      for (const stagedMove of stagedMoves) {
-        if (stagedMove.asset.originalImportPath) {
-          continue;
-        }
-        const currentAbsolutePath = assetSourcePath(rootPath, stagedMove.asset);
-        const tempAbsolutePath = path.join(
-          resolvePackPaths(rootPath).sourceRoot,
-          stagedMove.tempRelativePath,
-        );
-        if (!(await pathExists(currentAbsolutePath))) {
-          continue;
-        }
-        await fs.mkdir(path.dirname(tempAbsolutePath), { recursive: true });
-        await fs.rename(currentAbsolutePath, tempAbsolutePath);
-      }
-
-      for (const stagedMove of stagedMoves) {
-        if (!stagedMove.asset.originalImportPath) {
-          const tempAbsolutePath = path.join(
-            resolvePackPaths(rootPath).sourceRoot,
-            stagedMove.tempRelativePath,
-          );
-          const nextAbsolutePath = path.join(
-            resolvePackPaths(rootPath).sourceRoot,
-            stagedMove.nextRelativePath,
-          );
-          if (await pathExists(tempAbsolutePath)) {
-            await fs.mkdir(path.dirname(nextAbsolutePath), { recursive: true });
-            await fs.rename(tempAbsolutePath, nextAbsolutePath);
-          }
-        }
-        stagedMove.asset.relativePath = stagedMove.nextRelativePath;
-      }
-
-      await this.finalizeAssetMutation(
-        record,
-        rootPath,
-        stagedMoves.map((stagedMove) => stagedMove.asset.id),
-      );
-    });
-  }
-
-  async setAssetEmojis(input: {
-    packId: string;
-    assetId: string;
-    emojis: string[];
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const asset = record.assets.find((item) => item.id === input.assetId);
-
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      asset.emojiList = [...input.emojis];
-      await this.reconcileStaleTelegramMirror(record, rootPath);
-    });
-  }
-
-  async setManyAssetEmojis(input: {
-    packId: string;
-    assetIds: string[];
-    emojis: string[];
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      for (const assetId of [...new Set(input.assetIds)]) {
-        const asset = record.assets.find((item) => item.id === assetId);
-
-        if (!asset) {
-          throw new Error(`Asset not found: ${assetId}`);
-        }
-
-        asset.emojiList = [...input.emojis];
-      }
-
-      await this.reconcileStaleTelegramMirror(record, rootPath);
-    });
-  }
-
-  async reorderAsset(input: {
-    packId: string;
-    assetId: string;
-    beforeAssetId: string | null;
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      if (record.iconAssetId === input.assetId) {
-        throw new Error("The icon asset cannot be reordered.");
-      }
-
-      if (input.beforeAssetId !== null && record.iconAssetId === input.beforeAssetId) {
-        throw new Error("Sticker assets cannot be moved before the icon.");
-      }
-
-      const asset = record.assets.find((item) => item.id === input.assetId);
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      const stickerAssets = record.assets
-        .filter((item) => item.id !== record.iconAssetId)
-        .sort(compareAssetsByOrder);
-      const currentIndex = stickerAssets.findIndex((item) => item.id === input.assetId);
-      if (currentIndex === -1) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      const [moved] = stickerAssets.splice(currentIndex, 1);
-      if (!moved) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      if (input.beforeAssetId === null) {
-        stickerAssets.push(moved);
-      } else {
-        const nextIndex = stickerAssets.findIndex(
-          (item) => item.id === input.beforeAssetId,
-        );
-        if (nextIndex === -1) {
-          throw new Error(`Asset not found: ${input.beforeAssetId}`);
-        }
-
-        stickerAssets.splice(nextIndex, 0, moved);
-      }
-
-      stickerAssets.forEach((item, index) => {
-        item.order = index;
-      });
-      syncOutputOrders(record);
-      await this.reconcileStaleTelegramMirror(record, rootPath);
-    });
-  }
-
-  async moveAsset(input: {
-    packId: string;
-    assetId: string;
-    nextDirectory: string;
-  }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const asset = record.assets.find((item) => item.id === input.assetId);
-
-      if (!asset) {
-        throw new Error(`Asset not found: ${input.assetId}`);
-      }
-
-      const baseName = path.posix.basename(asset.relativePath);
-      await this.relocateAsset(
-        record,
-        rootPath,
-        asset,
-        normalizeRelativePath(path.posix.join(input.nextDirectory, baseName)),
-      );
-    });
-  }
-
-  async deleteAsset(input: { packId: string; assetId: string }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      await this.deleteAssetRecord(record, rootPath, input.assetId);
-      await this.finalizeStickerOrderMutation(record, rootPath);
-    });
-  }
-
-  async deleteManyAssets(input: { packId: string; assetIds: string[] }) {
-    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      for (const assetId of [...new Set(input.assetIds)]) {
-        await this.deleteAssetRecord(record, rootPath, assetId);
-      }
-      await this.finalizeStickerOrderMutation(record, rootPath);
-    });
-  }
-
-  async listOutputs(packId: string): Promise<OutputArtifact[]> {
-    const { record, rootPath } = await this.repo.readPackRecordById(packId);
-    return this.buildUpdatedPackDetails(record, rootPath).outputs;
-  }
-
-  async recordConversionResult(
-    packId: string,
-    result: {
-      assetId: string;
-      mode: "icon" | "sticker";
-      outputFileName: string;
-      sizeBytes: number;
-    },
-  ) {
-    const { record, rootPath } = await this.repo.readPackRecordById(packId);
-    const sourceAsset = record.assets.find((asset) => asset.id === result.assetId);
-    const relativePath =
-      result.mode === "icon"
-        ? iconOutputRelativePath()
-        : stickerOutputRelativePath(result.assetId);
-    const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, relativePath);
-    const sha256 = await sha256ForFile(absolutePath);
-    if (
-      result.mode === "icon" &&
-      sourceAsset &&
-      !(record.source === "telegram" && sourceAsset.telegram)
-    ) {
-      await this.removeOutputs(
-        record,
-        rootPath,
-        (output) =>
-          output.sourceAssetId === result.assetId && output.mode === "sticker",
-      );
-    }
-    record.outputs = record.outputs.filter(
-      (output) =>
-        !(
-          output.sourceAssetId === result.assetId && output.mode === result.mode
-        ),
-    );
-    const updatedAt = nowIso();
-    record.outputs.push({
-      packId: record.id,
-      sourceAssetId: result.assetId,
-      order: sourceAsset?.order ?? 0,
-      mode: result.mode,
-      relativePath,
-      sizeBytes: result.sizeBytes,
-      sha256,
-      updatedAt,
-    });
-    if (result.mode === "sticker") {
-      record.stickers = record.stickers.filter((sticker) => sticker.id !== result.assetId);
-      record.stickers.push({
-        id: result.assetId,
-        packId: record.id,
-        order: sourceAsset?.order ?? 0,
-        relativePath,
-        originalFileName: sourceAsset?.originalFileName ?? null,
-        emojiList: sourceAsset?.emojiList ?? [],
-        sizeBytes: result.sizeBytes,
-        sha256,
-        importedAt: sourceAsset?.importedAt ?? updatedAt,
-        updatedAt,
-        downloadState: "ready",
-        telegram: sourceAsset?.telegram,
-      });
-      record.assets = record.assets.filter((asset) => asset.id !== result.assetId);
-      record.outputs = record.outputs.filter(
-        (output) => !(output.sourceAssetId === result.assetId && output.mode === "sticker"),
-      );
-    } else {
-      record.iconAssetId = result.assetId;
-      record.iconStickerId = null;
-      record.assets = record.assets.filter((asset) => asset.id !== result.assetId);
-      record.stickers = record.stickers.filter((sticker) => sticker.id !== result.assetId);
+      record.iconStickerId = input.stickerId;
+      const sticker = input.stickerId ? record.stickers.find((item) => item.id === input.stickerId) : null;
       if (record.telegram) {
-        record.telegram.thumbnailPath = absolutePath;
+        record.telegram.thumbnailPath = sticker ? path.join(resolvePackPaths(rootPath).outputRoot, sticker.relativePath) : null;
       }
-    }
-    if (record.telegram) {
       this.markTelegramMirrorStale(record);
+    });
+    return details.pack;
+  }
+
+  async importFiles(packId: string, filePaths: string[]): Promise<ImportResult> {
+    const skipped: string[] = [];
+    const imported: StickerItem[] = [];
+    await this.mutatePackRecord(packId, async (record, rootPath) => {
+      const { outputRoot } = resolvePackPaths(rootPath);
+      await fs.mkdir(outputRoot, { recursive: true });
+      for (const filePath of filePaths) {
+        const kind = extToKind(filePath);
+        if (!kind) { skipped.push(filePath); continue; }
+        const id = randomUUID();
+        const relativePath = stickerRelativePath(id);
+        const absolutePath = path.join(outputRoot, relativePath);
+        await fs.copyFile(filePath, absolutePath);
+        const stat = await fs.stat(absolutePath);
+        const sticker: StickerPackRecord["stickers"][number] = {
+          id,
+          packId: record.id,
+          order: nextStickerOrder(record),
+          relativePath,
+          originalFileName: path.basename(filePath),
+          emojiList: [],
+          sizeBytes: stat.size,
+          sha256: await sha256ForFile(absolutePath),
+          importedAt: nowIso(),
+          updatedAt: nowIso(),
+          downloadState: "ready",
+        };
+        record.stickers.push(sticker);
+        imported.push({ ...sticker, absolutePath });
+      }
+      this.markTelegramMirrorStale(record);
+    });
+    return { imported, skipped };
+  }
+
+  async importDirectory(packId: string, directoryPath: string): Promise<ImportResult> {
+    return this.importFiles(packId, await collectFiles(directoryPath));
+  }
+
+  async setStickerEmojis(input: { packId: string; stickerId: string; emojis: string[] }) {
+    return this.mutatePackRecord(input.packId, (record) => {
+      const sticker = record.stickers.find((item) => item.id === input.stickerId);
+      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
+      sticker.emojiList = [...input.emojis];
+      this.markTelegramMirrorStale(record);
+    });
+  }
+
+  async setManyStickerEmojis(input: { packId: string; stickerIds: string[]; emojis: string[] }) {
+    return this.mutatePackRecord(input.packId, (record) => {
+      for (const stickerId of [...new Set(input.stickerIds)]) {
+        const sticker = record.stickers.find((item) => item.id === stickerId);
+        if (!sticker) throw new Error(`Sticker not found: ${stickerId}`);
+        sticker.emojiList = [...input.emojis];
+      }
+      this.markTelegramMirrorStale(record);
+    });
+  }
+
+  async reorderSticker(input: { packId: string; stickerId: string; beforeStickerId: string | null }) {
+    return this.mutatePackRecord(input.packId, (record) => {
+      const stickers = [...record.stickers].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+      const current = stickers.findIndex((item) => item.id === input.stickerId);
+      if (current === -1) throw new Error(`Sticker not found: ${input.stickerId}`);
+      const [moved] = stickers.splice(current, 1);
+      if (!moved) throw new Error(`Sticker not found: ${input.stickerId}`);
+      if (input.beforeStickerId === null) stickers.push(moved);
+      else {
+        const next = stickers.findIndex((item) => item.id === input.beforeStickerId);
+        if (next === -1) throw new Error(`Sticker not found: ${input.beforeStickerId}`);
+        stickers.splice(next, 0, moved);
+      }
+      stickers.forEach((sticker, order) => { sticker.order = order; });
+      record.stickers = stickers;
+      this.markTelegramMirrorStale(record);
+    });
+  }
+
+  async deleteSticker(input: { packId: string; stickerId: string }) {
+    return this.deleteManyStickers({ packId: input.packId, stickerIds: [input.stickerId] });
+  }
+
+  async deleteManyStickers(input: { packId: string; stickerIds: string[] }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      const ids = new Set(input.stickerIds);
+      const removed = record.stickers.filter((sticker) => ids.has(sticker.id));
+      if (removed.length !== ids.size) throw new Error("Sticker not found");
+      record.stickers = record.stickers.filter((sticker) => !ids.has(sticker.id));
+      if (record.iconStickerId && ids.has(record.iconStickerId)) record.iconStickerId = null;
+      await this.repo.deleteStickerFilesIfUnreferenced(record, rootPath, removed.map((sticker) => sticker.relativePath));
+      this.markTelegramMirrorStale(record);
+    });
+  }
+
+  async renameSticker(input: { packId: string; stickerId: string; nextRelativePath: string }) {
+    return this.mutatePackRecord(input.packId, async (record, rootPath) => {
+      const sticker = record.stickers.find((item) => item.id === input.stickerId);
+      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
+      const nextRelativePath = input.nextRelativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+      const { outputRoot } = resolvePackPaths(rootPath);
+      await fs.mkdir(path.dirname(path.join(outputRoot, nextRelativePath)), { recursive: true });
+      await fs.rename(path.join(outputRoot, sticker.relativePath), path.join(outputRoot, nextRelativePath));
+      sticker.relativePath = nextRelativePath;
+    });
+  }
+
+  async renameManyStickers(input: { packId: string; stickerIds: string[]; baseName: string }) {
+    let details: StickerPackDetails | null = null;
+    for (const [index, stickerId] of input.stickerIds.entries()) {
+      details = await this.renameSticker({ packId: input.packId, stickerId, nextRelativePath: `${input.baseName}-${index + 1}.webm` });
     }
+    return details ?? this.getPack(input.packId);
+  }
+
+  async moveSticker(input: { packId: string; stickerId: string; nextDirectory: string }) {
+    const details = await this.getPack(input.packId);
+    const sticker = details.stickers.find((item) => item.id === input.stickerId);
+    if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
+    return this.renameSticker({ packId: input.packId, stickerId: input.stickerId, nextRelativePath: path.posix.join(input.nextDirectory, path.posix.basename(sticker.relativePath)) });
+  }
+
+  async recordConversionResult(packId: string, result: { stickerId: string; mode: "icon" | "sticker"; outputFileName: string; sizeBytes: number }) {
+    const { record, rootPath } = await this.repo.readPackRecordById(packId);
+    const sticker = record.stickers.find((item) => item.id === result.stickerId);
+    if (!sticker) throw new Error(`Sticker not found: ${result.stickerId}`);
+    const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, result.outputFileName);
+    sticker.relativePath = result.outputFileName;
+    sticker.sizeBytes = result.sizeBytes;
+    sticker.sha256 = await sha256ForFile(absolutePath);
+    sticker.updatedAt = nowIso();
+    sticker.downloadState = "ready";
+    if (result.mode === "icon") record.iconStickerId = sticker.id;
+    this.markTelegramMirrorStale(record);
     await this.repo.writePackRecord(rootPath, record);
   }
 
-  async writeTelegramAssetFile(input: {
-    packId: string;
-    assetId: string;
-    sourceFilePath: string;
-    relativePath?: string;
-    baselineOutputHash?: string | null;
-  }) {
-    return this.telegramMirrorStore.writeTelegramAssetFile(input);
-  }
+  async getConversionContext(packId: string) { return this.getPack(packId); }
 
-  async setTelegramAssetDownloadState(input: {
-    packId: string;
-    assetId: string;
-    downloadState: DownloadState;
-  }) {
-    return this.telegramMirrorStore.setTelegramAssetDownloadState(input);
-  }
-
-  async updateTelegramMirrorMetadata(input: {
-    packId: string;
-    syncState?: TelegramPackSummary["syncState"];
-    lastSyncedAt?: string | null;
-    lastSyncError?: string | null;
-    title?: string;
-    shortName?: string;
-    thumbnailPath?: string | null;
-    publishedFromLocalPackId?: string | null;
-  }) {
-    return this.telegramMirrorStore.updateTelegramMirrorMetadata(input);
-  }
-
-  async syncTelegramThumbnail(input: {
-    packId: string;
-    thumbnailPath: string | null;
-    hasThumbnail?: boolean;
-    thumbnailExtension?: string | null;
-  }) {
-    return this.telegramMirrorStore.syncTelegramThumbnail(input);
-  }
-
-  async getConversionContext(packId: string) {
-    return this.getPack(packId);
-  }
+  async upsertTelegramMirror(input: Parameters<TelegramMirrorStore["upsertTelegramMirror"]>[0]) { return this.telegramMirrorStore.upsertTelegramMirror(input); }
+  async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
+  async setTelegramStickerDownloadState(input: { packId: string; stickerId: string; downloadState: DownloadState }) { return this.telegramMirrorStore.setTelegramStickerDownloadState(input); }
+  async updateTelegramMirrorMetadata(input: { packId: string; syncState?: TelegramPackSummary["syncState"]; lastSyncedAt?: string | null; lastSyncError?: string | null; title?: string; shortName?: string; thumbnailPath?: string | null; publishedFromLocalPackId?: string | null }) { return this.telegramMirrorStore.updateTelegramMirrorMetadata(input); }
+  async syncTelegramThumbnail(input: { packId: string; thumbnailPath: string | null; hasThumbnail?: boolean; thumbnailExtension?: string | null }) { return this.telegramMirrorStore.syncTelegramThumbnail(input); }
 }

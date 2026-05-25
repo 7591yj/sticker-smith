@@ -5,24 +5,24 @@ import path from "node:path";
 import {
   convertSchema,
   createPackSchema,
-  deleteAssetSchema,
-  deleteManyAssetsSchema,
+  deleteStickerSchema,
+  deleteManyStickersSchema,
   deletePackSchema,
   downloadTelegramPackMediaSchema,
-  exportOutputFolderSchema,
+  exportStickerFolderSchema,
   importDirectorySchema,
   importFilesSchema,
-  listOutputsSchema,
-  moveAssetSchema,
+  listStickersSchema,
+  moveStickerSchema,
   publishLocalPackSchema,
-  reorderAssetSchema,
-  renameAssetSchema,
-  renameManyAssetsSchema,
+  reorderStickerSchema,
+  renameStickerSchema,
+  renameManyStickersSchema,
   renamePackSchema,
-  revealOutputSchema,
-  setAssetEmojisSchema,
+  revealStickerSchema,
+  setStickerEmojisSchema,
   setPackTelegramShortNameSchema,
-  setManyAssetEmojisSchema,
+  setManyStickerEmojisSchema,
   submitTelegramCodeSchema,
   submitTelegramPasswordSchema,
   setTelegramPhoneNumberSchema,
@@ -142,7 +142,7 @@ export function registerIpc() {
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
   );
   safeHandle("packs.chooseIcon", async (_event, input: unknown) => {
-    const payload = listOutputsSchema.parse(input);
+    const payload = listStickersSchema.parse(input);
     const selected = await dialog.showOpenDialog({
       properties: ["openFile"],
     });
@@ -159,11 +159,11 @@ export function registerIpc() {
     }
     await libraryService.setPackIcon({
       packId: payload.packId,
-      assetId: asset.id,
+      stickerId: asset.id,
     });
     return converterService.convert({
       packId: payload.packId,
-      assetIds: [asset.id],
+      stickerIds: [asset.id],
     });
   });
 
@@ -196,35 +196,35 @@ export function registerIpc() {
   });
 
   safeHandle("stickers.rename", async (_event, input: unknown) =>
-    libraryService.renameAsset(renameAssetSchema.parse(input)),
+    libraryService.renameSticker(renameStickerSchema.parse(input)),
   );
   safeHandle("stickers.renameMany", async (_event, input: unknown) =>
-    libraryService.renameManyAssets(renameManyAssetsSchema.parse(input)),
+    libraryService.renameManyStickers(renameManyStickersSchema.parse(input)),
   );
   safeHandle("stickers.setEmojis", async (_event, input: unknown) =>
-    libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
+    libraryService.setStickerEmojis(setStickerEmojisSchema.parse(input)),
   );
   safeHandle("stickers.setEmojisMany", async (_event, input: unknown) =>
-    libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
+    libraryService.setManyStickerEmojis(setManyStickerEmojisSchema.parse(input)),
   );
   safeHandle("stickers.reorder", async (_event, input: unknown) =>
-    libraryService.reorderAsset(reorderAssetSchema.parse(input)),
+    libraryService.reorderSticker(reorderStickerSchema.parse(input)),
   );
   safeHandle("stickers.move", async (_event, input: unknown) =>
-    libraryService.moveAsset(moveAssetSchema.parse(input)),
+    libraryService.moveSticker(moveStickerSchema.parse(input)),
   );
   safeHandle("stickers.delete", async (_event, input: unknown) =>
-    libraryService.deleteAsset(deleteAssetSchema.parse(input)),
+    libraryService.deleteSticker(deleteStickerSchema.parse(input)),
   );
   safeHandle("stickers.deleteMany", async (_event, input: unknown) =>
-    libraryService.deleteManyAssets(deleteManyAssetsSchema.parse(input)),
+    libraryService.deleteManyStickers(deleteManyStickersSchema.parse(input)),
   );
 
   safeHandle("stickers.revealInFolder", async (_event, input: unknown) =>
-    shellService.revealOutput(revealOutputSchema.parse(input)),
+    shellService.revealSticker(revealStickerSchema.parse(input)),
   );
   safeHandle("stickers.exportFolder", async (event, input: unknown) => {
-    const payload = exportOutputFolderSchema.parse(input);
+    const payload = exportStickerFolderSchema.parse(input);
     const ownerWindow =
       BrowserWindow.fromWebContents(event.sender) ?? undefined;
     const dialogOptions: OpenDialogOptions = {
@@ -242,7 +242,7 @@ export function registerIpc() {
       return null;
     }
 
-    return shellService.exportOutputFolder({
+    return shellService.exportStickerFolder({
       packId: payload.packId,
       destinationRoot,
     });

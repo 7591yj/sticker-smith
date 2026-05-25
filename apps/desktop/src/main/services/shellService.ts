@@ -77,7 +77,7 @@ export class ShellService {
     }
   }
 
-  async revealOutput(input: { packId: string; relativePath?: string }) {
+  async revealSticker(input: { packId: string; relativePath?: string }) {
     const details = await this.libraryService.getPack(input.packId);
     if (input.relativePath) {
       const targetPath = path.join(details.pack.outputRoot, input.relativePath);
@@ -102,7 +102,7 @@ export class ShellService {
     await this.revealFolder(details.pack.rootPath);
   }
 
-  async exportOutputFolder(input: {
+  async exportStickerFolder(input: {
     packId: string;
     destinationRoot: string;
   }) {
@@ -117,11 +117,11 @@ export class ShellService {
     await fs.mkdir(sourceRoot, { recursive: true });
 
     if (targetRoot === sourceRoot) {
-      throw new Error("Destination matches the outputs folder.");
+      throw new Error("Destination matches the stickers folder.");
     }
 
     if (isWithinDirectory(targetRoot, sourceRoot)) {
-      throw new Error("Destination cannot be inside the outputs folder.");
+      throw new Error("Destination cannot be inside the stickers folder.");
     }
 
     await fs.cp(sourceRoot, targetRoot, {
