@@ -74,9 +74,7 @@ describe("app telegram pack refresh", () => {
         name: "Local Pack",
         slug: "local-pack",
         rootPath: "/tmp/local-pack",
-        sourceRoot: "/tmp/local-pack/source",
-        outputRoot: "/tmp/local-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         createdAt: "2026-03-12T00:00:00.000Z",
         updatedAt: "2026-03-12T00:00:00.000Z",
@@ -87,9 +85,7 @@ describe("app telegram pack refresh", () => {
         name: "Telegram Pack",
         slug: "telegram-pack",
         rootPath: "/tmp/telegram-pack",
-        sourceRoot: "/tmp/telegram-pack/source",
-        outputRoot: "/tmp/telegram-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         telegram: {
           stickerSetId: "100",
@@ -120,15 +116,12 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => packs),
           get: vi.fn(async (packId: string) => ({
             pack: packs.find((pack) => pack.id === packId) ?? packs[0],
-            assets: [],
-            outputs: [],
-          })),
+            stickers: [],
+                  })),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -175,11 +168,9 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -218,11 +209,9 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -291,9 +280,7 @@ describe("app telegram pack refresh", () => {
         name: "Telegram Pack",
         slug: "telegram-pack",
         rootPath: "/tmp/telegram-pack",
-        sourceRoot: "/tmp/telegram-pack/source",
-        outputRoot: "/tmp/telegram-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         telegram: {
           stickerSetId: "100",
@@ -324,15 +311,12 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => packs),
           get: vi.fn(async (packId: string) => ({
             pack: packs.find((pack) => pack.id === packId) ?? packs[0],
-            assets: [],
-            outputs: [],
-          })),
+            stickers: [],
+                  })),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -384,9 +368,7 @@ describe("app telegram pack refresh", () => {
         name: "Local Pack",
         slug: "local-pack",
         rootPath: "/tmp/local-pack",
-        sourceRoot: "/tmp/local-pack/source",
-        outputRoot: "/tmp/local-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         createdAt: "2026-03-12T00:00:00.000Z",
         updatedAt: "2026-03-12T00:00:00.000Z",
@@ -397,9 +379,7 @@ describe("app telegram pack refresh", () => {
         name: "Telegram Pack",
         slug: "telegram-pack",
         rootPath: "/tmp/telegram-pack",
-        sourceRoot: "/tmp/telegram-pack/source",
-        outputRoot: "/tmp/telegram-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         telegram: {
           stickerSetId: "100",
@@ -430,15 +410,12 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => packs),
           get: vi.fn(async (packId: string) => ({
             pack: packs.find((pack) => pack.id === packId) ?? packs[0],
-            assets: [],
-            outputs: [],
-          })),
+            stickers: [],
+                  })),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -510,11 +487,9 @@ describe("app telegram pack refresh", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });

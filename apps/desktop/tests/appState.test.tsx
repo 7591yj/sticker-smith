@@ -40,9 +40,7 @@ function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
     name: "Cats",
     slug: "cats",
     rootPath: "/tmp/cats",
-    sourceRoot: "/tmp/cats/source",
-    outputRoot: "/tmp/cats/webm",
-    iconAssetId: null,
+    iconStickerId: null,
     thumbnailPath: null,
     createdAt: "2026-03-12T00:00:00.000Z",
     updatedAt: "2026-03-12T00:00:00.000Z",
@@ -55,18 +53,19 @@ function createDetails(
 ): StickerPackDetails {
   return {
     pack: createPack(),
-    assets: [
+    stickers: [
       {
         id: "asset-1",
         packId: "pack-1",
         order: 0,
         relativePath: "nested/cat.png",
         absolutePath: "/tmp/cats/source/nested/cat.png",
-        originalFileName: "cat.png",
+        originalFileName: null,
         emojiList: [],
-        kind: "png",
+        sizeBytes: 1024,
+        sha256: null,
         importedAt: "2026-03-12T00:00:00.000Z",
-        originalImportPath: null,
+        updatedAt: "2026-03-12T00:00:00.000Z",
         downloadState: "ready",
       },
       {
@@ -77,13 +76,13 @@ function createDetails(
         absolutePath: "/tmp/cats/source/dog.png",
         originalFileName: "dog.png",
         emojiList: [],
-        kind: "png",
+        sizeBytes: 2048,
+        sha256: null,
         importedAt: "2026-03-12T00:00:00.000Z",
-        originalImportPath: null,
+        updatedAt: "2026-03-12T00:00:00.000Z",
         downloadState: "ready",
       },
     ],
-    outputs: [],
     ...overrides,
   };
 }
@@ -297,7 +296,7 @@ describe("desktop app state", () => {
     expect(document.body.textContent).toContain(
       'Sticker Smith tried to add files to "Cats", but 1 file failed.',
     );
-    expect(document.body.textContent).toContain("asset-1");
+    expect(document.body.textContent).toContain("cat.png");
     expect(document.body.textContent).toContain("ffmpeg crashed");
 
     await act(async () => {

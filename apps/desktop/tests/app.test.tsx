@@ -25,9 +25,7 @@ vi.stubGlobal("window", {
       subscribe: vi.fn(() => () => undefined),
     },
     packs: { list: vi.fn(), get: vi.fn() },
-    assets: {},
     conversion: { subscribe: vi.fn(() => () => undefined) },
-    outputs: {},
     settings: {},
   },
 });

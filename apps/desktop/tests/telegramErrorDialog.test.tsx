@@ -56,11 +56,9 @@ describe("telegram error dialog", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -106,11 +104,9 @@ describe("telegram error dialog", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -170,11 +166,9 @@ describe("telegram error dialog", () => {
           list: vi.fn(async () => []),
           get: vi.fn(),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -258,9 +252,7 @@ describe("telegram error dialog", () => {
               name: "Telegram Pack",
               slug: "telegram-pack",
               rootPath: "/tmp/telegram-pack",
-              sourceRoot: "/tmp/telegram-pack/source",
-              outputRoot: "/tmp/telegram-pack/webm",
-              iconAssetId: null,
+              iconStickerId: null,
               thumbnailPath: null,
               telegram: {
                 stickerSetId: "100",
@@ -283,9 +275,7 @@ describe("telegram error dialog", () => {
               name: "Telegram Pack",
               slug: "telegram-pack",
               rootPath: "/tmp/telegram-pack",
-              sourceRoot: "/tmp/telegram-pack/source",
-              outputRoot: "/tmp/telegram-pack/webm",
-              iconAssetId: null,
+              iconStickerId: null,
               thumbnailPath: null,
               telegram: {
                 stickerSetId: "100",
@@ -300,15 +290,12 @@ describe("telegram error dialog", () => {
               createdAt: "2026-03-12T00:00:00.000Z",
               updatedAt: "2026-03-12T00:00:00.000Z",
             },
-            assets: [],
-            outputs: [],
-          })),
+            stickers: [],
+                  })),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn(() => () => undefined),
         },
-        outputs: {},
         settings: {},
       },
     });

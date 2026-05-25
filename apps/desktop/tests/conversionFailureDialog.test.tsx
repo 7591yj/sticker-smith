@@ -26,14 +26,12 @@ describe("conversion failure dialog", () => {
         name: "Sample Pack",
         slug: "sample-pack",
         rootPath: "/tmp/sample-pack",
-        sourceRoot: "/tmp/sample-pack/source",
-        outputRoot: "/tmp/sample-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         createdAt: "2026-03-12T00:00:00.000Z",
         updatedAt: "2026-03-12T00:00:00.000Z",
       },
-      assets: [
+      stickers: [
         {
           id: "asset-1",
           packId: "pack-1",
@@ -42,14 +40,14 @@ describe("conversion failure dialog", () => {
           absolutePath: "/tmp/sample-pack/source/broken.png",
           originalFileName: "broken.png",
           emojiList: [],
-          kind: "png",
+          sizeBytes: 1024,
+          sha256: null,
           importedAt: "2026-03-12T00:00:00.000Z",
-          originalImportPath: null,
+          updatedAt: "2026-03-12T00:00:00.000Z",
           downloadState: "ready",
         },
       ],
-      outputs: [],
-    };
+      };
     let listener: ((event: ConversionJobEvent) => void) | null = null;
 
     Object.assign(window, {
@@ -79,14 +77,12 @@ describe("conversion failure dialog", () => {
           list: vi.fn(async () => [details.pack]),
           get: vi.fn(async () => details),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn((nextListener: (event: ConversionJobEvent) => void) => {
             listener = nextListener;
             return () => undefined;
           }),
         },
-        outputs: {},
         settings: {},
       },
     });
