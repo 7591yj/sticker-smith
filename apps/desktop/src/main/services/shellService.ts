@@ -80,7 +80,7 @@ export class ShellService {
   async revealSticker(input: { packId: string; relativePath?: string }) {
     const details = await this.libraryService.getPack(input.packId);
     if (input.relativePath) {
-      const targetPath = path.join(details.pack.outputRoot, input.relativePath);
+      const targetPath = path.join(details.pack.rootPath, "webm", input.relativePath);
       await fs.access(targetPath);
 
       if (
@@ -94,12 +94,7 @@ export class ShellService {
       return;
     }
 
-    await this.revealFolder(details.pack.outputRoot);
-  }
-
-  async revealSourceFolder(input: { packId: string }) {
-    const details = await this.libraryService.getPack(input.packId);
-    await this.revealFolder(details.pack.rootPath);
+    await this.revealFolder(path.join(details.pack.rootPath, "webm"));
   }
 
   async exportStickerFolder(input: {
@@ -107,24 +102,24 @@ export class ShellService {
     destinationRoot: string;
   }) {
     const details = await this.libraryService.getPack(input.packId);
-    const sourceRoot = path.resolve(details.pack.outputRoot);
+    const stickerRoot = path.resolve(details.pack.rootPath, "webm");
     const destinationRoot = path.resolve(input.destinationRoot);
     const exportFolderName = `${details.pack.slug}-webm`;
     const targetRoot = path.resolve(
       path.join(destinationRoot, exportFolderName),
     );
 
-    await fs.mkdir(sourceRoot, { recursive: true });
+    await fs.mkdir(stickerRoot, { recursive: true });
 
-    if (targetRoot === sourceRoot) {
+    if (targetRoot === stickerRoot) {
       throw new Error("Destination matches the stickers folder.");
     }
 
-    if (isWithinDirectory(targetRoot, sourceRoot)) {
+    if (isWithinDirectory(targetRoot, stickerRoot)) {
       throw new Error("Destination cannot be inside the stickers folder.");
     }
 
-    await fs.cp(sourceRoot, targetRoot, {
+    await fs.cp(stickerRoot, targetRoot, {
       recursive: true,
       force: false,
       errorOnExist: true,

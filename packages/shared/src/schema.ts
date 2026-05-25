@@ -209,10 +209,6 @@ export const exportStickerFolderSchema = z.object({
   packId: packIdSchema,
 });
 
-export const revealPackSourceFolderSchema = z.object({
-  packId: packIdSchema,
-});
-
 export const setTelegramTdlibParametersSchema = z.object({
   apiId: z.string().min(1),
   apiHash: z.string().min(1),

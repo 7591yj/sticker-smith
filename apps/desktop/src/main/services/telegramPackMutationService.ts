@@ -59,7 +59,7 @@ export class TelegramPackMutationService {
           }),
         });
 
-      const iconSticker = details.stickers.find((output) => output.mode === "icon");
+      const iconSticker = this.getIconSticker(details);
       if (iconSticker) {
         await this.ensureStickerFileExists(
           iconSticker.absolutePath,
@@ -228,18 +228,10 @@ export class TelegramPackMutationService {
       );
   }
 
-  private getStickerStickers(details: StickerPackDetails) {
-    return details.stickers
-      .filter((output) => output.mode === "sticker")
-      .sort(
-        (left, right) =>
-          left.order - right.order ||
-          left.stickerId.localeCompare(right.stickerId),
-      );
-  }
-
   private getIconSticker(details: StickerPackDetails) {
-    return details.stickers.find((output) => output.mode === "icon");
+    return details.pack.iconStickerId
+      ? findSticker(details.stickers, details.pack.iconStickerId) ?? null
+      : null;
   }
 
   private async moveRemoteStickerToPosition(
@@ -388,18 +380,11 @@ export class TelegramPackMutationService {
     options: { operation: "upload" | "update"; requireIconSticker: boolean },
   ) {
     const stickerStickers = this.getStickerStickers(details);
-    const stickerStickerIds = new Set(stickerStickers.map((sticker) => sticker.id));
     const mismatchMessage = `Pack stickers are out of sync. Refresh the pack or add the missing stickers again before Telegram ${options.operation}.`;
 
-    if (stickerStickers.some((output) => !stickerStickerIds.has(output.stickerId))) {
-      throw new Error(mismatchMessage);
-    }
-
     for (const sticker of stickerStickers) {
-      const matchingStickers = stickerStickers.filter(
-        (output) => output.stickerId === sticker.id,
-      );
-      if (matchingStickers.length === 0) {
+      const matchingSticker = findSticker(details.stickers, sticker.id);
+      if (!matchingSticker) {
         if (options.operation === "upload") {
           throw new Error(
             `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram upload.`,
@@ -410,17 +395,11 @@ export class TelegramPackMutationService {
           `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram update.`,
         );
       }
-      if (matchingStickers.length > 1) {
-        throw new Error(mismatchMessage);
-      }
     }
 
     const iconSticker = this.getIconSticker(details);
     if (iconSticker) {
-      if (
-        details.pack.iconStickerId === null ||
-        iconSticker.stickerId !== details.pack.iconStickerId
-      ) {
+      if (details.pack.iconStickerId === null || iconSticker.id !== details.pack.iconStickerId) {
         throw new Error(mismatchMessage);
       }
     } else if (options.requireIconSticker && details.pack.iconStickerId !== null) {

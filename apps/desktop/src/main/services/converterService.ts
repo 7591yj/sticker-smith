@@ -37,36 +37,36 @@ interface NdjsonParseResult {
   events: ConversionJobEvent[];
 }
 
-function isStrictWebmStickerPath(stickerPath: string, stickerRoot: string): boolean {
-  const relativePath = path.relative(stickerRoot, stickerPath);
+function isStrictWebmStickerPath(outputPath: string, outputRoot: string): boolean {
+  const relativePath = path.relative(outputRoot, outputPath);
   return (
     relativePath !== "" &&
     !relativePath.startsWith("..") &&
     !path.isAbsolute(relativePath) &&
-    path.extname(stickerPath).toLowerCase() === ".webm"
+    path.extname(outputPath).toLowerCase() === ".webm"
   );
 }
 
 class CanonicalStickerPathRegistry {
-  private readonly stickerPathByTaskKey: ReadonlyMap<string, string>;
+  private readonly outputPathByTaskKey: ReadonlyMap<string, string>;
 
   constructor(
-    private readonly stickerRoot: string,
+    private readonly outputRoot: string,
     tasks: readonly ConversionTask[],
   ) {
-    const resolvedStickerRoot = path.resolve(stickerRoot);
-    this.stickerPathByTaskKey = new Map(
+    const resolvedOutputRoot = path.resolve(outputRoot);
+    this.outputPathByTaskKey = new Map(
       tasks.map((task) => {
-        const stickerPath = path.resolve(task.stickerPath);
-        if (!isStrictWebmStickerPath(stickerPath, resolvedStickerRoot)) {
+        const outputPath = path.resolve(task.outputPath);
+        if (!isStrictWebmStickerPath(outputPath, resolvedOutputRoot)) {
           throw new Error(
-            `Conversion task sticker path mismatch: sticker ${task.stickerId} (${task.mode}) requested ${stickerPath}, expected a .webm file inside ${resolvedStickerRoot}.`,
+            `Conversion task output path mismatch: sticker ${task.stickerId} (${task.mode}) requested ${outputPath}, expected a .webm file inside ${resolvedOutputRoot}.`,
           );
         }
 
         return [
           CanonicalStickerPathRegistry.getTaskKey(task.stickerId, task.mode),
-          stickerPath,
+          outputPath,
         ];
       }),
     );
@@ -82,31 +82,31 @@ class CanonicalStickerPathRegistry {
       type: "sticker_completed";
       stickerId: string;
       mode: ConversionTask["mode"];
-      stickerPath: string;
+      outputPath: string;
     },
   ): void {
-    const actualPath = path.resolve(event.stickerPath);
-    const resolvedStickerRoot = path.resolve(this.stickerRoot);
+    const actualPath = path.resolve(event.outputPath);
+    const resolvedOutputRoot = path.resolve(this.outputRoot);
 
-    if (!isStrictWebmStickerPath(actualPath, resolvedStickerRoot)) {
+    if (!isStrictWebmStickerPath(actualPath, resolvedOutputRoot)) {
       throw new Error(
-        `Conversion sticker path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, expected a .webm file inside ${resolvedStickerRoot}.`,
+        `Conversion output path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, expected a .webm file inside ${resolvedOutputRoot}.`,
       );
     }
 
-    const expectedPath = this.stickerPathByTaskKey.get(
+    const expectedPath = this.outputPathByTaskKey.get(
       CanonicalStickerPathRegistry.getTaskKey(event.stickerId, event.mode),
     );
 
     if (!expectedPath) {
       throw new Error(
-        `Conversion sticker path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, but no canonical sticker path was registered for that task.`,
+        `Conversion output path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, but no canonical output path was registered for that task.`,
       );
     }
 
     if (actualPath !== expectedPath) {
       throw new Error(
-        `Conversion sticker path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, expected ${expectedPath}.`,
+        `Conversion output path mismatch for pack ${packId}: sticker ${event.stickerId} (${event.mode}) reported ${actualPath}, expected ${expectedPath}.`,
       );
     }
   }
@@ -324,14 +324,14 @@ export class ConverterService {
       type: "sticker_completed";
       stickerId: string;
       mode: ConversionTask["mode"];
-      stickerPath: string;
+      outputPath: string;
       sizeBytes: number;
     },
   ): Promise<void> {
     await this.libraryService.recordConversionResult(packId, {
       stickerId: event.stickerId,
       mode: event.mode,
-      outputFileName: path.basename(event.stickerPath),
+      outputFileName: path.basename(event.outputPath),
       sizeBytes: event.sizeBytes,
     });
   }
@@ -347,14 +347,14 @@ export class ConverterService {
       event.type === "sticker_completed" &&
       event.stickerId &&
       event.mode &&
-      event.stickerPath &&
+      event.outputPath &&
       typeof event.sizeBytes === "number"
     ) {
       const completedEvent = event as ConversionJobEvent & {
         type: "sticker_completed";
         stickerId: string;
         mode: ConversionTask["mode"];
-        stickerPath: string;
+        outputPath: string;
         sizeBytes: number;
       };
       stickerPathRegistry.validateCompletedEvent(packId, completedEvent);
@@ -437,7 +437,7 @@ export class ConverterService {
     const sortedStickers = [...details.stickers].sort(
       (left, right) => left.order - right.order || left.id.localeCompare(right.id),
     );
-    const outputRoot = details.pack.outputRoot;
+    const outputRoot = path.join(details.pack.rootPath, "webm");
     const tasks: ConversionTask[] = [];
     let iconTask: ConversionTask | null = null;
 
@@ -454,7 +454,7 @@ export class ConverterService {
           stickerId: sticker.id,
           sourcePath: sticker.absolutePath,
           mode: "icon",
-          stickerPath: path.join(outputRoot, "icon.webm"),
+          outputPath: path.join(outputRoot, "icon.webm"),
         };
         continue;
       }
@@ -463,7 +463,7 @@ export class ConverterService {
         stickerId: sticker.id,
         sourcePath: sticker.absolutePath,
         mode: "sticker",
-        stickerPath: path.join(outputRoot, `${sticker.id}.webm`),
+        outputPath: path.join(outputRoot, `${sticker.id}.webm`),
       });
     }
 
@@ -476,17 +476,17 @@ export class ConverterService {
 
   private async runJob(
     packId: string,
-    stickerRoot: string,
+    outputRoot: string,
     tasks: ConversionTask[],
   ): Promise<void> {
-    await fs.mkdir(stickerRoot, { recursive: true });
+    await fs.mkdir(outputRoot, { recursive: true });
     const jobId = randomUUID();
     const request: ConversionJobRequest = {
       jobId,
-      stickerRoot,
+      outputRoot,
       tasks,
     };
-    const stickerPathRegistry = new CanonicalStickerPathRegistry(stickerRoot, tasks);
+    const stickerPathRegistry = new CanonicalStickerPathRegistry(outputRoot, tasks);
 
     const backend = await this.resolveBackendCommand();
 
@@ -581,7 +581,7 @@ export class ConverterService {
     );
     await this.runJob(
       input.packId,
-      details.pack.outputRoot,
+      path.join(details.pack.rootPath, "webm"),
       this.buildTasks(details, input.stickerIds),
     );
     return this.libraryService.getPack(input.packId);

@@ -68,8 +68,6 @@ export interface StickerPack {
   name: string;
   slug: string;
   rootPath: string;
-  sourceRoot: string;
-  outputRoot: string;
   iconStickerId: StickerId | null;
   thumbnailPath: string | null;
   telegramShortName?: string | null;

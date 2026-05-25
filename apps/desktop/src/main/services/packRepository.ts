@@ -46,8 +46,6 @@ function buildStickerPack(record: StickerPackRecord, rootPath: string): StickerP
     name: record.name,
     slug: record.slug,
     rootPath,
-    sourceRoot: outputRoot,
-    outputRoot,
     iconStickerId: record.iconStickerId,
     thumbnailPath,
     telegramShortName:

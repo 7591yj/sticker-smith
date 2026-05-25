@@ -86,16 +86,16 @@ export class TelegramSyncService {
         includeStickers: false,
       });
       await this.options.mirrorService.markPackSyncState(
-        details.pack.id,
+        details.record.id,
         "unsupported",
         describeUnsupportedStickerSet(stickerSet),
       );
       this.options.emit({
         type: "pack_sync_completed",
-        packId: details.pack.id,
+        packId: details.record.id,
         stickerSetId: stickerSet.stickerSetId,
       });
-      return details.pack.id;
+      return details.record.id;
     }
 
     const hasRemoteThumbnail =
@@ -116,19 +116,19 @@ export class TelegramSyncService {
     });
     this.options.emit({
       type: "pack_sync_started",
-      packId: details.pack.id,
+      packId: details.record.id,
       stickerSetId: stickerSet.stickerSetId,
     });
 
-    await this.downloadPackMedia({ packId: details.pack.id });
-    await this.options.mirrorService.markPackSyncState(details.pack.id, "idle", null);
+    await this.downloadPackMedia({ packId: details.record.id });
+    await this.options.mirrorService.markPackSyncState(details.record.id, "idle", null);
     this.options.emit({
       type: "pack_sync_completed",
-      packId: details.pack.id,
+      packId: details.record.id,
       stickerSetId: stickerSet.stickerSetId,
     });
 
-    return details.pack.id;
+    return details.record.id;
   }
 
   async syncOwnedPacks(): Promise<void> {

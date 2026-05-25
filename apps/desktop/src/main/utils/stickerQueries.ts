@@ -1,15 +1,10 @@
-import type { ConversionMode } from "@sticker-smith/shared";
-
-interface StickerStickerLike {
-  stickerId: string;
-  mode: ConversionMode;
+interface StickerLike {
+  id: string;
 }
 
-export function findSticker<T extends StickerStickerLike>(
+export function findSticker<T extends StickerLike>(
   stickers: readonly T[],
   stickerId: string,
 ) {
-  return stickers.find(
-    (output) => output.stickerId === stickerId && output.mode === "sticker",
-  );
+  return stickers.find((sticker) => sticker.id === stickerId);
 }
