@@ -12,6 +12,7 @@ function isTelegramCompatibleEmoji(value: string) {
 
 export const packIdSchema = z.string().min(1);
 export const assetIdSchema = z.string().min(1);
+export const stickerIdSchema = z.string().min(1);
 export const mediaKindSchema = z.enum(supportedMediaKinds);
 export const conversionModeSchema = z.enum(["icon", "sticker"]);
 export const telegramAuthModeSchema = z.enum(["user"]);
@@ -37,6 +38,38 @@ export const conversionTaskSchema = z.object({
   sourcePath: z.string().min(1),
   mode: conversionModeSchema,
   outputPath: z.string().min(1).regex(/\.webm$/i),
+});
+
+export const importConversionTaskSchema = z.object({
+  sourcePath: z.string().min(1),
+  originalFileName: z.string().min(1),
+  outputPath: z.string().min(1).regex(/\.webm$/i),
+});
+
+export const stickerItemSchema = z.object({
+  id: stickerIdSchema,
+  packId: packIdSchema,
+  order: z.number().int().nonnegative(),
+  relativePath: z.string().min(1).regex(/\.webm$/i),
+  originalFileName: z.string().min(1).nullable(),
+  emojiList: emojiListSchema,
+  sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string().min(1).nullable(),
+  importedAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+export const stickerPackRecordSchema = z.object({
+  schemaVersion: z.literal(4),
+  id: packIdSchema,
+  source: z.enum(["local", "telegram"]),
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  iconStickerId: stickerIdSchema.nullable(),
+  telegramShortName: z.string().nullable().optional(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  stickers: z.array(stickerItemSchema),
 });
 
 export const conversionJobRequestSchema = z.object({

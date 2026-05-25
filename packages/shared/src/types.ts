@@ -41,6 +41,7 @@ export type DownloadState =
   | "failed";
 export type PackId = string;
 export type AssetId = string;
+export type StickerId = string;
 
 export interface TelegramPackSummary {
   stickerSetId: string;
@@ -70,6 +71,8 @@ export interface StickerPack {
   rootPath: string;
   sourceRoot: string;
   outputRoot: string;
+  iconStickerId: StickerId | null;
+  /** @deprecated compatibility alias while renderer/main APIs are renamed */
   iconAssetId: AssetId | null;
   thumbnailPath: string | null;
   telegramShortName?: string | null;
@@ -105,23 +108,45 @@ export interface OutputArtifact {
   updatedAt: string;
 }
 
+export interface StickerItem {
+  id: StickerId;
+  packId: PackId;
+  order: number;
+  relativePath: string;
+  absolutePath: string;
+  originalFileName: string | null;
+  emojiList: string[];
+  sizeBytes: number;
+  sha256: string | null;
+  importedAt: string;
+  updatedAt: string;
+  downloadState?: DownloadState;
+  telegram?: TelegramAssetMetadata;
+}
+
 export interface StickerPackRecord {
-  schemaVersion: 3;
+  schemaVersion: 4;
   id: PackId;
   source: PackSource;
   name: string;
   slug: string;
-  iconAssetId: AssetId | null;
+  iconStickerId: StickerId | null;
   telegramShortName?: string | null;
   telegram?: TelegramPackSummary;
   createdAt: string;
   updatedAt: string;
+  stickers: Omit<StickerItem, "absolutePath">[];
+  /** @deprecated compatibility mirror; not part of schema v4 persistence */
+  iconAssetId: AssetId | null;
+  /** @deprecated compatibility mirror; not part of schema v4 persistence */
   assets: Omit<SourceAsset, "absolutePath">[];
+  /** @deprecated compatibility mirror; not part of schema v4 persistence */
   outputs: Omit<OutputArtifact, "absolutePath">[];
 }
 
 export interface StickerPackDetails {
   pack: StickerPack;
+  stickers: StickerItem[];
   assets: SourceAsset[];
   outputs: OutputArtifact[];
 }
@@ -347,6 +372,12 @@ export interface ConversionTask {
   assetId: AssetId;
   sourcePath: string;
   mode: ConversionMode;
+  outputPath: string;
+}
+
+export interface ImportConversionTask {
+  sourcePath: string;
+  originalFileName: string;
   outputPath: string;
 }
 

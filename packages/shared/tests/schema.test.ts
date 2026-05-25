@@ -5,6 +5,7 @@ import {
   createPackSchema,
   conversionJobEventSchema,
   conversionJobRequestSchema,
+  importConversionTaskSchema,
   reorderAssetSchema,
   setPackTelegramShortNameSchema,
   setTelegramPhoneNumberSchema,
@@ -47,6 +48,24 @@ describe("shared schemas", () => {
             outputPath: "/tmp/out/icon.gif",
           },
         ],
+      }),
+    ).toThrow();
+  });
+
+  it("validates output-first import conversion tasks", () => {
+    expect(
+      importConversionTaskSchema.parse({
+        sourcePath: "/tmp/cat.mov",
+        originalFileName: "cat.mov",
+        outputPath: "/tmp/pack/webm/sticker.webm",
+      }).originalFileName,
+    ).toBe("cat.mov");
+
+    expect(() =>
+      importConversionTaskSchema.parse({
+        sourcePath: "/tmp/cat.mov",
+        originalFileName: "cat.mov",
+        outputPath: "/tmp/pack/webm/sticker.mp4",
       }),
     ).toThrow();
   });
@@ -172,4 +191,5 @@ describe("shared schemas", () => {
       }).beforeAssetId,
     ).toBeNull();
   });
+
 });
