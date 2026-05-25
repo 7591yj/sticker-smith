@@ -222,25 +222,21 @@ export class PackRepository {
     const { packFilePath } = resolvePackPaths(rootPath);
     const tempFilePath = `${packFilePath}.${process.pid}.${randomUUID()}.tmp`;
     const backupFilePath = `${packFilePath}.bak`;
-    const persistentRecord: StickerPackRecord = {
+    const persistentRecord: Omit<
+      StickerPackRecord,
+      "iconAssetId" | "assets" | "outputs"
+    > = {
       schemaVersion: 4,
       id: record.id,
       source: record.source,
       name: record.name,
       slug: record.slug,
       iconStickerId: record.iconStickerId,
-      iconAssetId: record.iconAssetId,
       telegramShortName: record.telegramShortName,
       telegram: record.telegram,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       stickers: record.stickers,
-      assets: record.assets.filter((asset) =>
-        record.stickers.every((sticker) => sticker.id !== asset.id),
-      ),
-      outputs: record.outputs.filter((output) =>
-        record.stickers.every((sticker) => sticker.id !== output.sourceAssetId),
-      ),
     };
     const serialized = JSON.stringify(persistentRecord, null, 2);
 
