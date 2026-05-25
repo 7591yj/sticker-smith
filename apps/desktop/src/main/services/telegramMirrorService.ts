@@ -23,10 +23,10 @@ export class TelegramMirrorService {
     publishedFromLocalPackId?: string | null;
     syncState?: "idle" | "syncing" | "stale" | "error" | "unsupported";
     lastSyncError?: string | null;
-    includeAssets?: boolean;
+    includeStickers?: boolean;
   }) {
     const { stickerSet } = input;
-    const includeAssets = input.includeAssets ?? true;
+    const includeStickers = input.includeStickers ?? true;
 
     return this.libraryService.upsertTelegramMirror({
       stickerSetId: stickerSet.stickerSetId,
@@ -41,7 +41,7 @@ export class TelegramMirrorService {
       lastSyncedAt: nowIso(),
       lastSyncError: input.lastSyncError ?? null,
       publishedFromLocalPackId: input.publishedFromLocalPackId ?? null,
-      assets: includeAssets
+      stickers: includeStickers
         ? stickerSet.stickers.map((sticker) => ({
             relativePath: relativeStickerPath(sticker.position),
             emojiList: sticker.emojiList,
@@ -52,7 +52,7 @@ export class TelegramMirrorService {
               fileId: sticker.fileId,
               fileUniqueId: sticker.fileUniqueId,
               position: sticker.position,
-              baselineOutputHash: null,
+              baselineStickerHash: null,
             },
           }))
         : [],
@@ -72,33 +72,33 @@ export class TelegramMirrorService {
     });
   }
 
-  async markStickerQueued(packId: string, assetId: string) {
-    await this.libraryService.setTelegramAssetDownloadState({
+  async markStickerQueued(packId: string, stickerId: string) {
+    await this.libraryService.setTelegramStickerDownloadState({
       packId,
-      assetId,
+      stickerId,
       downloadState: "queued",
     });
   }
 
-  async markStickerDownloading(packId: string, assetId: string) {
-    await this.libraryService.setTelegramAssetDownloadState({
+  async markStickerDownloading(packId: string, stickerId: string) {
+    await this.libraryService.setTelegramStickerDownloadState({
       packId,
-      assetId,
+      stickerId,
       downloadState: "downloading",
     });
   }
 
-  async markStickerFailed(packId: string, assetId: string) {
-    await this.libraryService.setTelegramAssetDownloadState({
+  async markStickerFailed(packId: string, stickerId: string) {
+    await this.libraryService.setTelegramStickerDownloadState({
       packId,
-      assetId,
+      stickerId,
       downloadState: "failed",
     });
   }
 
   async storeDownloadedSticker(input: {
     packId: string;
-    assetId: string;
+    stickerId: string;
     sticker: TelegramRemoteSticker;
     file: TelegramDownloadedFile;
   }) {
@@ -106,9 +106,9 @@ export class TelegramMirrorService {
       throw new Error("Downloaded Telegram sticker file has no local path.");
     }
 
-    await this.libraryService.writeTelegramAssetFile({
+    await this.libraryService.writeTelegramStickerFile({
       packId: input.packId,
-      assetId: input.assetId,
+      stickerId: input.stickerId,
       sourceFilePath: input.file.localPath,
       relativePath: relativeStickerPath(input.sticker.position),
     });
