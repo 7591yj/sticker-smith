@@ -10,7 +10,7 @@ import Typography from "@mui/material/Typography";
 import type { TelegramState } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 
-interface Props {
+export interface TelegramAuthDialogProps {
   open: boolean;
   state: TelegramState | null;
   onClose: () => void;
@@ -60,7 +60,7 @@ export function TelegramAuthDialog({
   onSubmitPhoneNumber,
   onSubmitCode,
   onSubmitPassword,
-}: Props) {
+}: TelegramAuthDialogProps) {
   const [apiId, setApiId] = useState("");
   const [apiHash, setApiHash] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");

@@ -10,13 +10,13 @@ import type {
   StickerPack,
   StickerPackDetails,
   StickerPackRecord,
-  TelegramPackSummary,
 } from "@sticker-smith/shared";
 import { supportedMediaKinds } from "@sticker-smith/shared";
 
 import type { SettingsService } from "./settingsService";
 import { compactStickerOrders } from "./packNormalizer";
 import { hydratePackDetails, PackRepository, resolvePackPaths } from "./packRepository";
+import { markStickerFileReady } from "./stickerFileState";
 import { TelegramMirrorStore } from "./telegramMirrorStore";
 import { pathExists, sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
@@ -270,11 +270,11 @@ export class LibraryService {
     const sticker = record.stickers.find((item) => item.id === result.stickerId);
     if (!sticker) throw new Error(`Sticker not found: ${result.stickerId}`);
     const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, result.outputFileName);
-    sticker.relativePath = result.outputFileName;
-    sticker.sizeBytes = result.sizeBytes;
-    sticker.sha256 = await sha256ForFile(absolutePath);
-    sticker.updatedAt = nowIso();
-    sticker.downloadState = "ready";
+    markStickerFileReady(sticker, {
+      relativePath: result.outputFileName,
+      sizeBytes: result.sizeBytes,
+      sha256: await sha256ForFile(absolutePath),
+    });
     if (result.mode === "icon") record.iconStickerId = sticker.id;
     this.markTelegramMirrorStale(record);
     await this.repo.writePackRecord(rootPath, record);
@@ -284,7 +284,7 @@ export class LibraryService {
 
   async upsertTelegramMirror(input: Parameters<TelegramMirrorStore["upsertTelegramMirror"]>[0]) { return this.telegramMirrorStore.upsertTelegramMirror(input); }
   async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
-  async setTelegramStickerDownloadState(input: { packId: string; stickerId: string; downloadState: DownloadState }) { return this.telegramMirrorStore.setTelegramStickerDownloadState(input); }
-  async updateTelegramMirrorMetadata(input: { packId: string; syncState?: TelegramPackSummary["syncState"]; lastSyncedAt?: string | null; lastSyncError?: string | null; title?: string; shortName?: string; thumbnailPath?: string | null; publishedFromLocalPackId?: string | null }) { return this.telegramMirrorStore.updateTelegramMirrorMetadata(input); }
-  async syncTelegramThumbnail(input: { packId: string; thumbnailPath: string | null; hasThumbnail?: boolean; thumbnailExtension?: string | null }) { return this.telegramMirrorStore.syncTelegramThumbnail(input); }
+  async setTelegramStickerDownloadState(input: Parameters<TelegramMirrorStore["setTelegramStickerDownloadState"]>[0]) { return this.telegramMirrorStore.setTelegramStickerDownloadState(input); }
+  async updateTelegramMirrorMetadata(input: Parameters<TelegramMirrorStore["updateTelegramMirrorMetadata"]>[0]) { return this.telegramMirrorStore.updateTelegramMirrorMetadata(input); }
+  async syncTelegramThumbnail(input: Parameters<TelegramMirrorStore["syncTelegramThumbnail"]>[0]) { return this.telegramMirrorStore.syncTelegramThumbnail(input); }
 }

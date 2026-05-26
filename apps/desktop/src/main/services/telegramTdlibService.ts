@@ -678,12 +678,7 @@ export class TelegramTdlibService {
     }
   }
 
-  async replaceStickerInSet(input: {
-    shortName: string;
-    oldFileId: string;
-    newStickerPath: string;
-    emojis: string[];
-  }) {
+  private async requireStickerSetEditContext(shortNameInput: string) {
     if (!this.client) {
       throw new Error("TDLib client is not started.");
     }
@@ -693,12 +688,23 @@ export class TelegramTdlibService {
       throw new Error("Telegram user session is not ready.");
     }
 
-    const shortName = input.shortName.trim();
+    const shortName = shortNameInput.trim();
     if (!shortName) {
       throw new Error("Telegram sticker set short name must be non-empty.");
     }
 
-    await this.client.invoke({
+    return { client: this.client, me, shortName };
+  }
+
+  async replaceStickerInSet(input: {
+    shortName: string;
+    oldFileId: string;
+    newStickerPath: string;
+    emojis: string[];
+  }) {
+    const { client, me, shortName } = await this.requireStickerSetEditContext(input.shortName);
+
+    await client.invoke({
       _: "replaceStickerInSet",
       user_id: me.id,
       name: shortName,
@@ -716,21 +722,9 @@ export class TelegramTdlibService {
     stickerPath: string;
     emojis: string[];
   }) {
-    if (!this.client) {
-      throw new Error("TDLib client is not started.");
-    }
+    const { client, me, shortName } = await this.requireStickerSetEditContext(input.shortName);
 
-    const me = await this.getSessionUser();
-    if (!me) {
-      throw new Error("Telegram user session is not ready.");
-    }
-
-    const shortName = input.shortName.trim();
-    if (!shortName) {
-      throw new Error("Telegram sticker set short name must be non-empty.");
-    }
-
-    await this.client.invoke({
+    await client.invoke({
       _: "addStickerToSet",
       user_id: me.id,
       name: shortName,

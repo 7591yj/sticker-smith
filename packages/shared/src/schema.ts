@@ -24,6 +24,8 @@ export const emojiSchema = z
     message: "Expected a Telegram-compatible emoji.",
   });
 export const emojiListSchema = z.array(emojiSchema).max(20);
+const storedEmojiSchema = z.string().trim().min(1).max(32);
+const storedEmojiListSchema = z.array(storedEmojiSchema).max(20);
 export const telegramRequiredEmojiListSchema = emojiListSchema.min(1);
 export const telegramShortNameSchema = z
   .string()
@@ -79,7 +81,7 @@ export const stickerItemSchema = z.object({
   order: z.number().int().nonnegative(),
   relativePath: z.string().min(1).regex(/\.webm$/i),
   originalFileName: z.string().min(1).nullable(),
-  emojiList: emojiListSchema,
+  emojiList: storedEmojiListSchema,
   sizeBytes: z.number().int().nonnegative(),
   sha256: z.string().min(1).nullable(),
   importedAt: z.string().min(1),

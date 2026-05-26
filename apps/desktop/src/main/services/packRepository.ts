@@ -181,15 +181,23 @@ export class PackRepository {
     }));
   }
 
-  async readPackRecordById(packId: string) {
+  async findPackRecord(
+    predicate: (record: StickerPackRecord) => boolean,
+  ): Promise<{ record: StickerPackRecord; rootPath: string } | null> {
     await this.ensureReady();
     const entries = await fs.readdir(this.getPacksRoot(), { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const rootPath = path.join(this.getPacksRoot(), entry.name);
       const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
-      if (record?.id === packId) return { record, rootPath };
+      if (record && predicate(record)) return { record, rootPath };
     }
+    return null;
+  }
+
+  async readPackRecordById(packId: string) {
+    const match = await this.findPackRecord((record) => record.id === packId);
+    if (match) return match;
     throw new Error(`Pack not found: ${packId}`);
   }
 
@@ -210,14 +218,6 @@ export class PackRepository {
   }
 
   async findPackByTelegramStickerSetId(stickerSetId: string) {
-    await this.ensureReady();
-    const entries = await fs.readdir(this.getPacksRoot(), { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const rootPath = path.join(this.getPacksRoot(), entry.name);
-      const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
-      if (record?.telegram?.stickerSetId === stickerSetId) return { record, rootPath };
-    }
-    return null;
+    return this.findPackRecord((record) => record.telegram?.stickerSetId === stickerSetId);
   }
 }

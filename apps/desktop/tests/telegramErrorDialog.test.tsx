@@ -3,6 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelegramEvent } from "@sticker-smith/shared";
 import { createConnectedTelegramState, renderApp } from "./helpers";
 
+async function renderWithTelegramMock(telegram: Record<string, unknown>) {
+  Object.assign(window, {
+    stickerSmith: {
+      telegram,
+      packs: {
+        list: vi.fn(async () => []),
+        get: vi.fn(),
+      },
+      conversion: {
+        subscribe: vi.fn(() => () => undefined),
+      },
+      settings: {},
+    },
+  });
+
+  return renderApp();
+}
+
 describe("telegram error dialog", () => {
   beforeEach(() => {
     (
@@ -20,28 +38,14 @@ describe("telegram error dialog", () => {
   it("opens a dialog when telegram publish fails", async () => {
     let listener: ((event: TelegramEvent) => void) | null = null;
 
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => createConnectedTelegramState()),
-          subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
-            listener = nextListener;
-            return () => undefined;
-          }),
-          syncOwnedPacks: vi.fn(async () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => createConnectedTelegramState()),
+      subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
+        listener = nextListener;
+        return () => undefined;
+      }),
+      syncOwnedPacks: vi.fn(async () => undefined),
     });
-
-    const { root } = await renderApp();
 
     await act(async () => {
       listener?.({
@@ -63,26 +67,12 @@ describe("telegram error dialog", () => {
   });
 
   it("opens a dialog when telegram startup fails", async () => {
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => {
-            throw new Error("Telegram secret storage is unavailable.");
-          }),
-          subscribe: vi.fn(() => () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => {
+        throw new Error("Telegram secret storage is unavailable.");
+      }),
+      subscribe: vi.fn(() => () => undefined),
     });
-
-    const { root } = await renderApp();
 
     expect(document.body.textContent).toContain("Telegram startup failed");
     expect(document.body.textContent).toContain(
@@ -95,28 +85,14 @@ describe("telegram error dialog", () => {
   });
 
   it("opens a dialog when telegram logout fails", async () => {
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => createConnectedTelegramState()),
-          logout: vi.fn(async () => {
-            throw new Error("The Telegram session could not be closed.");
-          }),
-          subscribe: vi.fn(() => () => undefined),
-          syncOwnedPacks: vi.fn(async () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => createConnectedTelegramState()),
+      logout: vi.fn(async () => {
+        throw new Error("The Telegram session could not be closed.");
+      }),
+      subscribe: vi.fn(() => () => undefined),
+      syncOwnedPacks: vi.fn(async () => undefined),
     });
-
-    const { root } = await renderApp();
 
     const accountButton = [...document.querySelectorAll("button")].find(
       (button) => button.getAttribute("aria-label") === "Telegram account",

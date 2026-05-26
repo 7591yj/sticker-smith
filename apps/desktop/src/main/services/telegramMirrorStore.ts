@@ -13,6 +13,7 @@ import type {
 import type { SettingsService } from "./settingsService";
 import { compactStickerOrders, createDefaultTelegramSummary } from "./packNormalizer";
 import { hydratePackDetails, PackRepository, resolvePackPaths } from "./packRepository";
+import { markStickerFileReady } from "./stickerFileState";
 import { pathExists, sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
 
@@ -186,21 +187,26 @@ export class TelegramMirrorStore {
     });
   }
 
+  private requireSticker(record: StickerPackRecord, stickerId: string) {
+    const sticker = record.stickers.find((item) => item.id === stickerId);
+    if (!sticker) throw new Error(`Sticker not found: ${stickerId}`);
+    return sticker;
+  }
+
   async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null }) {
     return this.repo.withPackMutationLock(input.packId, async () => {
       const { record, rootPath } = await this.repo.readPackRecordById(input.packId);
-      const sticker = record.stickers.find((item) => item.id === input.stickerId);
-      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
+      const sticker = this.requireSticker(record, input.stickerId);
       const relativePath = input.relativePath ?? stickerRelativePath(sticker.id);
       const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, relativePath);
       await fs.mkdir(path.dirname(absolutePath), { recursive: true });
       await fs.copyFile(input.sourceFilePath, absolutePath);
       const stat = await fs.stat(absolutePath);
-      sticker.relativePath = relativePath;
-      sticker.sizeBytes = stat.size;
-      sticker.sha256 = await sha256ForFile(absolutePath);
-      sticker.updatedAt = nowIso();
-      sticker.downloadState = "ready";
+      markStickerFileReady(sticker, {
+        relativePath,
+        sizeBytes: stat.size,
+        sha256: await sha256ForFile(absolutePath),
+      });
       if (sticker.telegram) sticker.telegram.baselineStickerHash = input.baselineStickerHash ?? sticker.sha256;
       await this.repo.writePackRecord(rootPath, record);
       return hydratePackDetails(record, rootPath);
@@ -210,8 +216,7 @@ export class TelegramMirrorStore {
   async setTelegramStickerDownloadState(input: { packId: string; stickerId: string; downloadState: DownloadState }) {
     return this.repo.withPackMutationLock(input.packId, async () => {
       const { record, rootPath } = await this.repo.readPackRecordById(input.packId);
-      const sticker = record.stickers.find((item) => item.id === input.stickerId);
-      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
+      const sticker = this.requireSticker(record, input.stickerId);
       sticker.downloadState = input.downloadState;
       await this.repo.writePackRecord(rootPath, record);
       return hydratePackDetails(record, rootPath);

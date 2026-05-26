@@ -46,6 +46,20 @@ describe("normalizeKeytarModule", () => {
 describe("TelegramSecretsService", () => {
   const cleanup: string[] = [];
 
+  async function createTempRoot() {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-secrets-"));
+    cleanup.push(root);
+    return root;
+  }
+
+  async function writeFallbackSecrets(root: string, data: unknown) {
+    await fs.mkdir(path.join(root, "telegram"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, "telegram", "secrets.json"),
+      JSON.stringify(data, null, 2),
+    );
+  }
+
   afterEach(async () => {
     await Promise.all(
       cleanup
@@ -55,8 +69,7 @@ describe("TelegramSecretsService", () => {
   });
 
   it("stores secrets in plaintext when keychain and safeStorage are unavailable", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-secrets-"));
-    cleanup.push(root);
+    const root = await createTempRoot();
 
     const service = new TelegramSecretsService(
       new FakeSettingsService(root) as never,
@@ -83,23 +96,14 @@ describe("TelegramSecretsService", () => {
   });
 
   it("reads legacy safeStorage-backed fallback secrets", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-secrets-"));
-    cleanup.push(root);
+    const root = await createTempRoot();
 
-    await fs.mkdir(path.join(root, "telegram"), { recursive: true });
-    await fs.writeFile(
-      path.join(root, "telegram", "secrets.json"),
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          secrets: {
-            "default:api_hash": Buffer.from("enc:legacy-secret").toString("base64"),
-          },
-        },
-        null,
-        2,
-      ),
-    );
+    await writeFallbackSecrets(root, {
+      schemaVersion: 1,
+      secrets: {
+        "default:api_hash": Buffer.from("enc:legacy-secret").toString("base64"),
+      },
+    });
 
     const service = new TelegramSecretsService(
       new FakeSettingsService(root) as never,
@@ -117,26 +121,17 @@ describe("TelegramSecretsService", () => {
   });
 
   it("fails clearly when encrypted fallback secrets cannot be decrypted in the current environment", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-secrets-"));
-    cleanup.push(root);
+    const root = await createTempRoot();
 
-    await fs.mkdir(path.join(root, "telegram"), { recursive: true });
-    await fs.writeFile(
-      path.join(root, "telegram", "secrets.json"),
-      JSON.stringify(
-        {
-          schemaVersion: 2,
-          secrets: {
-            "default:api_hash": {
-              storage: "safe_storage",
-              value: Buffer.from("enc:secret").toString("base64"),
-            },
-          },
+    await writeFallbackSecrets(root, {
+      schemaVersion: 2,
+      secrets: {
+        "default:api_hash": {
+          storage: "safe_storage",
+          value: Buffer.from("enc:secret").toString("base64"),
         },
-        null,
-        2,
-      ),
-    );
+      },
+    });
 
     const service = new TelegramSecretsService(
       new FakeSettingsService(root) as never,
@@ -156,27 +151,18 @@ describe("TelegramSecretsService", () => {
   });
 
   it("reads plaintext fallback secrets before a later keychain migration", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-secrets-"));
-    cleanup.push(root);
+    const root = await createTempRoot();
 
     const keytar = new FakeKeytar();
-    await fs.mkdir(path.join(root, "telegram"), { recursive: true });
-    await fs.writeFile(
-      path.join(root, "telegram", "secrets.json"),
-      JSON.stringify(
-        {
-          schemaVersion: 2,
-          secrets: {
-            "default:api_hash": {
-              storage: "plain_text",
-              value: "plain-secret",
-            },
-          },
+    await writeFallbackSecrets(root, {
+      schemaVersion: 2,
+      secrets: {
+        "default:api_hash": {
+          storage: "plain_text",
+          value: "plain-secret",
         },
-        null,
-        2,
-      ),
-    );
+      },
+    });
 
     const service = new TelegramSecretsService(
       new FakeSettingsService(root) as never,

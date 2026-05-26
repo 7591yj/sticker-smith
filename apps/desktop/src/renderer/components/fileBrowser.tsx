@@ -39,7 +39,7 @@ interface BrowserViewToggleProps {
   compact?: boolean;
 }
 
-interface BrowserItemProps {
+export interface BrowserItemProps {
   title: string;
   label: string;
   isPinned?: boolean;
@@ -56,6 +56,14 @@ interface BrowserItemProps {
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
   onDrop?: (event: DragEvent<HTMLDivElement>) => void;
 }
+
+type BrowserItemFrameProps = Omit<
+  BrowserItemProps,
+  "label" | "preview" | "metadata"
+> & {
+  frameSx: object;
+  children: ReactNode;
+};
 
 function browserItemStateSx(input: {
   isPinned: boolean;
@@ -267,15 +275,12 @@ export function BrowserViewToggle({
   );
 }
 
-export function BrowserGalleryCard({
+function BrowserItemFrame({
   title,
-  label,
   isPinned = false,
   selected = false,
   isDragOver = false,
   draggable = false,
-  preview,
-  metadata,
   onClick,
   onDoubleClick,
   onContextMenu,
@@ -283,7 +288,9 @@ export function BrowserGalleryCard({
   onDragEnd,
   onDragOver,
   onDrop,
-}: BrowserItemProps) {
+  frameSx,
+  children,
+}: BrowserItemFrameProps) {
   return (
     <Box
       onClick={onClick}
@@ -296,8 +303,7 @@ export function BrowserGalleryCard({
       draggable={draggable}
       title={title}
       sx={{
-        borderRadius: appTokens.shape.radius.card,
-        overflow: "hidden",
+        ...frameSx,
         ...browserItemStateSx({
           isPinned,
           selected,
@@ -307,6 +313,29 @@ export function BrowserGalleryCard({
       }}
     >
       {isPinned ? <PinnedBadge /> : null}
+      {children}
+    </Box>
+  );
+}
+
+export function BrowserGalleryCard({
+  title,
+  label,
+  isPinned = false,
+  preview,
+  metadata,
+  ...frameProps
+}: BrowserItemProps) {
+  return (
+    <BrowserItemFrame
+      {...frameProps}
+      title={title}
+      isPinned={isPinned}
+      frameSx={{
+        borderRadius: appTokens.shape.radius.card,
+        overflow: "hidden",
+      }}
+    >
       <Box
         sx={{
           aspectRatio: appTokens.sizes.preview.aspectRatio,
@@ -337,7 +366,7 @@ export function BrowserGalleryCard({
           {metadata}
         </Box>
       </Box>
-    </Box>
+    </BrowserItemFrame>
   );
 }
 
@@ -345,46 +374,24 @@ export function BrowserListRow({
   title,
   label,
   isPinned = false,
-  selected = false,
-  isDragOver = false,
-  draggable = false,
   preview,
   metadata,
-  onClick,
-  onDoubleClick,
-  onContextMenu,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
+  ...frameProps
 }: BrowserItemProps) {
   return (
-    <Box
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onContextMenu={onContextMenu}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      draggable={draggable}
+    <BrowserItemFrame
+      {...frameProps}
       title={title}
-      sx={{
+      isPinned={isPinned}
+      frameSx={{
         display: "flex",
         alignItems: "center",
         gap: 1.25,
         px: 1,
         py: 0.85,
         borderRadius: appTokens.shape.radius.panel,
-        ...browserItemStateSx({
-          isPinned,
-          selected,
-          isDragOver,
-          draggable,
-        }),
       }}
     >
-      {isPinned ? <PinnedBadge /> : null}
       <Box
         sx={{
           width: appTokens.sizes.preview.listRow,
@@ -415,7 +422,7 @@ export function BrowserListRow({
           {metadata}
         </Box>
       </Box>
-    </Box>
+    </BrowserItemFrame>
   );
 }
 

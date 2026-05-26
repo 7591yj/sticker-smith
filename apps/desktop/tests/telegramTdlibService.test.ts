@@ -9,6 +9,98 @@ import {
   resolvePackagedTdjsonPath,
 } from "../src/main/services/telegramTdlibService";
 
+type TdlibClientMock = {
+  invoke: (request: Record<string, unknown>) => Promise<unknown>;
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+  isClosed: () => boolean;
+};
+
+type TestableTelegramTdlibService = TelegramTdlibService & {
+  client: TdlibClientMock | null;
+  loadTdlibModules: () => Promise<{
+    configure: (options: Record<string, unknown>) => void;
+    createBareClient: () => TdlibClientMock;
+    tdjson: string;
+  }>;
+};
+
+function createTestService(Service = TelegramTdlibService) {
+  return new Service() as TestableTelegramTdlibService;
+}
+
+function createServiceWithClient(
+  invoke: (request: Record<string, unknown>) => Promise<unknown>,
+) {
+  const requests: Array<Record<string, unknown>> = [];
+  const service = new TelegramTdlibService() as TelegramTdlibService & {
+    client: { invoke: (request: Record<string, unknown>) => Promise<unknown> };
+    getSessionUser?: () => Promise<{ id: number }>;
+  };
+
+  service.client = {
+    invoke: async (request: Record<string, unknown>) => {
+      requests.push(request);
+      return invoke(request);
+    },
+  };
+
+  return { requests, service };
+}
+
+function createOkServiceWithClient() {
+  return createServiceWithClient(async () => ({ _: "ok" }));
+}
+
+function createStartupTestService(options: { repeatWaitStateUpdate?: boolean } = {}) {
+  const requests: Array<Record<string, unknown>> = [];
+  let updateListener: ((update: Record<string, unknown>) => void) | null = null;
+  const service = createTestService();
+
+  service.loadTdlibModules = async () => ({
+    configure: () => undefined,
+    tdjson: "/tmp/tdjson",
+    createBareClient: () => ({
+      invoke: async (request: Record<string, unknown>) => {
+        requests.push(request);
+        if (request._ === "getAuthorizationState") {
+          if (options.repeatWaitStateUpdate) {
+            queueMicrotask(() => {
+              updateListener?.({
+                _: "updateAuthorizationState",
+                authorization_state: { _: "authorizationStateWaitTdlibParameters" },
+              });
+            });
+          }
+          return { _: "authorizationStateWaitTdlibParameters" };
+        }
+        if (request._ === "setTdlibParameters") return { _: "ok" };
+        return null;
+      },
+      on: (event: string, listener: (...args: unknown[]) => void) => {
+        if (event === "update") {
+          updateListener = listener as (update: Record<string, unknown>) => void;
+        }
+      },
+      close: async () => undefined,
+      isClosed: () => false,
+    }),
+  });
+
+  return { requests, service };
+}
+
+function tdlibCredentials() {
+  return {
+    apiId: 12345,
+    apiHash: "0123456789abcdef0123456789abcdef",
+    phoneNumber: null,
+    databaseDirectory: "/tmp/sticker-smith-tdlib-db",
+    filesDirectory: "/tmp/sticker-smith-tdlib-files",
+    databaseEncryptionKey: "encryption-key",
+  };
+}
+
 describe("TelegramTdlibService", () => {
   it("rewrites packaged tdjson paths to app.asar.unpacked when present", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "sticker-smith-tdjson-"));
@@ -59,56 +151,9 @@ describe("TelegramTdlibService", () => {
   });
 
   it("sends the required tdlib parameter defaults during initialization", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-        on: (event: string, listener: (...args: unknown[]) => void) => void;
-        close: () => Promise<void>;
-        isClosed: () => boolean;
-      } | null;
-      loadTdlibModules: () => Promise<{
-        configure: (options: Record<string, unknown>) => void;
-        createBareClient: () => {
-          invoke: (request: Record<string, unknown>) => Promise<unknown>;
-          on: (event: string, listener: (...args: unknown[]) => void) => void;
-          close: () => Promise<void>;
-          isClosed: () => boolean;
-        };
-        tdjson: string;
-      }>;
-    };
+    const { requests, service } = createStartupTestService();
 
-    service.loadTdlibModules = async () => ({
-      configure: () => undefined,
-      tdjson: "/tmp/tdjson",
-      createBareClient: () => ({
-        invoke: async (request: Record<string, unknown>) => {
-          requests.push(request);
-          if (request._ === "getAuthorizationState") {
-            return { _: "authorizationStateWaitTdlibParameters" };
-          }
-
-          if (request._ === "setTdlibParameters") {
-            return { _: "ok" };
-          }
-
-          return null;
-        },
-        on: () => undefined,
-        close: async () => undefined,
-        isClosed: () => false,
-      }),
-    });
-
-    await service.ensureStarted({
-      apiId: 12345,
-      apiHash: "0123456789abcdef0123456789abcdef",
-      phoneNumber: null,
-      databaseDirectory: "/tmp/sticker-smith-tdlib-db",
-      filesDirectory: "/tmp/sticker-smith-tdlib-files",
-      databaseEncryptionKey: "encryption-key",
-    });
+    await service.ensureStarted(tdlibCredentials());
 
     expect(requests[1]).toEqual({
       _: "setTdlibParameters",
@@ -128,69 +173,11 @@ describe("TelegramTdlibService", () => {
   });
 
   it("submits tdlib parameters only once when startup repeats the wait state", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    let updateListener: ((update: Record<string, unknown>) => void) | null = null;
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-        on: (event: string, listener: (...args: unknown[]) => void) => void;
-        close: () => Promise<void>;
-        isClosed: () => boolean;
-      } | null;
-      loadTdlibModules: () => Promise<{
-        configure: (options: Record<string, unknown>) => void;
-        createBareClient: () => {
-          invoke: (request: Record<string, unknown>) => Promise<unknown>;
-          on: (event: string, listener: (...args: unknown[]) => void) => void;
-          close: () => Promise<void>;
-          isClosed: () => boolean;
-        };
-        tdjson: string;
-      }>;
-    };
-
-    service.loadTdlibModules = async () => ({
-      configure: () => undefined,
-      tdjson: "/tmp/tdjson",
-      createBareClient: () => ({
-        invoke: async (request: Record<string, unknown>) => {
-          requests.push(request);
-          if (request._ === "getAuthorizationState") {
-            queueMicrotask(() => {
-              updateListener?.({
-                _: "updateAuthorizationState",
-                authorization_state: {
-                  _: "authorizationStateWaitTdlibParameters",
-                },
-              });
-            });
-            return { _: "authorizationStateWaitTdlibParameters" };
-          }
-
-          if (request._ === "setTdlibParameters") {
-            return { _: "ok" };
-          }
-
-          return null;
-        },
-        on: (event: string, listener: (...args: unknown[]) => void) => {
-          if (event === "update") {
-            updateListener = listener as (update: Record<string, unknown>) => void;
-          }
-        },
-        close: async () => undefined,
-        isClosed: () => false,
-      }),
+    const { requests, service } = createStartupTestService({
+      repeatWaitStateUpdate: true,
     });
 
-    await service.ensureStarted({
-      apiId: 12345,
-      apiHash: "0123456789abcdef0123456789abcdef",
-      phoneNumber: null,
-      databaseDirectory: "/tmp/sticker-smith-tdlib-db",
-      filesDirectory: "/tmp/sticker-smith-tdlib-files",
-      databaseEncryptionKey: "encryption-key",
-    });
+    await service.ensureStarted(tdlibCredentials());
 
     expect(
       requests.filter((request) => request._ === "setTdlibParameters"),
@@ -204,24 +191,7 @@ describe("TelegramTdlibService", () => {
     );
     let configureCount = 0;
     let closed = false;
-    const service = new FreshTelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-        on: (event: string, listener: (...args: unknown[]) => void) => void;
-        close: () => Promise<void>;
-        isClosed: () => boolean;
-      } | null;
-      loadTdlibModules: () => Promise<{
-        configure: (options: Record<string, unknown>) => void;
-        createBareClient: () => {
-          invoke: (request: Record<string, unknown>) => Promise<unknown>;
-          on: (event: string, listener: (...args: unknown[]) => void) => void;
-          close: () => Promise<void>;
-          isClosed: () => boolean;
-        };
-        tdjson: string;
-      }>;
-    };
+    const service = createTestService(FreshTelegramTdlibService);
 
     service.loadTdlibModules = async () => ({
       configure: () => {
@@ -251,14 +221,7 @@ describe("TelegramTdlibService", () => {
       },
     });
 
-    const credentials = {
-      apiId: 12345,
-      apiHash: "0123456789abcdef0123456789abcdef",
-      phoneNumber: null,
-      databaseDirectory: "/tmp/sticker-smith-tdlib-db",
-      filesDirectory: "/tmp/sticker-smith-tdlib-files",
-      databaseEncryptionKey: "encryption-key",
-    };
+    const credentials = tdlibCredentials();
 
     await service.ensureStarted(credentials);
     await service.close();
@@ -269,24 +232,7 @@ describe("TelegramTdlibService", () => {
 
   it("closes the tdlib client when initialization fails", async () => {
     let closed = false;
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-        on: (event: string, listener: (...args: unknown[]) => void) => void;
-        close: () => Promise<void>;
-        isClosed: () => boolean;
-      } | null;
-      loadTdlibModules: () => Promise<{
-        configure: (options: Record<string, unknown>) => void;
-        createBareClient: () => {
-          invoke: (request: Record<string, unknown>) => Promise<unknown>;
-          on: (event: string, listener: (...args: unknown[]) => void) => void;
-          close: () => Promise<void>;
-          isClosed: () => boolean;
-        };
-        tdjson: string;
-      }>;
-    };
+    const service = createTestService();
 
     service.loadTdlibModules = async () => ({
       configure: () => undefined,
@@ -327,26 +273,14 @@ describe("TelegramTdlibService", () => {
   });
 
   it("requests file downloads with a positive limit", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return {
-          id: 42,
-          local: {
-            is_downloading_completed: true,
-            path: "/tmp/sticker.webp",
-          },
-          size: 128,
-        };
+    const { requests, service } = createServiceWithClient(async () => ({
+      id: 42,
+      local: {
+        is_downloading_completed: true,
+        path: "/tmp/sticker.webp",
       },
-    };
+      size: 128,
+    }));
 
     await service.downloadFile(42);
 
@@ -363,37 +297,21 @@ describe("TelegramTdlibService", () => {
   });
 
   it("requests owned sticker sets with a positive page limit", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        if (request._ === "getOwnedStickerSets") {
-          return {
-            sets: [{ id: 123 }],
-          };
-        }
-
-        if (request._ === "getStickerSet") {
-          return {
-            id: 123,
-            name: "sample_pack_by_test",
-            title: "Sample Pack",
-            sticker_type: { _: "stickerTypeRegular" },
-            sticker_format: { _: "stickerFormatWebm" },
-            thumbnail: null,
-            stickers: [],
-          };
-        }
-
-        return null;
-      },
-    };
+    const { requests, service } = createServiceWithClient(async (request) => {
+      if (request._ === "getOwnedStickerSets") return { sets: [{ id: 123 }] };
+      if (request._ === "getStickerSet") {
+        return {
+          id: 123,
+          name: "sample_pack_by_test",
+          title: "Sample Pack",
+          sticker_type: { _: "stickerTypeRegular" },
+          sticker_format: { _: "stickerFormatWebm" },
+          thumbnail: null,
+          stickers: [],
+        };
+      }
+      return null;
+    });
 
     await service.getOwnedStickerSets();
 
@@ -405,27 +323,15 @@ describe("TelegramTdlibService", () => {
   });
 
   it("preserves large sticker set ids without numeric coercion", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return {
-          id: "2706894883376857121",
-          name: "sample_pack_by_test",
-          title: "Sample Pack",
-          sticker_type: { _: "stickerTypeRegular" },
-          sticker_format: { _: "stickerFormatWebm" },
-          thumbnail: null,
-          stickers: [],
-        };
-      },
-    };
+    const { requests, service } = createServiceWithClient(async () => ({
+      id: "2706894883376857121",
+      name: "sample_pack_by_test",
+      title: "Sample Pack",
+      sticker_type: { _: "stickerTypeRegular" },
+      sticker_format: { _: "stickerFormatWebm" },
+      thumbnail: null,
+      stickers: [],
+    }));
 
     await service.getStickerSet("2706894883376857121");
 
@@ -438,15 +344,9 @@ describe("TelegramTdlibService", () => {
   });
 
   it("rejects occupied Telegram sticker set names", async () => {
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async () => ({ _: "checkStickerSetNameResultNameOccupied" }),
-    };
+    const { service } = createServiceWithClient(async () => ({
+      _: "checkStickerSetNameResultNameOccupied",
+    }));
 
     await expect(service.checkStickerSetName("sample_pack")).rejects.toThrow(
       "A Telegram sticker set with that short name already exists.",
@@ -454,15 +354,9 @@ describe("TelegramTdlibService", () => {
   });
 
   it("rejects invalid Telegram sticker set names", async () => {
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async () => ({ _: "checkStickerSetNameResultNameInvalid" }),
-    };
+    const { service } = createServiceWithClient(async () => ({
+      _: "checkStickerSetNameResultNameInvalid",
+    }));
 
     await expect(service.checkStickerSetName("bad")).rejects.toThrow(
       "The Telegram sticker short name is invalid.",
@@ -470,19 +364,7 @@ describe("TelegramTdlibService", () => {
   });
 
   it("updates sticker set titles by short name", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return { _: "ok" };
-      },
-    };
+    const { requests, service } = createOkServiceWithClient();
 
     await service.setStickerSetTitle({
       shortName: "sample_pack",
@@ -499,20 +381,7 @@ describe("TelegramTdlibService", () => {
   });
 
   it("replaces stickers in a set by short name", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-      getSessionUser: () => Promise<{ id: number }>;
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return { _: "ok" };
-      },
-    };
+    const { requests, service } = createOkServiceWithClient();
     service.getSessionUser = async () => ({ id: 123 });
 
     await service.replaceStickerInSet({
@@ -547,19 +416,7 @@ describe("TelegramTdlibService", () => {
   });
 
   it("moves stickers within a set by remote file id", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return { _: "ok" };
-      },
-    };
+    const { requests, service } = createOkServiceWithClient();
 
     await service.setStickerPositionInSet({
       fileId: "remote-file-id",
@@ -579,20 +436,7 @@ describe("TelegramTdlibService", () => {
   });
 
   it("sends sticker set thumbnails as input files", async () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-      getSessionUser: () => Promise<{ id: number }>;
-    };
-
-    service.client = {
-      invoke: async (request: Record<string, unknown>) => {
-        requests.push(request);
-        return { _: "ok" };
-      },
-    };
+    const { requests, service } = createOkServiceWithClient();
     service.getSessionUser = async () => ({ id: 123 });
 
     await service.setStickerSetThumbnail({
@@ -616,16 +460,7 @@ describe("TelegramTdlibService", () => {
   });
 
   it("rejects empty sticker set thumbnail names before invoking TDLib", async () => {
-    const service = new TelegramTdlibService() as TelegramTdlibService & {
-      client: {
-        invoke: (request: Record<string, unknown>) => Promise<unknown>;
-      };
-      getSessionUser: () => Promise<{ id: number }>;
-    };
-
-    service.client = {
-      invoke: async () => ({ _: "ok" }),
-    };
+    const { service } = createOkServiceWithClient();
     service.getSessionUser = async () => ({ id: 123 });
 
     await expect(
