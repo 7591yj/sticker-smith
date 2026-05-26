@@ -1,54 +1,11 @@
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelegramEvent } from "@sticker-smith/shared";
-import { App } from "../src/renderer/App";
-
-function createConnectedTelegramState() {
-  return {
-    backend: "tdlib" as const,
-    status: "connected" as const,
-    authStep: "ready" as const,
-    selectedMode: "user" as const,
-    recommendedMode: "user" as const,
-    message: "Telegram is connected.",
-    tdlib: {
-      apiId: "12345",
-      apiHashConfigured: true,
-    },
-    user: {
-      phoneNumber: "+12025550123",
-    },
-    sessionUser: {
-      id: 1,
-      username: "stickersmith",
-      displayName: "Sticker Smith",
-    },
-    lastError: null,
-    updatedAt: "2026-03-12T00:00:00.000Z",
-  };
-}
-
-function createDisconnectedTelegramState() {
-  return {
-    backend: "tdlib" as const,
-    status: "disconnected" as const,
-    authStep: "wait_tdlib_parameters" as const,
-    selectedMode: "user" as const,
-    recommendedMode: "user" as const,
-    message: "Telegram is disconnected.",
-    tdlib: {
-      apiId: null,
-      apiHashConfigured: false,
-    },
-    user: {
-      phoneNumber: null,
-    },
-    sessionUser: null,
-    lastError: null,
-    updatedAt: "2026-03-12T00:01:00.000Z",
-  };
-}
+import {
+  createConnectedTelegramState,
+  createDisconnectedTelegramState,
+  renderApp,
+} from "./helpers";
 
 describe("app telegram pack refresh", () => {
   beforeEach(() => {
@@ -126,14 +83,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     expect(document.body.textContent).toContain("Telegram Pack");
 
@@ -175,14 +125,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     expect(syncOwnedPacks).toHaveBeenCalledTimes(1);
 
@@ -216,14 +159,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     expect(syncOwnedPacks).not.toHaveBeenCalled();
 
@@ -321,14 +257,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     expect(document.body.textContent).toContain("Up to date");
 
@@ -420,14 +349,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     expect(document.body.textContent).toContain("Upload");
 
@@ -494,14 +416,7 @@ describe("app telegram pack refresh", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     await act(async () => {
       listener?.({

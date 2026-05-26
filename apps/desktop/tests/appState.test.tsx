@@ -8,8 +8,8 @@ import type {
   TelegramEvent,
   TelegramState,
 } from "@sticker-smith/shared";
-import { App } from "../src/renderer/App";
 import { useDesktopAppState } from "../src/renderer/hooks/useDesktopAppState";
+import { renderApp } from "./helpers";
 
 function createDisconnectedTelegramState(): TelegramState {
   return {
@@ -253,14 +253,7 @@ describe("desktop app state", () => {
       }),
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await flushEffects();
-    });
+    const { root } = await renderApp(flushEffects);
 
     await act(async () => {
       conversionListener?.({
