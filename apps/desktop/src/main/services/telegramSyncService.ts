@@ -23,7 +23,7 @@ interface TelegramSyncServiceOptions {
 export class TelegramSyncService {
   private readonly activeDownloads = new Map<
     number,
-    { packId: string; assetId: string; stickerSetId: string }
+    { packId: string; stickerId: string; stickerSetId: string }
   >();
   private readonly activePackDownloads = new Map<string, Promise<void>>();
   private activeOwnedPackSync: Promise<void> | null = null;
@@ -42,7 +42,7 @@ export class TelegramSyncService {
         this.options.emit({
           type: "file_download_progress",
           packId: mapped.packId,
-          assetId: mapped.assetId,
+          stickerId: mapped.stickerId,
           stickerSetId: mapped.stickerSetId,
           downloadedSize: progress.downloadedSize,
           totalSize: progress.totalSize,
@@ -83,19 +83,19 @@ export class TelegramSyncService {
         publishedFromLocalPackId,
         syncState: "unsupported",
         lastSyncError: describeUnsupportedStickerSet(stickerSet),
-        includeAssets: false,
+        includeStickers: false,
       });
       await this.options.mirrorService.markPackSyncState(
-        details.pack.id,
+        details.record.id,
         "unsupported",
         describeUnsupportedStickerSet(stickerSet),
       );
       this.options.emit({
         type: "pack_sync_completed",
-        packId: details.pack.id,
+        packId: details.record.id,
         stickerSetId: stickerSet.stickerSetId,
       });
-      return details.pack.id;
+      return details.record.id;
     }
 
     const hasRemoteThumbnail =
@@ -116,19 +116,19 @@ export class TelegramSyncService {
     });
     this.options.emit({
       type: "pack_sync_started",
-      packId: details.pack.id,
+      packId: details.record.id,
       stickerSetId: stickerSet.stickerSetId,
     });
 
-    await this.downloadPackMedia({ packId: details.pack.id });
-    await this.options.mirrorService.markPackSyncState(details.pack.id, "idle", null);
+    await this.downloadPackMedia({ packId: details.record.id });
+    await this.options.mirrorService.markPackSyncState(details.record.id, "idle", null);
     this.options.emit({
       type: "pack_sync_completed",
-      packId: details.pack.id,
+      packId: details.record.id,
       stickerSetId: stickerSet.stickerSetId,
     });
 
-    return details.pack.id;
+    return details.record.id;
   }
 
   async syncOwnedPacks(): Promise<void> {
@@ -219,7 +219,7 @@ export class TelegramSyncService {
 
       const remoteSet = await this.getRemoteStickerSetOrThrow(stickerSetId);
       const shouldBackfillThumbnail =
-        details.pack.iconAssetId === null &&
+        details.pack.iconStickerId === null &&
         !(await this.hasAccessibleLocalFile(details.pack.thumbnailPath));
       if (shouldBackfillThumbnail) {
         const thumbnailPath = await this.resolveStickerSetThumbnailPath(remoteSet, {
@@ -244,7 +244,7 @@ export class TelegramSyncService {
         remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
       );
 
-      for (const asset of details.assets) {
+      for (const asset of details.stickers) {
         if (!asset.telegram) {
           continue;
         }
@@ -260,7 +260,7 @@ export class TelegramSyncService {
 
         this.activeDownloads.set(remoteSticker.numericFileId, {
           packId: details.pack.id,
-          assetId: asset.id,
+          stickerId: asset.id,
           stickerSetId,
         });
 
@@ -275,7 +275,7 @@ export class TelegramSyncService {
           );
           await this.options.mirrorService.storeDownloadedSticker({
             packId: details.pack.id,
-            assetId: asset.id,
+            stickerId: asset.id,
             sticker: remoteSticker,
             file: downloaded,
           });

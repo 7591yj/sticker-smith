@@ -3,27 +3,26 @@ import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import path from "node:path";
 
 import {
-  convertSelectionSchema,
+  convertSchema,
   createPackSchema,
-  deleteAssetSchema,
-  deleteManyAssetsSchema,
+  deleteStickerSchema,
+  deleteManyStickersSchema,
   deletePackSchema,
   downloadTelegramPackMediaSchema,
-  exportOutputFolderSchema,
+  exportStickerFolderSchema,
   importDirectorySchema,
   importFilesSchema,
-  listOutputsSchema,
-  moveAssetSchema,
+  listStickersSchema,
+  moveStickerSchema,
   publishLocalPackSchema,
-  reorderAssetSchema,
-  renameAssetSchema,
-  renameManyAssetsSchema,
+  reorderStickerSchema,
+  renameStickerSchema,
+  renameManyStickersSchema,
   renamePackSchema,
-  revealPackSourceFolderSchema,
-  revealOutputSchema,
-  setAssetEmojisSchema,
+  revealStickerSchema,
+  setStickerEmojisSchema,
   setPackTelegramShortNameSchema,
-  setManyAssetEmojisSchema,
+  setManyStickerEmojisSchema,
   submitTelegramCodeSchema,
   submitTelegramPasswordSchema,
   setTelegramPhoneNumberSchema,
@@ -71,15 +70,15 @@ export function registerIpc() {
 
   safeHandle("settings.getConfig", async () => settingsService.getConfig());
   safeHandle("telegram.getState", async () => telegramService.getState());
-  safeHandle(
-    "telegram.submitTdlibParameters",
-    async (_event, input: unknown) =>
-      telegramService.submitTdlibParameters(
-        setTelegramTdlibParametersSchema.parse(input),
-      ),
+  safeHandle("telegram.submitTdlibParameters", async (_event, input: unknown) =>
+    telegramService.submitTdlibParameters(
+      setTelegramTdlibParametersSchema.parse(input),
+    ),
   );
   safeHandle("telegram.submitPhoneNumber", async (_event, input: unknown) =>
-    telegramService.submitPhoneNumber(setTelegramPhoneNumberSchema.parse(input)),
+    telegramService.submitPhoneNumber(
+      setTelegramPhoneNumberSchema.parse(input),
+    ),
   );
   safeHandle("telegram.submitCode", async (_event, input: unknown) =>
     telegramService.submitCode(submitTelegramCodeSchema.parse(input)),
@@ -134,9 +133,6 @@ export function registerIpc() {
   safeHandle("packs.delete", async (_event, input: unknown) =>
     libraryService.deletePack(deletePackSchema.parse(input)),
   );
-  safeHandle("packs.revealSourceFolder", async (_event, input: unknown) =>
-    shellService.revealSourceFolder(revealPackSourceFolderSchema.parse(input)),
-  );
   safeHandle("packs.setTelegramShortName", async (_event, input: unknown) =>
     libraryService.setPackTelegramShortName(
       setPackTelegramShortNameSchema.parse(input),
@@ -145,8 +141,33 @@ export function registerIpc() {
   safeHandle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
   );
+  safeHandle("packs.chooseIcon", async (_event, input: unknown) => {
+    const payload = listStickersSchema.parse(input);
+    const selected = await dialog.showOpenDialog({
+      properties: ["openFile"],
+    });
+    const filePath = selected.filePaths[0];
+    if (!filePath) {
+      return null;
+    }
+    const imported = await libraryService.importFiles(payload.packId, [
+      filePath,
+    ]);
+    const asset = imported.imported[0];
+    if (!asset) {
+      throw new Error("Selected file could not be imported as an icon.");
+    }
+    await libraryService.setPackIcon({
+      packId: payload.packId,
+      stickerId: asset.id,
+    });
+    return converterService.convert({
+      packId: payload.packId,
+      stickerIds: [asset.id],
+    });
+  });
 
-  safeHandle("assets.importFiles", async (_event, input: unknown) => {
+  safeHandle("stickers.importFiles", async (_event, input: unknown) => {
     const payload = importFilesSchema.parse(input);
     const filePaths =
       payload.filePaths ??
@@ -159,7 +180,7 @@ export function registerIpc() {
     return libraryService.importFiles(payload.packId, filePaths);
   });
 
-  safeHandle("assets.importDirectory", async (_event, input: unknown) => {
+  safeHandle("stickers.importDirectory", async (_event, input: unknown) => {
     const payload = importDirectorySchema.parse(input);
     const directoryPath =
       payload.directoryPath ??
@@ -174,39 +195,36 @@ export function registerIpc() {
       : { imported: [], skipped: [] };
   });
 
-  safeHandle("assets.rename", async (_event, input: unknown) =>
-    libraryService.renameAsset(renameAssetSchema.parse(input)),
+  safeHandle("stickers.rename", async (_event, input: unknown) =>
+    libraryService.renameSticker(renameStickerSchema.parse(input)),
   );
-  safeHandle("assets.renameMany", async (_event, input: unknown) =>
-    libraryService.renameManyAssets(renameManyAssetsSchema.parse(input)),
+  safeHandle("stickers.renameMany", async (_event, input: unknown) =>
+    libraryService.renameManyStickers(renameManyStickersSchema.parse(input)),
   );
-  safeHandle("assets.setEmojis", async (_event, input: unknown) =>
-    libraryService.setAssetEmojis(setAssetEmojisSchema.parse(input)),
+  safeHandle("stickers.setEmojis", async (_event, input: unknown) =>
+    libraryService.setStickerEmojis(setStickerEmojisSchema.parse(input)),
   );
-  safeHandle("assets.setEmojisMany", async (_event, input: unknown) =>
-    libraryService.setManyAssetEmojis(setManyAssetEmojisSchema.parse(input)),
+  safeHandle("stickers.setEmojisMany", async (_event, input: unknown) =>
+    libraryService.setManyStickerEmojis(setManyStickerEmojisSchema.parse(input)),
   );
-  safeHandle("assets.reorder", async (_event, input: unknown) =>
-    libraryService.reorderAsset(reorderAssetSchema.parse(input)),
+  safeHandle("stickers.reorder", async (_event, input: unknown) =>
+    libraryService.reorderSticker(reorderStickerSchema.parse(input)),
   );
-  safeHandle("assets.move", async (_event, input: unknown) =>
-    libraryService.moveAsset(moveAssetSchema.parse(input)),
+  safeHandle("stickers.move", async (_event, input: unknown) =>
+    libraryService.moveSticker(moveStickerSchema.parse(input)),
   );
-  safeHandle("assets.delete", async (_event, input: unknown) =>
-    libraryService.deleteAsset(deleteAssetSchema.parse(input)),
+  safeHandle("stickers.delete", async (_event, input: unknown) =>
+    libraryService.deleteSticker(deleteStickerSchema.parse(input)),
   );
-  safeHandle("assets.deleteMany", async (_event, input: unknown) =>
-    libraryService.deleteManyAssets(deleteManyAssetsSchema.parse(input)),
+  safeHandle("stickers.deleteMany", async (_event, input: unknown) =>
+    libraryService.deleteManyStickers(deleteManyStickersSchema.parse(input)),
   );
 
-  safeHandle("outputs.list", async (_event, input: unknown) =>
-    libraryService.listOutputs(listOutputsSchema.parse(input).packId),
+  safeHandle("stickers.revealInFolder", async (_event, input: unknown) =>
+    shellService.revealSticker(revealStickerSchema.parse(input)),
   );
-  safeHandle("outputs.revealInFolder", async (_event, input: unknown) =>
-    shellService.revealOutput(revealOutputSchema.parse(input)),
-  );
-  safeHandle("outputs.exportFolder", async (event, input: unknown) => {
-    const payload = exportOutputFolderSchema.parse(input);
+  safeHandle("stickers.exportFolder", async (event, input: unknown) => {
+    const payload = exportStickerFolderSchema.parse(input);
     const ownerWindow =
       BrowserWindow.fromWebContents(event.sender) ?? undefined;
     const dialogOptions: OpenDialogOptions = {
@@ -224,20 +242,13 @@ export function registerIpc() {
       return null;
     }
 
-    return shellService.exportOutputFolder({
+    return shellService.exportStickerFolder({
       packId: payload.packId,
       destinationRoot,
     });
   });
 
-  safeHandle(
-    "conversion.convertPack",
-    async (_event, input: { packId: string }) =>
-      converterService.convertPack(input.packId),
-  );
-  safeHandle(
-    "conversion.convertSelection",
-    async (_event, input: unknown) =>
-      converterService.convertSelection(convertSelectionSchema.parse(input)),
+  safeHandle("conversion.convert", async (_event, input: unknown) =>
+    converterService.convert(convertSchema.parse(input)),
   );
 }

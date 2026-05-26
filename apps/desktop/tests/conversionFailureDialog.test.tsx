@@ -26,14 +26,12 @@ describe("conversion failure dialog", () => {
         name: "Sample Pack",
         slug: "sample-pack",
         rootPath: "/tmp/sample-pack",
-        sourceRoot: "/tmp/sample-pack/source",
-        outputRoot: "/tmp/sample-pack/webm",
-        iconAssetId: null,
+        iconStickerId: null,
         thumbnailPath: null,
         createdAt: "2026-03-12T00:00:00.000Z",
         updatedAt: "2026-03-12T00:00:00.000Z",
       },
-      assets: [
+      stickers: [
         {
           id: "asset-1",
           packId: "pack-1",
@@ -42,14 +40,14 @@ describe("conversion failure dialog", () => {
           absolutePath: "/tmp/sample-pack/source/broken.png",
           originalFileName: "broken.png",
           emojiList: [],
-          kind: "png",
+          sizeBytes: 1024,
+          sha256: null,
           importedAt: "2026-03-12T00:00:00.000Z",
-          originalImportPath: null,
+          updatedAt: "2026-03-12T00:00:00.000Z",
           downloadState: "ready",
         },
       ],
-      outputs: [],
-    };
+      };
     let listener: ((event: ConversionJobEvent) => void) | null = null;
 
     Object.assign(window, {
@@ -79,14 +77,12 @@ describe("conversion failure dialog", () => {
           list: vi.fn(async () => [details.pack]),
           get: vi.fn(async () => details),
         },
-        assets: {},
         conversion: {
           subscribe: vi.fn((nextListener: (event: ConversionJobEvent) => void) => {
             listener = nextListener;
             return () => undefined;
           }),
         },
-        outputs: {},
         settings: {},
       },
     });
@@ -103,9 +99,9 @@ describe("conversion failure dialog", () => {
     await act(async () => {
       listener?.({ type: "job_started", jobId: "job-1", taskCount: 1 });
       listener?.({
-        type: "asset_failed",
+        type: "sticker_failed",
         jobId: "job-1",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         mode: "sticker",
         error: "ffmpeg failed during sticker conversion",
       });
@@ -118,11 +114,10 @@ describe("conversion failure dialog", () => {
       await Promise.resolve();
     });
 
-    expect(document.body.textContent).toContain("Conversion failed");
+    expect(document.body.textContent).toContain("Some files could not be added");
     expect(document.body.textContent).toContain(
-      'Sticker Smith finished converting "Sample Pack" in the background, but 1 asset failed.',
+      'Sticker Smith tried to add files to "Sample Pack", but 1 file failed.',
     );
-    expect(document.body.textContent).toContain("broken.png");
     expect(document.body.textContent).toContain(
       "ffmpeg failed during sticker conversion",
     );

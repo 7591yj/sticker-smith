@@ -13,20 +13,17 @@ function createDetails(): StickerPackDetails {
       name: "Sample Pack",
       slug: "sample-pack",
       rootPath: "/tmp/sample-pack",
-      sourceRoot: "/tmp/sample-pack/source",
-      outputRoot: "/tmp/sample-pack/webm",
-      iconAssetId: null,
+      iconStickerId: null,
       thumbnailPath: null,
       createdAt: "2026-03-11T00:00:00.000Z",
       updatedAt: "2026-03-11T00:00:00.000Z",
     },
-    assets: [],
-    outputs: [],
+    stickers: [],
   };
 }
 
 describe("PackPanel", () => {
-  it("renders the outputs export action", () => {
+  it("renders the sticker folder and export actions", () => {
     const markup = renderToStaticMarkup(
       <PackPanel
         details={createDetails()}
@@ -44,8 +41,7 @@ describe("PackPanel", () => {
       />,
     );
 
-    expect(markup).toContain("Open Assets");
-    expect(markup).toContain("Open Outputs");
+    expect(markup).toContain("Open Folder");
     expect(markup).toContain("Export");
     expect(markup).toContain("Upload");
     expect(markup).toContain('aria-label="Delete pack"');
@@ -153,7 +149,7 @@ describe("PackPanel", () => {
               publishedFromLocalPackId: null,
             },
           },
-          assets: [
+          stickers: [
             {
               id: "asset-1",
               packId: "pack-1",
@@ -162,9 +158,10 @@ describe("PackPanel", () => {
               absolutePath: null,
               originalFileName: "sticker.webm",
               emojiList: ["🙂"],
-              kind: "webm",
+              sizeBytes: 1024,
+              sha256: null,
               importedAt: "2026-03-12T00:00:00.000Z",
-              originalImportPath: null,
+              updatedAt: "2026-03-12T00:00:00.000Z",
               downloadState: "downloading",
               telegram: {
                 stickerId: "sticker-1",
@@ -191,8 +188,7 @@ describe("PackPanel", () => {
     );
 
     expect(markup).toContain("Syncing");
-    expect(markup).toContain("Telegram media downloading");
-    expect(markup).toContain("downloading");
+    expect(markup).toContain("Telegram is already syncing this mirror");
   });
 
   it("renders unsupported non-video telegram mirrors as disabled", () => {

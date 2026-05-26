@@ -27,8 +27,7 @@
     "prebuilt-tdlib": "^0.1008062.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tdl": "^8.1.0",
-    "zod": "^3.24.2"
+    "tdl": "^8.1.0"
   },
   "devDependencies": {
     "@sticker-smith/shared": "workspace:*",
@@ -44,7 +43,6 @@
     "typescript": "^5.8.2",
     "vite": "^6.2.1",
     "vite-plugin-electron": "^0.29.0",
-    "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^3.0.8"
   },
   "build": {

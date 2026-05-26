@@ -56,8 +56,8 @@ export function ConversionFailureDialog({
           variant="body2"
           sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault, mb: 0.75 }}
         >
-          Sticker Smith finished converting {jobLabel} in the background, but{" "}
-          {failureCount} asset{failureCount !== 1 ? "s" : ""} failed.
+          Sticker Smith tried to add files to {jobLabel}, but {failureCount} file
+          {failureCount !== 1 ? "s" : ""} failed.
         </Typography>
         <Typography
           variant="caption"
@@ -69,8 +69,8 @@ export function ConversionFailureDialog({
           }}
         >
           {successCount > 0
-            ? `${successCount} asset${successCount !== 1 ? "s" : ""} converted successfully.`
-            : "No assets were converted successfully."}
+            ? `${successCount} sticker${successCount !== 1 ? "s" : ""} added.`
+            : "No stickers were added."}
         </Typography>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {failures.map((failure, index) => (

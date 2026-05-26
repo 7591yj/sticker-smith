@@ -15,8 +15,8 @@ import type {
   TelegramRemoteStickerSet,
 } from "./telegramTdlibService";
 import type { TelegramSyncService } from "./telegramSyncService";
-import { collectTelegramAssetSignatures } from "./telegramAssetSignatures";
-import { findStickerOutput } from "../utils/packQueries";
+import { collectTelegramStickerSignatures } from "./telegramStickerSignatures";
+import { findSticker } from "../utils/stickerQueries";
 import { pathExists } from "../utils/fsUtils";
 
 interface TelegramPackMutationServiceOptions {
@@ -45,29 +45,29 @@ export class TelegramPackMutationService {
         await this.options.auth.tdlibService.createNewStickerSet({
           title: input.title,
           shortName: input.shortName,
-          stickers: this.getStickerAssets(details).map((asset) => {
-            const output = findStickerOutput(details.outputs, asset.id);
+          stickers: this.getStickerStickers(details).map((sticker) => {
+            const output = findSticker(details.stickers, sticker.id);
             if (!output) {
-              throw new Error(`Missing sticker output for ${asset.relativePath}.`);
+              throw new Error(`Sticker file for ${sticker.relativePath} is missing.`);
             }
 
             return {
               stickerPath: output.absolutePath,
-              emojis: asset.emojiList,
+              emojis: sticker.emojiList,
               format: "video" as const,
             };
           }),
         });
 
-      const iconOutput = details.outputs.find((output) => output.mode === "icon");
-      if (iconOutput) {
-        await this.ensureOutputFileExists(
-          iconOutput.absolutePath,
-          `Icon output for ${details.pack.name}`,
+      const iconSticker = this.getIconSticker(details);
+      if (iconSticker) {
+        await this.ensureStickerFileExists(
+          iconSticker.absolutePath,
+          `Icon file for ${details.pack.name}`,
         );
         await this.options.auth.tdlibService.setStickerSetThumbnail({
           shortName: input.shortName,
-          thumbnailPath: iconOutput.absolutePath,
+          thumbnailPath: iconSticker.absolutePath,
           format: "video",
         });
       }
@@ -111,7 +111,7 @@ export class TelegramPackMutationService {
     await this.options.auth.requireConnectedState();
     const details = await this.options.libraryService.getPack(input.packId);
     const telegram = details.pack.telegram;
-    const stickerAssets = this.getStickerAssets(details);
+    const stickerStickers = this.getStickerStickers(details);
     if (details.pack.source !== "telegram" || !telegram) {
       throw new Error(`Pack ${input.packId} is not a Telegram mirror.`);
     }
@@ -127,15 +127,15 @@ export class TelegramPackMutationService {
     await this.options.mirrorService.markPackSyncState(input.packId, "syncing", null);
 
     try {
-      if (stickerAssets.length === 0) {
+      if (stickerStickers.length === 0) {
         throw new Error(
           "Telegram mirrors must keep at least one sticker. Deleting the entire remote sticker set is not supported by Update.",
         );
       }
 
-      await this.validateTelegramPackOutputs(details, {
+      await this.validateTelegramPackStickers(details, {
         operation: "update",
-        requireIconOutput: false,
+        requireIconSticker: false,
       });
 
       const remoteSet = await this.options.syncService.getRemoteStickerSetOrThrow(
@@ -149,12 +149,12 @@ export class TelegramPackMutationService {
       const remoteByStickerId = new Map(
         remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
       );
-      const duplicateLocalStickerAssetIds =
-        this.getDuplicateLocalStickerAssetIds(details);
+      const duplicateLocalStickerStickerIds =
+        this.getDuplicateLocalStickerStickerIds(details);
       const localByStickerId = new Map(
-        details.assets
-          .filter((asset) => asset.telegram)
-          .map((asset) => [asset.telegram!.stickerId, asset]),
+        details.stickers
+          .filter((sticker) => sticker.telegram)
+          .map((sticker) => [sticker.telegram!.stickerId, sticker]),
       );
 
       await this.syncTelegramMirrorTitle({
@@ -162,13 +162,13 @@ export class TelegramPackMutationService {
         remoteSet,
         telegramShortName,
       });
-      await this.reorderExistingRemoteStickerAssets(remoteSet, stickerAssets);
-      const remotelyAddedAssetIds = await this.applyTelegramStickerAssetChanges({
+      await this.reorderExistingRemoteStickerStickers(remoteSet, stickerStickers);
+      const remotelyAddedStickerIds = await this.applyTelegramStickerStickerChanges({
         details,
-        stickerAssets,
+        stickerStickers,
         telegramShortName,
         remoteByStickerId,
-        duplicateLocalStickerAssetIds,
+        duplicateLocalStickerStickerIds,
       });
       await this.removeDeletedRemoteStickers({
         telegram,
@@ -181,8 +181,8 @@ export class TelegramPackMutationService {
       });
       await this.resyncUpdatedTelegramMirror({
         stickerSetId: telegram.stickerSetId,
-        stickerAssets,
-        remotelyAddedAssetIds,
+        stickerStickers,
+        remotelyAddedStickerIds,
       });
       await this.options.mirrorService.markPackSyncState(input.packId, "idle", null);
       this.options.emit({
@@ -207,20 +207,20 @@ export class TelegramPackMutationService {
     }
   }
 
-  private getStickerAssets(details: StickerPackDetails) {
-    return details.assets
-      .filter((asset) => {
-        if (asset.id === details.pack.iconAssetId) {
+  private getStickerStickers(details: StickerPackDetails) {
+    return details.stickers
+      .filter((sticker) => {
+        if (sticker.id === details.pack.iconStickerId) {
           return false;
         }
 
-        if (asset.telegram) {
+        if (sticker.telegram) {
           return true;
         }
 
         return (
-          asset.emojiList.length > 0 ||
-          findStickerOutput(details.outputs, asset.id) !== undefined
+          sticker.emojiList.length > 0 ||
+          findSticker(details.stickers, sticker.id) !== undefined
         );
       })
       .sort(
@@ -228,18 +228,10 @@ export class TelegramPackMutationService {
       );
   }
 
-  private getStickerOutputs(details: StickerPackDetails) {
-    return details.outputs
-      .filter((output) => output.mode === "sticker")
-      .sort(
-        (left, right) =>
-          left.order - right.order ||
-          left.sourceAssetId.localeCompare(right.sourceAssetId),
-      );
-  }
-
-  private getIconOutput(details: StickerPackDetails) {
-    return details.outputs.find((output) => output.mode === "icon");
+  private getIconSticker(details: StickerPackDetails) {
+    return details.pack.iconStickerId
+      ? findSticker(details.stickers, details.pack.iconStickerId) ?? null
+      : null;
   }
 
   private async moveRemoteStickerToPosition(
@@ -270,14 +262,14 @@ export class TelegramPackMutationService {
     remoteStickers.splice(targetIndex, 0, movedSticker);
   }
 
-  private async reorderExistingRemoteStickerAssets(
+  private async reorderExistingRemoteStickerStickers(
     remoteSet: TelegramRemoteStickerSet,
-    stickerAssets: ReturnType<TelegramPackMutationService["getStickerAssets"]>,
+    stickerStickers: ReturnType<TelegramPackMutationService["getStickerStickers"]>,
   ) {
     const remoteStickers = remoteSet.stickers.slice();
-    const desiredRemoteStickerIds = stickerAssets
-      .filter((asset) => asset.telegram)
-      .map((asset) => asset.telegram!.stickerId);
+    const desiredRemoteStickerIds = stickerStickers
+      .filter((sticker) => sticker.telegram)
+      .map((sticker) => sticker.telegram!.stickerId);
 
     let nextPosition = 0;
     for (const stickerId of desiredRemoteStickerIds) {
@@ -297,37 +289,37 @@ export class TelegramPackMutationService {
     }
   }
 
-  private async reorderAddedRemoteStickerAssets(
+  private async reorderAddedRemoteStickerStickers(
     remoteSet: TelegramRemoteStickerSet,
-    stickerAssets: ReturnType<TelegramPackMutationService["getStickerAssets"]>,
-    addedAssetIds: ReadonlySet<string>,
+    stickerStickers: ReturnType<TelegramPackMutationService["getStickerStickers"]>,
+    addedStickerIds: ReadonlySet<string>,
   ) {
-    const addedAssets = stickerAssets.filter((asset) => addedAssetIds.has(asset.id));
-    if (addedAssets.length === 0) {
+    const addedStickers = stickerStickers.filter((sticker) => addedStickerIds.has(sticker.id));
+    if (addedStickers.length === 0) {
       return;
     }
 
     const refreshedRemoteStickers = remoteSet.stickers.slice();
     const existingRemoteStickerIds = new Set(
-      stickerAssets
-        .filter((asset) => asset.telegram)
-        .map((asset) => asset.telegram!.stickerId),
+      stickerStickers
+        .filter((sticker) => sticker.telegram)
+        .map((sticker) => sticker.telegram!.stickerId),
     );
     const unmatchedRemoteStickers = refreshedRemoteStickers.filter(
       (sticker) => !existingRemoteStickerIds.has(sticker.stickerId),
     );
-    const addedRemoteStickers = unmatchedRemoteStickers.slice(-addedAssets.length);
+    const addedRemoteStickers = unmatchedRemoteStickers.slice(-addedStickers.length);
 
-    if (addedRemoteStickers.length < addedAssets.length) {
+    if (addedRemoteStickers.length < addedStickers.length) {
       return;
     }
 
-    const addedStickerByAssetId = new Map(
-      addedAssets.map((asset, index) => [asset.id, addedRemoteStickers[index]!]),
+    const addedStickerByStickerId = new Map(
+      addedStickers.map((sticker, index) => [sticker.id, addedRemoteStickers[index]!]),
     );
 
-    for (const [targetIndex, asset] of stickerAssets.entries()) {
-      const addedRemoteSticker = addedStickerByAssetId.get(asset.id);
+    for (const [targetIndex, sticker] of stickerStickers.entries()) {
+      const addedRemoteSticker = addedStickerByStickerId.get(sticker.id);
       if (!addedRemoteSticker) {
         continue;
       }
@@ -340,20 +332,20 @@ export class TelegramPackMutationService {
     }
   }
 
-  private getDuplicateLocalStickerAssetIds(details: StickerPackDetails) {
+  private getDuplicateLocalStickerStickerIds(details: StickerPackDetails) {
     const remoteSignatures = new Set<string>();
-    const duplicateAssetIds = new Set<string>();
+    const duplicateStickerIds = new Set<string>();
 
-    for (const asset of this.getStickerAssets(details)) {
-      if (!asset.telegram) {
+    for (const sticker of this.getStickerStickers(details)) {
+      if (!sticker.telegram) {
         continue;
       }
 
-      const output = findStickerOutput(details.outputs, asset.id);
-      for (const signature of collectTelegramAssetSignatures({
-        emojis: asset.emojiList,
+      const output = findSticker(details.stickers, sticker.id);
+      for (const signature of collectTelegramStickerSignatures({
+        emojis: sticker.emojiList,
         sha256Values: [
-          asset.telegram.baselineOutputHash ?? null,
+          sticker.telegram.baselineStickerHash ?? null,
           output?.sha256 ?? null,
         ],
       })) {
@@ -363,119 +355,105 @@ export class TelegramPackMutationService {
       }
     }
 
-    for (const asset of this.getStickerAssets(details)) {
-      if (asset.telegram) {
+    for (const sticker of this.getStickerStickers(details)) {
+      if (sticker.telegram) {
         continue;
       }
 
-      const output = findStickerOutput(details.outputs, asset.id);
-      const signatures = collectTelegramAssetSignatures({
-        emojis: asset.emojiList,
+      const output = findSticker(details.stickers, sticker.id);
+      const signatures = collectTelegramStickerSignatures({
+        emojis: sticker.emojiList,
         sha256Values: [output?.sha256 ?? null],
       });
       if (!signatures.some((signature) => remoteSignatures.has(signature))) {
         continue;
       }
 
-      duplicateAssetIds.add(asset.id);
+      duplicateStickerIds.add(sticker.id);
     }
 
-    return duplicateAssetIds;
+    return duplicateStickerIds;
   }
 
-  private async validateTelegramPackOutputs(
+  private async validateTelegramPackStickers(
     details: StickerPackDetails,
-    options: { operation: "upload" | "update"; requireIconOutput: boolean },
+    options: { operation: "upload" | "update"; requireIconSticker: boolean },
   ) {
-    const stickerAssets = this.getStickerAssets(details);
-    const stickerAssetIds = new Set(stickerAssets.map((asset) => asset.id));
-    const stickerOutputs = this.getStickerOutputs(details);
-    const mismatchMessage = `Pack outputs do not match the current assets. Run Convert before Telegram ${options.operation}.`;
+    const stickerStickers = this.getStickerStickers(details);
+    const mismatchMessage = `Pack stickers are out of sync. Refresh the pack or add the missing stickers again before Telegram ${options.operation}.`;
 
-    if (stickerOutputs.some((output) => !stickerAssetIds.has(output.sourceAssetId))) {
-      throw new Error(mismatchMessage);
-    }
-
-    for (const asset of stickerAssets) {
-      const matchingOutputs = stickerOutputs.filter(
-        (output) => output.sourceAssetId === asset.id,
-      );
-      if (matchingOutputs.length === 0) {
+    for (const sticker of stickerStickers) {
+      const matchingSticker = findSticker(details.stickers, sticker.id);
+      if (!matchingSticker) {
         if (options.operation === "upload") {
           throw new Error(
-            `Every sticker asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
+            `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram upload.`,
           );
         }
 
         throw new Error(
-          `Sticker output for ${asset.relativePath} is missing. Run Convert before Telegram update.`,
+          `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram update.`,
         );
-      }
-      if (matchingOutputs.length > 1) {
-        throw new Error(mismatchMessage);
       }
     }
 
-    const iconOutput = this.getIconOutput(details);
-    if (iconOutput) {
-      if (
-        details.pack.iconAssetId === null ||
-        iconOutput.sourceAssetId !== details.pack.iconAssetId
-      ) {
+    const iconSticker = this.getIconSticker(details);
+    if (iconSticker) {
+      if (details.pack.iconStickerId === null || iconSticker.id !== details.pack.iconStickerId) {
         throw new Error(mismatchMessage);
       }
-    } else if (options.requireIconOutput && details.pack.iconAssetId !== null) {
+    } else if (options.requireIconSticker && details.pack.iconStickerId !== null) {
       throw new Error(
-        `The selected icon asset must have a current icon output before Telegram ${options.operation}.`,
+        `The selected icon file is missing. Choose the icon again before Telegram ${options.operation}.`,
       );
     }
   }
 
-  private async ensureOutputFileExists(absolutePath: string, description: string) {
+  private async ensureStickerFileExists(absolutePath: string, description: string) {
     if (!(await pathExists(absolutePath))) {
       throw new Error(`${description} is missing at ${absolutePath}.`);
     }
   }
 
-  private assertAssetHasEmojis(
-    asset: { emojiList: readonly string[]; relativePath: string },
+  private assertStickerHasEmojis(
+    sticker: { emojiList: readonly string[]; relativePath: string },
     context: string,
   ) {
-    if (asset.emojiList.length === 0) {
+    if (sticker.emojiList.length === 0) {
       throw new Error(
-        `Every sticker asset must have at least one emoji before ${context}. Missing emoji for ${asset.relativePath}.`,
+        `Every sticker must have at least one emoji before ${context}. Missing emoji for ${sticker.relativePath}.`,
       );
     }
   }
 
   private async preflightPublishPack(input: PublishLocalPackInput) {
     const details = await this.options.libraryService.getPack(input.packId);
-    const stickerAssets = this.getStickerAssets(details);
+    const stickerStickers = this.getStickerStickers(details);
 
     if (details.pack.source !== "local") {
       throw new Error("Only local packs can be uploaded to Telegram.");
     }
-    if (stickerAssets.length === 0) {
-      throw new Error("The pack needs at least one sticker asset before upload.");
+    if (stickerStickers.length === 0) {
+      throw new Error("The pack needs at least one sticker before upload.");
     }
 
-    await this.validateTelegramPackOutputs(details, {
+    await this.validateTelegramPackStickers(details, {
       operation: "upload",
-      requireIconOutput: true,
+      requireIconSticker: true,
     });
 
-    for (const asset of stickerAssets) {
-      const output = findStickerOutput(details.outputs, asset.id);
+    for (const sticker of stickerStickers) {
+      const output = findSticker(details.stickers, sticker.id);
       if (!output) {
         throw new Error(
-          `Every sticker asset must have a current sticker output before upload. Missing output for ${asset.relativePath}.`,
+          `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram upload.`,
         );
       }
-      await this.ensureOutputFileExists(
+      await this.ensureStickerFileExists(
         output.absolutePath,
-        `Sticker output for ${asset.relativePath}`,
+        `Sticker file for ${sticker.relativePath}`,
       );
-      this.assertAssetHasEmojis(asset, "upload");
+      this.assertStickerHasEmojis(sticker, "upload");
     }
 
     return details;
@@ -567,88 +545,88 @@ export class TelegramPackMutationService {
     });
   }
 
-  private async applyTelegramStickerAssetChanges(input: {
+  private async applyTelegramStickerStickerChanges(input: {
     details: StickerPackDetails;
-    stickerAssets: ReturnType<TelegramPackMutationService["getStickerAssets"]>;
+    stickerStickers: ReturnType<TelegramPackMutationService["getStickerStickers"]>;
     telegramShortName: string;
     remoteByStickerId: ReadonlyMap<string, TelegramRemoteSticker>;
-    duplicateLocalStickerAssetIds: ReadonlySet<string>;
+    duplicateLocalStickerStickerIds: ReadonlySet<string>;
   }) {
-    const remotelyAddedAssetIds = new Set<string>();
+    const remotelyAddedStickerIds = new Set<string>();
 
-    for (const asset of input.stickerAssets) {
-      const output = findStickerOutput(input.details.outputs, asset.id);
-      this.assertAssetHasEmojis(asset, "update");
+    for (const sticker of input.stickerStickers) {
+      const output = findSticker(input.details.stickers, sticker.id);
+      this.assertStickerHasEmojis(sticker, "update");
 
-      if (!asset.telegram) {
-        if (input.duplicateLocalStickerAssetIds.has(asset.id)) {
+      if (!sticker.telegram) {
+        if (input.duplicateLocalStickerStickerIds.has(sticker.id)) {
           continue;
         }
 
         if (!output) {
           throw new Error(
-            `Added Telegram mirror asset ${asset.relativePath} is missing a sticker output.`,
+            `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram update.`,
           );
         }
-        await this.ensureOutputFileExists(
+        await this.ensureStickerFileExists(
           output.absolutePath,
-          `Sticker output for ${asset.relativePath}`,
+          `Sticker file for ${sticker.relativePath}`,
         );
 
         await this.options.auth.tdlibService.addStickerToSet({
           shortName: input.telegramShortName,
           stickerPath: output.absolutePath,
-          emojis: asset.emojiList,
+          emojis: sticker.emojiList,
         });
-        remotelyAddedAssetIds.add(asset.id);
+        remotelyAddedStickerIds.add(sticker.id);
         continue;
       }
 
-      const remoteSticker = input.remoteByStickerId.get(asset.telegram.stickerId);
+      const remoteSticker = input.remoteByStickerId.get(sticker.telegram.stickerId);
       if (!remoteSticker) {
         continue;
       }
 
-      const remoteFileId = asset.telegram.fileId ?? remoteSticker.fileId;
+      const remoteFileId = sticker.telegram.fileId ?? remoteSticker.fileId;
       if (output) {
-        await this.ensureOutputFileExists(
+        await this.ensureStickerFileExists(
           output.absolutePath,
-          `Sticker output for ${asset.relativePath}`,
+          `Sticker file for ${sticker.relativePath}`,
         );
       }
 
       if (
         output &&
-        output.sha256 !== asset.telegram.baselineOutputHash &&
+        output.sha256 !== sticker.telegram.baselineStickerHash &&
         remoteFileId
       ) {
         await this.options.auth.tdlibService.replaceStickerInSet({
           shortName: input.telegramShortName,
           oldFileId: remoteFileId,
           newStickerPath: output.absolutePath,
-          emojis: asset.emojiList,
+          emojis: sticker.emojiList,
         });
         continue;
       }
 
       const remoteEmojis = remoteSticker.emojiList.join(" ");
-      const localEmojis = asset.emojiList.join(" ");
+      const localEmojis = sticker.emojiList.join(" ");
       if (localEmojis !== remoteEmojis && remoteFileId) {
         await this.options.auth.tdlibService.setStickerEmojis({
           stickerSetId: input.details.pack.telegram!.stickerSetId,
           fileId: remoteFileId,
-          emojis: asset.emojiList,
+          emojis: sticker.emojiList,
         });
       }
     }
 
-    return remotelyAddedAssetIds;
+    return remotelyAddedStickerIds;
   }
 
   private async removeDeletedRemoteStickers(input: {
     telegram: NonNullable<StickerPackDetails["pack"]["telegram"]>;
     remoteSet: TelegramRemoteStickerSet;
-    localByStickerId: ReadonlyMap<string, StickerPackDetails["assets"][number]>;
+    localByStickerId: ReadonlyMap<string, StickerPackDetails["stickers"][number]>;
   }) {
     for (const remoteSticker of input.remoteSet.stickers) {
       if (input.localByStickerId.has(remoteSticker.stickerId) || !remoteSticker.fileId) {
@@ -666,22 +644,22 @@ export class TelegramPackMutationService {
     details: StickerPackDetails;
     telegramShortName: string;
   }) {
-    const iconOutput = this.getIconOutput(input.details);
-    if (iconOutput) {
-      await this.ensureOutputFileExists(
-        iconOutput.absolutePath,
-        `Icon output for ${input.details.pack.name}`,
+    const iconSticker = this.getIconSticker(input.details);
+    if (iconSticker) {
+      await this.ensureStickerFileExists(
+        iconSticker.absolutePath,
+        `Icon file for ${input.details.pack.name}`,
       );
       await this.options.auth.tdlibService.setStickerSetThumbnail({
         shortName: input.telegramShortName,
-        thumbnailPath: iconOutput.absolutePath,
+        thumbnailPath: iconSticker.absolutePath,
         format: "video",
       });
       return;
     }
 
     if (
-      input.details.pack.iconAssetId === null &&
+      input.details.pack.iconStickerId === null &&
       input.details.pack.telegram?.thumbnailPath === null
     ) {
       await this.options.auth.tdlibService.setStickerSetThumbnail({
@@ -694,15 +672,15 @@ export class TelegramPackMutationService {
 
   private async resyncUpdatedTelegramMirror(input: {
     stickerSetId: string;
-    stickerAssets: ReturnType<TelegramPackMutationService["getStickerAssets"]>;
-    remotelyAddedAssetIds: ReadonlySet<string>;
+    stickerStickers: ReturnType<TelegramPackMutationService["getStickerStickers"]>;
+    remotelyAddedStickerIds: ReadonlySet<string>;
   }) {
     const refreshedRemoteSet =
       await this.options.syncService.getRemoteStickerSetOrThrow(input.stickerSetId);
-    await this.reorderAddedRemoteStickerAssets(
+    await this.reorderAddedRemoteStickerStickers(
       refreshedRemoteSet,
-      input.stickerAssets,
-      input.remotelyAddedAssetIds,
+      input.stickerStickers,
+      input.remotelyAddedStickerIds,
     );
 
     const reorderedRemoteSet =

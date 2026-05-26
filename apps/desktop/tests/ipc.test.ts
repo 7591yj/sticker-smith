@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
   const registeredHandlers = new Map<string, (...args: unknown[]) => unknown>();
-  const handleMock = vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
-    registeredHandlers.set(channel, handler);
-  });
+  const handleMock = vi.fn(
+    (channel: string, handler: (...args: unknown[]) => unknown) => {
+      registeredHandlers.set(channel, handler);
+    },
+  );
   const sendPrimary = vi.fn();
   const sendSecondary = vi.fn();
   const getAllWindowsMock = vi.fn(() => [
@@ -38,14 +40,12 @@ const hoisted = vi.hoisted(() => {
     listOutputs: vi.fn(),
   };
   const shellService = {
-    revealSourceFolder: vi.fn(),
     revealOutput: vi.fn(),
     exportOutputFolder: vi.fn(),
   };
   const converterService = {
     setEventSink: vi.fn(),
-    convertPack: vi.fn(),
-    convertSelection: vi.fn(),
+    convert: vi.fn(),
   };
   const telegramService = {
     subscribe: vi.fn(),
@@ -128,7 +128,10 @@ describe("ipc", () => {
 
     createBroadcastEmitter("conversion.event")(payload);
 
-    expect(hoisted.sendPrimary).toHaveBeenCalledWith("conversion.event", payload);
+    expect(hoisted.sendPrimary).toHaveBeenCalledWith(
+      "conversion.event",
+      payload,
+    );
     expect(hoisted.sendSecondary).toHaveBeenCalledWith(
       "conversion.event",
       payload,
@@ -150,11 +153,12 @@ describe("ipc", () => {
     const handler = hoisted.registeredHandlers.get("settings.getConfig");
     expect(handler).toBeTypeOf("function");
 
-    await expect(
-      handler?.({ sender: {} } as never),
-    ).rejects.toBe(error);
+    await expect(handler?.({ sender: {} } as never)).rejects.toBe(error);
     expect(hoisted.settingsService.getConfig).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledTimes(1);
-    expect(consoleError).toHaveBeenCalledWith("[ipc] settings.getConfig:", error);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[ipc] settings.getConfig:",
+      error,
+    );
   });
 });

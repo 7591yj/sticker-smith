@@ -40,9 +40,7 @@ function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
     name: "Cats",
     slug: "cats",
     rootPath: "/tmp/cats",
-    sourceRoot: "/tmp/cats/source",
-    outputRoot: "/tmp/cats/webm",
-    iconAssetId: null,
+    iconStickerId: null,
     thumbnailPath: null,
     createdAt: "2026-03-12T00:00:00.000Z",
     updatedAt: "2026-03-12T00:00:00.000Z",
@@ -50,21 +48,24 @@ function createPack(overrides: Partial<StickerPack> = {}): StickerPack {
   };
 }
 
-function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPackDetails {
+function createDetails(
+  overrides: Partial<StickerPackDetails> = {},
+): StickerPackDetails {
   return {
     pack: createPack(),
-    assets: [
+    stickers: [
       {
         id: "asset-1",
         packId: "pack-1",
         order: 0,
         relativePath: "nested/cat.png",
         absolutePath: "/tmp/cats/source/nested/cat.png",
-        originalFileName: "cat.png",
+        originalFileName: null,
         emojiList: [],
-        kind: "png",
+        sizeBytes: 1024,
+        sha256: null,
         importedAt: "2026-03-12T00:00:00.000Z",
-        originalImportPath: null,
+        updatedAt: "2026-03-12T00:00:00.000Z",
         downloadState: "ready",
       },
       {
@@ -75,13 +76,13 @@ function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPack
         absolutePath: "/tmp/cats/source/dog.png",
         originalFileName: "dog.png",
         emojiList: [],
-        kind: "png",
+        sizeBytes: 2048,
+        sha256: null,
         importedAt: "2026-03-12T00:00:00.000Z",
-        originalImportPath: null,
+        updatedAt: "2026-03-12T00:00:00.000Z",
         downloadState: "ready",
       },
     ],
-    outputs: [],
     ...overrides,
   };
 }
@@ -89,7 +90,9 @@ function createDetails(overrides: Partial<StickerPackDetails> = {}): StickerPack
 function createBridge(options: {
   packs?: StickerPack[];
   details?: StickerPackDetails;
-  onConversionSubscribe?: (listener: (event: ConversionJobEvent) => void) => void;
+  onConversionSubscribe?: (
+    listener: (event: ConversionJobEvent) => void,
+  ) => void;
   onTelegramSubscribe?: (listener: (event: TelegramEvent) => void) => void;
 }) {
   const packs = options.packs ?? [createPack()];
@@ -121,9 +124,8 @@ function createBridge(options: {
       rename: vi.fn(),
       delete: vi.fn(),
       setIcon: vi.fn(),
-      revealSourceFolder: vi.fn(),
     },
-    assets: {
+    stickers: {
       importFiles: vi.fn(),
       importDirectory: vi.fn(),
       delete: vi.fn(),
@@ -132,17 +134,15 @@ function createBridge(options: {
       renameMany: vi.fn(),
       setEmojis: vi.fn(),
       setEmojisMany: vi.fn(),
+      revealInFolder: vi.fn(),
+      exportFolder: vi.fn(),
     },
     conversion: {
       subscribe: vi.fn((listener: (event: ConversionJobEvent) => void) => {
         options.onConversionSubscribe?.(listener);
         return () => undefined;
       }),
-      convertPack: vi.fn(async () => details),
-    },
-    outputs: {
-      revealInFolder: vi.fn(),
-      exportFolder: vi.fn(),
+      convert: vi.fn(async () => details),
     },
     settings: {},
   };
@@ -209,9 +209,9 @@ describe("desktop app state", () => {
       });
       for (let index = 0; index < 55; index += 1) {
         conversionListener?.({
-          type: "asset_started",
+          type: "sticker_started",
           jobId: "job-1",
-          assetId: `asset-${index}`,
+          stickerId: `sticker-${index}`,
           mode: "sticker",
         });
       }
@@ -230,11 +230,11 @@ describe("desktop app state", () => {
     expect(container.firstElementChild?.getAttribute("data-event-count")).toBe(
       "50",
     );
-    expect(container.firstElementChild?.getAttribute("data-failure-count")).toBe(
-      "1",
-    );
+    expect(
+      container.firstElementChild?.getAttribute("data-failure-count"),
+    ).toBe("1");
     expect(container.textContent).toContain(
-      "One or more assets failed while the conversion ran in the background.",
+      "One or more files failed while stickers were being added.",
     );
 
     await act(async () => {
@@ -242,7 +242,7 @@ describe("desktop app state", () => {
     });
   });
 
-  it("shows conversion progress and a failure dialog with leaf asset names", async () => {
+  it("shows conversion progress and a failure dialog with leaf file names", async () => {
     let conversionListener: ((event: ConversionJobEvent) => void) | null = null;
 
     Object.assign(window, {
@@ -271,13 +271,13 @@ describe("desktop app state", () => {
       await flushEffects();
     });
 
-    expect(document.body.textContent).toContain("Converting 2 assets");
+    expect(document.body.textContent).toContain("Converting 2 files");
 
     await act(async () => {
       conversionListener?.({
-        type: "asset_failed",
+        type: "sticker_failed",
         jobId: "job-2",
-        assetId: "asset-1",
+        stickerId: "asset-1",
         mode: "sticker",
         error: "ffmpeg crashed",
       });
@@ -290,9 +290,11 @@ describe("desktop app state", () => {
       await flushEffects();
     });
 
-    expect(document.body.textContent).toContain("Conversion failed");
     expect(document.body.textContent).toContain(
-      'Sticker Smith finished converting "Cats" in the background, but 1 asset failed.',
+      "Some files could not be added",
+    );
+    expect(document.body.textContent).toContain(
+      'Sticker Smith tried to add files to "Cats", but 1 file failed.',
     );
     expect(document.body.textContent).toContain("cat.png");
     expect(document.body.textContent).toContain("ffmpeg crashed");

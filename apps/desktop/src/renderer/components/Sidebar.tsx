@@ -9,6 +9,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import PhotoIcon from "@mui/icons-material/Photo";
 import SyncIcon from "@mui/icons-material/Sync";
 import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
@@ -147,7 +148,8 @@ function shortNameLabelForPack(pack: StickerPack) {
 function secondaryLabelForPack(pack: StickerPack) {
   const shortNameLabel =
     pack.source === "telegram"
-      ? pack.telegram?.shortName ?? appTokens.copy.labels.telegramShortNameUnset
+      ? (pack.telegram?.shortName ??
+        appTokens.copy.labels.telegramShortNameUnset)
       : shortNameLabelForPack(pack);
 
   if (pack.source === "telegram" && pack.telegram?.syncState) {
@@ -194,9 +196,9 @@ export function Sidebar({
     (pack) =>
       pack.source === "telegram" && pack.telegram?.syncState === "unsupported",
   );
-  const telegramSyncBusy = telegramSyncInProgress || telegramPacks.some(
-    (pack) => pack.telegram?.syncState === "syncing",
-  );
+  const telegramSyncBusy =
+    telegramSyncInProgress ||
+    telegramPacks.some((pack) => pack.telegram?.syncState === "syncing");
   const telegramReady =
     telegramState?.status === "connected" && telegramState.authStep === "ready";
   const [contextMenu, setContextMenu] = useState<{
@@ -216,9 +218,9 @@ export function Sidebar({
     ? appTokens.copy.labels.telegramSyncInProgress
     : telegramSyncRecommended
       ? "Sync needed"
-    : telegramPacks.length > 0
-      ? appTokens.copy.actions.resync
-      : appTokens.copy.actions.sync;
+      : telegramPacks.length > 0
+        ? appTokens.copy.actions.resync
+        : appTokens.copy.actions.sync;
   const telegramManageLabel =
     telegramState?.status === "connected"
       ? appTokens.copy.actions.manageTelegram
@@ -237,9 +239,6 @@ export function Sidebar({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, pack: StickerPack) => {
-      if (pack.source !== "local") {
-        return;
-      }
       e.preventDefault();
       setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pack });
     },
@@ -289,6 +288,23 @@ export function Sidebar({
     [contextMenu, handleCloseMenu],
   );
 
+  const handleChooseIcon = useCallback(
+    async () =>
+      runContextPackAction(async (pack) => {
+        if (pack.thumbnailPath) {
+          const confirmed = window.confirm(
+            "Replace this pack's existing icon? The pack will need a Telegram update after the new icon is converted.",
+          );
+          if (!confirmed) {
+            return;
+          }
+        }
+        await window.stickerSmith.packs.chooseIcon({ packId: pack.id });
+        await refreshPacks();
+      }),
+    [refreshPacks, runContextPackAction],
+  );
+
   const handleDelete = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
@@ -301,18 +317,18 @@ export function Sidebar({
     [refreshPacks, runContextPackAction, selectedPackId, setSelectedPackId],
   );
 
-  const handleOpenOutputs = useCallback(
+  const handleOpenStickers = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
-        await window.stickerSmith.outputs.revealInFolder({ packId: pack.id });
+        await window.stickerSmith.stickers.revealInFolder({ packId: pack.id });
       }),
     [runContextPackAction],
   );
 
-  const handleExportOutputs = useCallback(
+  const handleExportStickers = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
-        await window.stickerSmith.outputs.exportFolder({ packId: pack.id });
+        await window.stickerSmith.stickers.exportFolder({ packId: pack.id });
       }),
     [runContextPackAction],
   );
@@ -436,7 +452,8 @@ export function Sidebar({
         {renderPackList(visiblePacks, emptyState)}
       </List>
 
-      {activePackFilter === "telegram" && unsupportedTelegramPacks.length > 0 ? (
+      {activePackFilter === "telegram" &&
+      unsupportedTelegramPacks.length > 0 ? (
         <Box sx={{ px: 0.5, py: 0.5 }}>
           <ListItemButton
             dense
@@ -519,7 +536,9 @@ export function Sidebar({
                 fontSize="small"
                 sx={{
                   color:
-                    telegramSyncRecommended && telegramReady && !telegramSyncBusy
+                    telegramSyncRecommended &&
+                    telegramReady &&
+                    !telegramSyncBusy
                       ? "error.main"
                       : "text.secondary",
                   animation: telegramSyncBusy
@@ -554,11 +573,7 @@ export function Sidebar({
         }}
       >
         {contextMenu && (
-          <MenuItem
-            disabled
-            dense
-            sx={browserMenuTitleSx}
-          >
+          <MenuItem disabled dense sx={browserMenuTitleSx}>
             {contextMenu.pack.name}
           </MenuItem>
         )}
@@ -567,11 +582,15 @@ export function Sidebar({
           <EditIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.rename}
         </MenuItem>
-        <MenuItem onClick={handleOpenOutputs} dense>
+        <MenuItem onClick={handleOpenStickers} dense>
           <FolderOpenIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.openOutputs}
+          {appTokens.copy.actions.openFolder}
         </MenuItem>
-        <MenuItem onClick={handleExportOutputs} dense>
+        <MenuItem onClick={handleChooseIcon} dense>
+          <PhotoIcon sx={browserMenuIconSx} />
+          Change icon
+        </MenuItem>
+        <MenuItem onClick={handleExportStickers} dense>
           <IosShareIcon sx={browserMenuIconSx} />
           {appTokens.copy.actions.export}
         </MenuItem>
@@ -589,11 +608,7 @@ export function Sidebar({
           paper: { sx: { minWidth: appTokens.sizes.menu.telegram } },
         }}
       >
-        <MenuItem
-          disabled
-          dense
-          sx={browserMenuTitleSx}
-        >
+        <MenuItem disabled dense sx={browserMenuTitleSx}>
           {statusLabelForTelegram(telegramState)}
         </MenuItem>
         {telegramState?.sessionUser ? (
@@ -619,9 +634,7 @@ export function Sidebar({
           }}
           dense
         >
-          <ManageAccountsIcon
-            sx={browserMenuIconSx}
-          />
+          <ManageAccountsIcon sx={browserMenuIconSx} />
           {telegramManageLabel}
         </MenuItem>
         {telegramState?.status === "connected" ? (

@@ -11,7 +11,7 @@ function isTelegramCompatibleEmoji(value: string) {
 }
 
 export const packIdSchema = z.string().min(1);
-export const assetIdSchema = z.string().min(1);
+export const stickerIdSchema = z.string().min(1);
 export const mediaKindSchema = z.enum(supportedMediaKinds);
 export const conversionModeSchema = z.enum(["icon", "sticker"]);
 export const telegramAuthModeSchema = z.enum(["user"]);
@@ -33,11 +33,74 @@ export const telegramShortNameSchema = z
   .regex(/^[A-Za-z][A-Za-z0-9_]*$/);
 
 export const conversionTaskSchema = z.object({
-  assetId: assetIdSchema,
+  stickerId: stickerIdSchema,
   sourcePath: z.string().min(1),
   mode: conversionModeSchema,
   outputPath: z.string().min(1).regex(/\.webm$/i),
 });
+
+export const importConversionTaskSchema = z.object({
+  sourcePath: z.string().min(1),
+  originalFileName: z.string().min(1),
+  outputPath: z.string().min(1).regex(/\.webm$/i),
+});
+
+export const downloadStateSchema = z.enum([
+  "missing",
+  "queued",
+  "downloading",
+  "ready",
+  "failed",
+]);
+
+export const telegramStickerMetadataSchema = z.object({
+  stickerId: z.string().min(1),
+  fileId: z.string().nullable(),
+  fileUniqueId: z.string().nullable(),
+  position: z.number().int().nonnegative(),
+  baselineStickerHash: z.string().min(1).nullable(),
+}).strict();
+
+export const telegramPackSummarySchema = z.object({
+  stickerSetId: z.string().min(1),
+  shortName: z.string(),
+  title: z.string(),
+  format: z.enum(["video", "static", "animated", "mixed", "unknown"]),
+  thumbnailPath: z.string().nullable().optional(),
+  syncState: z.enum(["idle", "syncing", "stale", "error", "unsupported"]),
+  lastSyncedAt: z.string().nullable(),
+  lastSyncError: z.string().nullable(),
+  publishedFromLocalPackId: z.string().nullable(),
+}).strict();
+
+export const stickerItemSchema = z.object({
+  id: stickerIdSchema,
+  packId: packIdSchema,
+  order: z.number().int().nonnegative(),
+  relativePath: z.string().min(1).regex(/\.webm$/i),
+  originalFileName: z.string().min(1).nullable(),
+  emojiList: emojiListSchema,
+  sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string().min(1).nullable(),
+  importedAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  downloadState: downloadStateSchema.optional(),
+  telegram: telegramStickerMetadataSchema.optional(),
+}).strict();
+
+export const stickerPackRecordSchema = z.object({
+  schemaVersion: z.literal(4),
+  id: packIdSchema,
+  source: z.enum(["local", "telegram"]),
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  iconStickerId: stickerIdSchema.nullable(),
+  telegramShortName: z.string().nullable().optional(),
+  telegram: telegramPackSummarySchema.optional(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  stickers: z.array(stickerItemSchema),
+}).strict();
 
 export const conversionJobRequestSchema = z.object({
   jobId: z.string().min(1),
@@ -52,23 +115,23 @@ export const conversionJobEventSchema = z.discriminatedUnion("type", [
     taskCount: z.number().int().nonnegative(),
   }),
   z.object({
-    type: z.literal("asset_started"),
+    type: z.literal("sticker_started"),
     jobId: z.string().min(1),
-    assetId: assetIdSchema,
+    stickerId: stickerIdSchema,
     mode: conversionModeSchema,
   }),
   z.object({
-    type: z.literal("asset_completed"),
+    type: z.literal("sticker_completed"),
     jobId: z.string().min(1),
-    assetId: assetIdSchema,
+    stickerId: stickerIdSchema,
     mode: conversionModeSchema,
     outputPath: z.string().min(1),
     sizeBytes: z.number().int().nonnegative(),
   }),
   z.object({
-    type: z.literal("asset_failed"),
+    type: z.literal("sticker_failed"),
     jobId: z.string().min(1),
-    assetId: assetIdSchema,
+    stickerId: stickerIdSchema,
     mode: conversionModeSchema,
     error: z.string().min(1),
   }),
@@ -95,7 +158,7 @@ export const deletePackSchema = z.object({
 
 export const setPackIconSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema.nullable(),
+  stickerId: stickerIdSchema.nullable(),
 });
 
 export const setPackTelegramShortNameSchema = z.object({
@@ -113,71 +176,67 @@ export const importDirectorySchema = z.object({
   directoryPath: z.string().min(1).optional(),
 });
 
-export const renameAssetSchema = z.object({
+export const renameStickerSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema,
+  stickerId: stickerIdSchema,
   nextRelativePath: z.string().min(1),
 });
 
-export const renameManyAssetsSchema = z.object({
+export const renameManyStickersSchema = z.object({
   packId: packIdSchema,
-  assetIds: z.array(assetIdSchema).min(1),
+  stickerIds: z.array(stickerIdSchema).min(1),
   baseName: z.string().trim().min(1),
 });
 
-export const setAssetEmojisSchema = z.object({
+export const setStickerEmojisSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema,
+  stickerId: stickerIdSchema,
   emojis: emojiListSchema,
 });
 
-export const reorderAssetSchema = z.object({
+export const reorderStickerSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema,
-  beforeAssetId: assetIdSchema.nullable(),
+  stickerId: stickerIdSchema,
+  beforeStickerId: stickerIdSchema.nullable(),
 });
 
-export const setManyAssetEmojisSchema = z.object({
+export const setManyStickerEmojisSchema = z.object({
   packId: packIdSchema,
-  assetIds: z.array(assetIdSchema).min(1),
+  stickerIds: z.array(stickerIdSchema).min(1),
   emojis: emojiListSchema,
 });
 
-export const moveAssetSchema = z.object({
+export const moveStickerSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema,
+  stickerId: stickerIdSchema,
   nextDirectory: z.string(),
 });
 
-export const deleteAssetSchema = z.object({
+export const deleteStickerSchema = z.object({
   packId: packIdSchema,
-  assetId: assetIdSchema,
+  stickerId: stickerIdSchema,
 });
 
-export const deleteManyAssetsSchema = z.object({
+export const deleteManyStickersSchema = z.object({
   packId: packIdSchema,
-  assetIds: z.array(assetIdSchema).min(1),
+  stickerIds: z.array(stickerIdSchema).min(1),
 });
 
-export const convertSelectionSchema = z.object({
+export const convertSchema = z.object({
   packId: packIdSchema,
-  assetIds: z.array(assetIdSchema).min(1),
+  stickerIds: z.array(stickerIdSchema).min(1),
 });
 
-export const listOutputsSchema = z.object({
+export const listStickersSchema = z.object({
   packId: packIdSchema,
 });
 
-export const revealOutputSchema = z.object({
+export const revealStickerSchema = z.object({
   packId: packIdSchema,
   relativePath: z.string().min(1).optional(),
 });
 
-export const exportOutputFolderSchema = z.object({
-  packId: packIdSchema,
-});
-
-export const revealPackSourceFolderSchema = z.object({
+export const exportStickerFolderSchema = z.object({
   packId: packIdSchema,
 });
 

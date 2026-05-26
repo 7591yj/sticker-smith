@@ -1,21 +1,20 @@
 import type {
   ConversionJobEvent,
-  ConvertSelectionInput,
-  DeleteAssetInput,
-  DeleteManyAssetsInput,
+  ConvertInput,
+  DeleteStickerInput,
+  DeleteManyStickersInput,
   ImportResult,
   LibraryConfig,
-  MoveAssetInput,
-  OutputArtifact,
+  MoveStickerInput,
   PublishLocalPackInput,
-  ReorderAssetInput,
-  RenameAssetInput,
-  RenameManyAssetsInput,
+  ReorderStickerInput,
+  RenameStickerInput,
+  RenameManyStickersInput,
   SetTelegramPhoneNumberInput,
   SetPackTelegramShortNameInput,
   SetTelegramTdlibParametersInput,
-  SetAssetEmojisInput,
-  SetManyAssetEmojisInput,
+  SetStickerEmojisInput,
+  SetManyStickerEmojisInput,
   StickerPack,
   StickerPackDetails,
   SubmitTelegramCodeInput,
@@ -56,16 +55,18 @@ export interface StickerSmithApi {
     rename: (input: { packId: string; name: string }) => Promise<StickerPack>;
     delete: (input: { packId: string }) => Promise<void>;
     get: (packId: string) => Promise<StickerPackDetails>;
-    revealSourceFolder: (input: { packId: string }) => Promise<void>;
     setTelegramShortName: (
       input: SetPackTelegramShortNameInput,
     ) => Promise<StickerPack>;
     setIcon: (input: {
       packId: string;
-      assetId: string | null;
+      stickerId: string | null;
     }) => Promise<StickerPack>;
+    chooseIcon: (input: {
+      packId: string;
+    }) => Promise<StickerPackDetails | null>;
   };
-  assets: {
+  stickers: {
     importFiles: (input: {
       packId: string;
       filePaths?: string[];
@@ -74,19 +75,16 @@ export interface StickerSmithApi {
       packId: string;
       directoryPath?: string;
     }) => Promise<ImportResult>;
-    setEmojis: (input: SetAssetEmojisInput) => Promise<StickerPackDetails>;
+    setEmojis: (input: SetStickerEmojisInput) => Promise<StickerPackDetails>;
     setEmojisMany: (
-      input: SetManyAssetEmojisInput,
+      input: SetManyStickerEmojisInput,
     ) => Promise<StickerPackDetails>;
-    reorder: (input: ReorderAssetInput) => Promise<StickerPackDetails>;
-    rename: (input: RenameAssetInput) => Promise<StickerPackDetails>;
-    renameMany: (input: RenameManyAssetsInput) => Promise<StickerPackDetails>;
-    move: (input: MoveAssetInput) => Promise<StickerPackDetails>;
-    delete: (input: DeleteAssetInput) => Promise<StickerPackDetails>;
-    deleteMany: (input: DeleteManyAssetsInput) => Promise<StickerPackDetails>;
-  };
-  outputs: {
-    list: (packId: string) => Promise<OutputArtifact[]>;
+    reorder: (input: ReorderStickerInput) => Promise<StickerPackDetails>;
+    rename: (input: RenameStickerInput) => Promise<StickerPackDetails>;
+    renameMany: (input: RenameManyStickersInput) => Promise<StickerPackDetails>;
+    move: (input: MoveStickerInput) => Promise<StickerPackDetails>;
+    delete: (input: DeleteStickerInput) => Promise<StickerPackDetails>;
+    deleteMany: (input: DeleteManyStickersInput) => Promise<StickerPackDetails>;
     revealInFolder: (input: {
       packId: string;
       relativePath?: string;
@@ -94,9 +92,8 @@ export interface StickerSmithApi {
     exportFolder: (input: { packId: string }) => Promise<string | null>;
   };
   conversion: {
-    convertPack: (input: { packId: string }) => Promise<StickerPackDetails>;
-    convertSelection: (
-      input: ConvertSelectionInput,
+    convert: (
+      input: ConvertInput,
     ) => Promise<StickerPackDetails>;
     subscribe: (listener: (event: ConversionJobEvent) => void) => () => void;
   };

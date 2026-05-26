@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PublishIcon from "@mui/icons-material/Publish";
 import DownloadIcon from "@mui/icons-material/Download";
 import UpdateIcon from "@mui/icons-material/Update";
@@ -14,8 +13,6 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerPack, StickerPackDetails } from "@sticker-smith/shared";
@@ -25,9 +22,8 @@ import {
   telegramSyncStateChipSx,
 } from "../utils/telegramSyncState";
 import { actionIconSx, formatCountLabel } from "./browserStyles";
-import { AssetGrid } from "./AssetGrid";
-import { BrowserViewToggle, type BrowserView } from "./fileBrowser";
-import { OutputsList } from "./OutputsList";
+import type { BrowserView } from "./fileBrowser";
+import { StickerList } from "./StickerList";
 import { RenameDialog } from "./RenameDialog";
 import { TelegramPublishDialog } from "./TelegramPublishDialog";
 
@@ -86,7 +82,6 @@ export function PackPanel({
   const [renaming, setRenaming] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [publishSubmitting, setPublishSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"assets" | "outputs">("assets");
   const [view, setView] = useState<BrowserView>("list");
   const packId = details?.pack.id ?? null;
 
@@ -107,45 +102,55 @@ export function PackPanel({
     [packId, refreshDetails],
   );
 
-  const handleConvert = useCallback(async () => {
-    if (!details) return;
-    const next = await window.stickerSmith.conversion.convertPack({
-      packId: details.pack.id,
-    });
-    setDetails(next);
-  }, [details, setDetails]);
+  const convertImportedStickers = useCallback(
+    async (
+      importResult: Awaited<
+        ReturnType<typeof window.stickerSmith.stickers.importFiles>
+      >,
+      currentPackId: string,
+    ) => {
+      const stickerIds = importResult.imported.map((sticker) => sticker.id);
+      if (stickerIds.length === 0) {
+        await refreshDetails(currentPackId);
+        return;
+      }
+
+      const next = await window.stickerSmith.conversion.convert({
+        packId: currentPackId,
+        stickerIds,
+      });
+      setDetails(next);
+    },
+    [refreshDetails, setDetails],
+  );
 
   const handleImportFiles = useCallback(async () => {
-    await runPackAction(
-      (currentPackId) =>
-        window.stickerSmith.assets.importFiles({ packId: currentPackId }),
-      { refreshDetails: true },
-    );
-  }, [runPackAction]);
+    await runPackAction(async (currentPackId) => {
+      const importResult = await window.stickerSmith.stickers.importFiles({
+        packId: currentPackId,
+      });
+      await convertImportedStickers(importResult, currentPackId);
+    });
+  }, [convertImportedStickers, runPackAction]);
 
   const handleImportDir = useCallback(async () => {
-    await runPackAction(
-      (currentPackId) =>
-        window.stickerSmith.assets.importDirectory({ packId: currentPackId }),
-      { refreshDetails: true },
+    await runPackAction(async (currentPackId) => {
+      const importResult = await window.stickerSmith.stickers.importDirectory({
+        packId: currentPackId,
+      });
+      await convertImportedStickers(importResult, currentPackId);
+    });
+  }, [convertImportedStickers, runPackAction]);
+
+  const handleOpenStickers = useCallback(async () => {
+    await runPackAction((currentPackId) =>
+      window.stickerSmith.stickers.revealInFolder({ packId: currentPackId }),
     );
   }, [runPackAction]);
 
-  const handleOpenOutputs = useCallback(async () => {
+  const handleExportStickers = useCallback(async () => {
     await runPackAction((currentPackId) =>
-      window.stickerSmith.outputs.revealInFolder({ packId: currentPackId }),
-    );
-  }, [runPackAction]);
-
-  const handleOpenAssets = useCallback(async () => {
-    await runPackAction((currentPackId) =>
-      window.stickerSmith.packs.revealSourceFolder({ packId: currentPackId }),
-    );
-  }, [runPackAction]);
-
-  const handleExportOutputs = useCallback(async () => {
-    await runPackAction((currentPackId) =>
-      window.stickerSmith.outputs.exportFolder({ packId: currentPackId }),
+      window.stickerSmith.stickers.exportFolder({ packId: currentPackId }),
     );
   }, [runPackAction]);
 
@@ -166,12 +171,6 @@ export function PackPanel({
     },
     [details, refreshPacks, refreshDetails],
   );
-
-  useEffect(() => {
-    if ((details?.outputs.length ?? 0) === 0 && activeTab === "outputs") {
-      setActiveTab("assets");
-    }
-  }, [activeTab, details]);
 
   if (!details) {
     return (
@@ -194,7 +193,8 @@ export function PackPanel({
     );
   }
 
-  const { pack, assets, outputs } = details;
+  const { pack } = details;
+  const stickers = details.stickers ?? [];
   const telegramUnsupported =
     pack.source === "telegram" && pack.telegram?.syncState === "unsupported";
   const unsupportedTelegramTooltip =
@@ -214,17 +214,17 @@ export function PackPanel({
   const hasPendingTelegramMedia =
     pack.source === "telegram" &&
     !telegramUnsupported &&
-    assets.some(
-      (asset) =>
-        asset.downloadState === "missing" || asset.downloadState === "failed",
+    stickers.some(
+      (sticker) =>
+        sticker.downloadState === "missing" || sticker.downloadState === "failed",
     );
-  const telegramMediaBusy = assets.some(
-    (asset) =>
-      asset.downloadState === "queued" || asset.downloadState === "downloading",
+  const telegramMediaBusy = stickers.some(
+    (sticker) =>
+      sticker.downloadState === "queued" || sticker.downloadState === "downloading",
   );
   const telegramMediaActionLabel = telegramMediaBusy
     ? appTokens.copy.actions.downloadingMedia
-    : assets.some((asset) => asset.downloadState === "failed")
+    : stickers.some((sticker) => sticker.downloadState === "failed")
       ? appTokens.copy.actions.retryMedia
       : appTokens.copy.actions.downloadMedia;
 
@@ -317,7 +317,9 @@ export function PackPanel({
                 disabled
                 aria-label={appTokens.copy.tooltips.deleteTelegramPack}
               >
-                <DeleteIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
+                <DeleteIcon
+                  sx={{ fontSize: appTokens.sizes.icon.panelAction }}
+                />
               </IconButton>
             </span>
           </Tooltip>
@@ -354,8 +356,8 @@ export function PackPanel({
               telegramUnsupported
                 ? unsupportedTelegramTooltip
                 : telegramMirrorBusy
-                ? "Telegram is already syncing this mirror"
-                : "Push local mirror changes to Telegram"
+                  ? "Telegram is already syncing this mirror"
+                  : "Push local mirror changes to Telegram"
             }
           >
             <span>
@@ -365,7 +367,11 @@ export function PackPanel({
                 startIcon={
                   <UpdateIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
                 }
-                disabled={!telegramConnected || telegramMirrorBusy || telegramUnsupported}
+                disabled={
+                  !telegramConnected ||
+                  telegramMirrorBusy ||
+                  telegramUnsupported
+                }
                 onClick={() =>
                   void onUpdateTelegramPack({ packId: pack.id }).catch(
                     () => undefined,
@@ -379,39 +385,14 @@ export function PackPanel({
           </Tooltip>
         )}
 
-        <Tooltip
-          title={
-            converting
-              ? appTokens.copy.tooltips.converting
-              : assets.length === 0
-                ? appTokens.copy.tooltips.noAssetsToConvert
-                : appTokens.copy.tooltips.convertAll
-          }
-        >
-          <span>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={
-                <PlayArrowIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
-              }
-              onClick={handleConvert}
-              disabled={converting || assets.length === 0}
-              disableElevation
-              sx={panelPrimaryButtonSx}
-            >
-              {appTokens.copy.actions.convert}
-            </Button>
-          </span>
-        </Tooltip>
         {pack.source === "telegram" && hasPendingTelegramMedia ? (
           <Tooltip
             title={
               telegramUnsupported
                 ? unsupportedTelegramTooltip
                 : telegramMirrorBusy || telegramMediaBusy
-                ? "Telegram media download is already in progress for this mirror"
-                : "Download missing Telegram sticker media for this mirror"
+                  ? "Telegram media download is already in progress for this mirror"
+                  : "Download missing Telegram sticker media for this mirror"
             }
           >
             <span>
@@ -419,7 +400,9 @@ export function PackPanel({
                 size="small"
                 variant="outlined"
                 startIcon={
-                  <DownloadIcon sx={actionIconSx(appTokens.sizes.icon.action)} />
+                  <DownloadIcon
+                    sx={actionIconSx(appTokens.sizes.icon.action)}
+                  />
                 }
                 disabled={telegramMirrorBusy || telegramMediaBusy}
                 onClick={() =>
@@ -475,6 +458,7 @@ export function PackPanel({
             <AddIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
           }
           onClick={handleImportFiles}
+          disabled={converting}
           sx={panelSecondaryButtonSx}
         >
           {appTokens.copy.actions.addFiles}
@@ -483,9 +467,12 @@ export function PackPanel({
           size="small"
           variant="outlined"
           startIcon={
-            <CreateNewFolderIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+            <CreateNewFolderIcon
+              sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+            />
           }
           onClick={handleImportDir}
+          disabled={converting}
           sx={panelSecondaryButtonSx}
         >
           {appTokens.copy.actions.addFolder}
@@ -505,47 +492,34 @@ export function PackPanel({
             color="text.secondary"
             sx={{ fontSize: appTokens.typography.fontSizes.caption }}
           >
-            {formatCountLabel(assets.length, "asset")}
-            {outputs.length > 0
-              ? ` · ${formatCountLabel(outputs.length, "output")}`
-              : ""}
+            {formatCountLabel(stickers.length, "sticker")}
           </Typography>
           <Button
             size="small"
             variant="outlined"
             startIcon={
-              <FolderOpenIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+              <FolderOpenIcon
+                sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+              />
             }
-            onClick={handleOpenAssets}
+            onClick={handleOpenStickers}
             sx={{
               ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
             }}
           >
-            {appTokens.copy.actions.openAssets}
+            {appTokens.copy.actions.openFolder}
           </Button>
           <Button
             size="small"
             variant="outlined"
             startIcon={
-              <FolderOpenIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
+              <IosShareIcon
+                sx={actionIconSx(appTokens.sizes.icon.compactAction)}
+              />
             }
-            onClick={handleOpenOutputs}
-            sx={{
-              ...panelSecondaryButtonSx,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {appTokens.copy.actions.openOutputs}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={
-              <IosShareIcon sx={actionIconSx(appTokens.sizes.icon.compactAction)} />
-            }
-            onClick={handleExportOutputs}
-            disabled={outputs.length === 0}
+            onClick={handleExportStickers}
+            disabled={stickers.length === 0}
             sx={{
               ...panelSecondaryButtonSx,
               whiteSpace: "nowrap",
@@ -556,69 +530,15 @@ export function PackPanel({
         </Box>
       </Box>
 
-      <Box
-        sx={{
-          borderBottom: 1,
-          borderColor: "divider",
-          px: 1.5,
-          py: 0.5,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 1,
-        }}
-      >
-        <Tabs
-          value={activeTab}
-          onChange={(_event, value: "assets" | "outputs") =>
-            setActiveTab(value)
-          }
-          sx={{
-            minHeight: appTokens.layout.tabsMinHeight,
-            "& .MuiTab-root": {
-              minHeight: appTokens.layout.tabsMinHeight,
-              textTransform: "none",
-              fontSize: appTokens.typography.fontSizes.body,
-              minWidth: 0,
-            },
-          }}
-        >
-          <Tab value="assets" label={`Assets (${assets.length})`} />
-          <Tab
-            value="outputs"
-            label={`Outputs (${outputs.length})`}
-            disabled={outputs.length === 0}
-          />
-        </Tabs>
-        <BrowserViewToggle
-          compact
-          ariaLabel={`${
-            activeTab === "assets"
-              ? appTokens.copy.labels.assets
-              : appTokens.copy.labels.outputs
-          } view`}
-          view={view}
-          onChange={setView}
-        />
-      </Box>
-
       <Box sx={{ flex: 1, overflowY: "auto" }}>
-        {activeTab === "assets" ? (
-          <AssetGrid
-            assets={assets}
-            pack={pack}
-            view={view}
-            refreshDetails={() => refreshDetails(pack.id)}
-          />
-        ) : (
-          <OutputsList
-            packId={pack.id}
-            outputs={outputs}
-            assets={assets}
-            view={view}
-            refreshDetails={() => refreshDetails(pack.id)}
-          />
-        )}
+        <StickerList
+          packId={pack.id}
+          stickers={stickers}
+          iconStickerId={pack.iconStickerId}
+          view={view}
+          onViewChange={setView}
+          refreshDetails={() => refreshDetails(pack.id)}
+        />
       </Box>
 
       <RenameDialog
