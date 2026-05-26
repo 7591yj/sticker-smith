@@ -40,7 +40,7 @@ export function formatOrderLabel(order: number) {
   return String(order + 1).padStart(3, "0");
 }
 
-export function formatDownloadSummary(sticker: StickerItem) {
+function formatDownloadSummary(sticker: StickerItem) {
   if (sticker.absolutePath) return "ready";
   switch (sticker.downloadState) {
     case "queued": return "queued";
@@ -62,7 +62,7 @@ export function buildStickerTitle(sticker: StickerItem) {
   ].filter(Boolean).join("\n");
 }
 
-export function formatEmojiSummary(sticker: StickerItem) {
+function formatEmojiSummary(sticker: StickerItem) {
   return sticker.emojiList.length > 0 ? sticker.emojiList.join(" ") : appTokens.copy.labels.noEmoji;
 }
 
