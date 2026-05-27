@@ -23,19 +23,32 @@ export function sortPackRecord(record: StickerPackRecord) {
   record.stickers.sort(compareStickersByOrder);
 }
 
+const defaultTelegramSummaryFields = {
+  shortName: "",
+  title: "",
+  format: "video",
+  thumbnailPath: null,
+  syncState: "idle",
+  lastSyncedAt: null,
+  lastSyncError: null,
+  publishedFromLocalPackId: null,
+} satisfies Omit<TelegramPackSummary, "stickerSetId">;
+
+function definedTelegramSummaryOverrides(
+  overrides: Partial<TelegramPackSummary>,
+): Partial<TelegramPackSummary> {
+  return Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value !== undefined),
+  ) as Partial<TelegramPackSummary>;
+}
+
 export function createDefaultTelegramSummary(
   overrides: Partial<TelegramPackSummary> & Pick<TelegramPackSummary, "stickerSetId">,
 ): TelegramPackSummary {
   return {
     stickerSetId: overrides.stickerSetId,
-    shortName: overrides.shortName ?? "",
-    title: overrides.title ?? "",
-    format: overrides.format ?? "video",
-    thumbnailPath: overrides.thumbnailPath ?? null,
-    syncState: overrides.syncState ?? "idle",
-    lastSyncedAt: overrides.lastSyncedAt ?? null,
-    lastSyncError: overrides.lastSyncError ?? null,
-    publishedFromLocalPackId: overrides.publishedFromLocalPackId ?? null,
+    ...defaultTelegramSummaryFields,
+    ...definedTelegramSummaryOverrides(overrides),
   };
 }
 
