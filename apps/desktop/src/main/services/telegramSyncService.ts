@@ -1,6 +1,10 @@
 import path from "node:path";
 
-import type { TelegramEvent } from "@sticker-smith/shared";
+import type {
+  StickerItem,
+  StickerPackDetails,
+  TelegramEvent,
+} from "@sticker-smith/shared";
 
 import type { LibraryService } from "./libraryService";
 import type { TelegramAuthService } from "./telegramAuthService";
@@ -64,71 +68,16 @@ export class TelegramSyncService {
     stickerSet: TelegramRemoteStickerSet,
     options: { publishedFromLocalPackId?: string | null } = {},
   ) {
-    const existingMirror =
-      await this.options.libraryService.findPackByTelegramStickerSetId(
-        stickerSet.stickerSetId,
-      );
-    const existingThumbnailPath = existingMirror?.record.telegram?.thumbnailPath ?? null;
-    const publishedFromLocalPackId =
-      options.publishedFromLocalPackId ??
-      existingMirror?.record.telegram?.publishedFromLocalPackId ??
-      null;
+    const mirrorContext = await this.resolveMirrorContext(stickerSet, options);
 
     if (!supportsTelegramMirrorEditing(stickerSet.format)) {
-      const details = await this.options.mirrorService.upsertStickerSet({
+      return this.syncUnsupportedStickerSet(
         stickerSet,
-        thumbnailPath: null,
-        hasThumbnail: false,
-        thumbnailExtension: null,
-        publishedFromLocalPackId,
-        syncState: "unsupported",
-        lastSyncError: describeUnsupportedStickerSet(stickerSet),
-        includeStickers: false,
-      });
-      await this.options.mirrorService.markPackSyncState(
-        details.record.id,
-        "unsupported",
-        describeUnsupportedStickerSet(stickerSet),
+        mirrorContext.publishedFromLocalPackId,
       );
-      this.options.emit({
-        type: "pack_sync_completed",
-        packId: details.record.id,
-        stickerSetId: stickerSet.stickerSetId,
-      });
-      return details.record.id;
     }
 
-    const hasRemoteThumbnail =
-      Boolean(stickerSet.thumbnailFile && stickerSet.thumbnailFile.numericFileId > 0) ||
-      Boolean(stickerSet.thumbnailStickerId);
-    const thumbnailPath = await this.resolveStickerSetThumbnailPath(stickerSet, {
-      allowDownload: !(await this.hasAccessibleLocalFile(existingThumbnailPath)),
-    });
-
-    const details = await this.options.mirrorService.upsertStickerSet({
-      stickerSet,
-      thumbnailPath,
-      hasThumbnail: hasRemoteThumbnail,
-      thumbnailExtension: this.inferStickerSetThumbnailExtension(stickerSet),
-      publishedFromLocalPackId,
-      syncState: "syncing",
-      lastSyncError: null,
-    });
-    this.options.emit({
-      type: "pack_sync_started",
-      packId: details.record.id,
-      stickerSetId: stickerSet.stickerSetId,
-    });
-
-    await this.downloadPackMedia({ packId: details.record.id });
-    await this.options.mirrorService.markPackSyncState(details.record.id, "idle", null);
-    this.options.emit({
-      type: "pack_sync_completed",
-      packId: details.record.id,
-      stickerSetId: stickerSet.stickerSetId,
-    });
-
-    return details.record.id;
+    return this.syncEditableStickerSet(stickerSet, mirrorContext);
   }
 
   async syncOwnedPacks(): Promise<void> {
@@ -136,56 +85,7 @@ export class TelegramSyncService {
       return this.activeOwnedPackSync;
     }
 
-    const syncPromise = (async () => {
-      await this.options.auth.requireConnectedState();
-      this.options.emit({ type: "sync_started" });
-
-      const stickerSets = await this.options.auth.tdlibService.getOwnedStickerSets();
-      const stickerSetIds = new Set(stickerSets.map((set) => set.stickerSetId));
-      const packIds: string[] = [];
-
-      for (const stickerSet of stickerSets) {
-        try {
-          packIds.push(await this.syncRemoteStickerSet(stickerSet));
-        } catch (error) {
-          const existing =
-            await this.options.libraryService.findPackByTelegramStickerSetId(
-              stickerSet.stickerSetId,
-            );
-          if (existing) {
-            await this.options.mirrorService.markPackSyncState(
-              existing.record.id,
-              "error",
-              describeTdlibError(error),
-            );
-          }
-          this.options.emit({
-            type: "pack_sync_failed",
-            packId: existing?.record.id ?? null,
-            stickerSetId: stickerSet.stickerSetId,
-            error: describeTdlibError(error),
-          });
-        }
-      }
-
-      const existingTelegramPacks = (await this.options.libraryService.listPacks()).filter(
-        (pack) => pack.source === "telegram",
-      );
-      await Promise.all(
-        existingTelegramPacks
-          .filter((pack) => {
-            const stickerSetId = pack.telegram?.stickerSetId;
-            return stickerSetId ? !stickerSetIds.has(stickerSetId) : false;
-          })
-          .map((pack) => this.options.libraryService.deletePack({ packId: pack.id })),
-      );
-
-      this.options.emit({
-        type: "sync_finished",
-        packIds,
-      });
-    })();
-
+    const syncPromise = this.runOwnedPackSync();
     this.activeOwnedPackSync = syncPromise;
 
     try {
@@ -203,90 +103,7 @@ export class TelegramSyncService {
       return existingDownload;
     }
 
-    const downloadPromise = (async () => {
-      await this.options.auth.requireConnectedState();
-      const details = await this.options.libraryService.getPack(input.packId);
-      const stickerSetId = details.pack.telegram?.stickerSetId;
-      if (!stickerSetId) {
-        throw new Error(`Pack ${input.packId} is not a Telegram mirror.`);
-      }
-      if (
-        details.pack.telegram &&
-        !supportsTelegramMirrorEditing(details.pack.telegram.format)
-      ) {
-        throw new Error(describeUnsupportedStickerSet(details.pack.telegram));
-      }
-
-      const remoteSet = await this.getRemoteStickerSetOrThrow(stickerSetId);
-      const shouldBackfillThumbnail =
-        details.pack.iconStickerId === null &&
-        !(await this.hasAccessibleLocalFile(details.pack.thumbnailPath));
-      if (shouldBackfillThumbnail) {
-        const thumbnailPath = await this.resolveStickerSetThumbnailPath(remoteSet, {
-          allowDownload: true,
-        });
-        const hasRemoteThumbnail =
-          Boolean(
-            remoteSet.thumbnailFile && remoteSet.thumbnailFile.numericFileId > 0,
-          ) || Boolean(remoteSet.thumbnailStickerId);
-
-        if (thumbnailPath || hasRemoteThumbnail) {
-          await this.options.libraryService.syncTelegramThumbnail({
-            packId: details.pack.id,
-            thumbnailPath,
-            hasThumbnail: hasRemoteThumbnail,
-            thumbnailExtension: this.inferStickerSetThumbnailExtension(remoteSet),
-          });
-        }
-      }
-
-      const remoteByStickerId = new Map(
-        remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
-      );
-
-      for (const asset of details.stickers) {
-        if (!asset.telegram) {
-          continue;
-        }
-        if (!input.force && asset.downloadState === "ready") {
-          continue;
-        }
-
-        const remoteSticker = remoteByStickerId.get(asset.telegram.stickerId);
-        if (!remoteSticker || remoteSticker.numericFileId <= 0) {
-          await this.options.mirrorService.markStickerFailed(details.pack.id, asset.id);
-          continue;
-        }
-
-        this.activeDownloads.set(remoteSticker.numericFileId, {
-          packId: details.pack.id,
-          stickerId: asset.id,
-          stickerSetId,
-        });
-
-        try {
-          await this.options.mirrorService.markStickerQueued(details.pack.id, asset.id);
-          await this.options.mirrorService.markStickerDownloading(
-            details.pack.id,
-            asset.id,
-          );
-          const downloaded = await this.options.auth.tdlibService.downloadFile(
-            remoteSticker.numericFileId,
-          );
-          await this.options.mirrorService.storeDownloadedSticker({
-            packId: details.pack.id,
-            stickerId: asset.id,
-            sticker: remoteSticker,
-            file: downloaded,
-          });
-        } catch {
-          await this.options.mirrorService.markStickerFailed(details.pack.id, asset.id);
-        } finally {
-          this.activeDownloads.delete(remoteSticker.numericFileId);
-        }
-      }
-    })();
-
+    const downloadPromise = this.downloadPackMediaInternal(input);
     this.activePackDownloads.set(input.packId, downloadPromise);
 
     try {
@@ -298,40 +115,305 @@ export class TelegramSyncService {
     }
   }
 
+  private async resolveMirrorContext(
+    stickerSet: TelegramRemoteStickerSet,
+    options: { publishedFromLocalPackId?: string | null },
+  ) {
+    const existingMirror =
+      await this.options.libraryService.findPackByTelegramStickerSetId(
+        stickerSet.stickerSetId,
+      );
+
+    return {
+      existingThumbnailPath: existingMirror?.record.telegram?.thumbnailPath ?? null,
+      publishedFromLocalPackId:
+        options.publishedFromLocalPackId ??
+        existingMirror?.record.telegram?.publishedFromLocalPackId ??
+        null,
+    };
+  }
+
+  private async syncUnsupportedStickerSet(
+    stickerSet: TelegramRemoteStickerSet,
+    publishedFromLocalPackId: string | null,
+  ) {
+    const error = describeUnsupportedStickerSet(stickerSet);
+    const details = await this.options.mirrorService.upsertStickerSet({
+      stickerSet,
+      thumbnailPath: null,
+      hasThumbnail: false,
+      thumbnailExtension: null,
+      publishedFromLocalPackId,
+      syncState: "unsupported",
+      lastSyncError: error,
+      includeStickers: false,
+    });
+    await this.options.mirrorService.markPackSyncState(
+      details.record.id,
+      "unsupported",
+      error,
+    );
+    this.emitPackSyncCompleted(details.record.id, stickerSet.stickerSetId);
+    return details.record.id;
+  }
+
+  private async syncEditableStickerSet(
+    stickerSet: TelegramRemoteStickerSet,
+    context: {
+      existingThumbnailPath: string | null;
+      publishedFromLocalPackId: string | null;
+    },
+  ) {
+    const thumbnailPath = await this.resolveStickerSetThumbnailPath(stickerSet, {
+      allowDownload: !(await this.hasAccessibleLocalFile(context.existingThumbnailPath)),
+    });
+    const details = await this.options.mirrorService.upsertStickerSet({
+      stickerSet,
+      thumbnailPath,
+      hasThumbnail: this.hasRemoteThumbnail(stickerSet),
+      thumbnailExtension: this.inferStickerSetThumbnailExtension(stickerSet),
+      publishedFromLocalPackId: context.publishedFromLocalPackId,
+      syncState: "syncing",
+      lastSyncError: null,
+    });
+
+    this.options.emit({
+      type: "pack_sync_started",
+      packId: details.record.id,
+      stickerSetId: stickerSet.stickerSetId,
+    });
+    await this.downloadPackMedia({ packId: details.record.id });
+    await this.options.mirrorService.markPackSyncState(details.record.id, "idle", null);
+    this.emitPackSyncCompleted(details.record.id, stickerSet.stickerSetId);
+
+    return details.record.id;
+  }
+
+  private async runOwnedPackSync(): Promise<void> {
+    await this.options.auth.requireConnectedState();
+    this.options.emit({ type: "sync_started" });
+
+    const stickerSets = await this.options.auth.tdlibService.getOwnedStickerSets();
+    const packIds = await this.syncOwnedStickerSets(stickerSets);
+    await this.deleteUnownedTelegramPacks(
+      new Set(stickerSets.map((set) => set.stickerSetId)),
+    );
+
+    this.options.emit({ type: "sync_finished", packIds });
+  }
+
+  private async syncOwnedStickerSets(stickerSets: TelegramRemoteStickerSet[]) {
+    const packIds: string[] = [];
+
+    for (const stickerSet of stickerSets) {
+      try {
+        packIds.push(await this.syncRemoteStickerSet(stickerSet));
+      } catch (error) {
+        await this.markOwnedPackSyncFailed(stickerSet, error);
+      }
+    }
+
+    return packIds;
+  }
+
+  private async markOwnedPackSyncFailed(
+    stickerSet: TelegramRemoteStickerSet,
+    error: unknown,
+  ) {
+    const existing = await this.options.libraryService.findPackByTelegramStickerSetId(
+      stickerSet.stickerSetId,
+    );
+    const message = describeTdlibError(error);
+
+    if (existing) {
+      await this.options.mirrorService.markPackSyncState(
+        existing.record.id,
+        "error",
+        message,
+      );
+    }
+    this.options.emit({
+      type: "pack_sync_failed",
+      packId: existing?.record.id ?? null,
+      stickerSetId: stickerSet.stickerSetId,
+      error: message,
+    });
+  }
+
+  private async deleteUnownedTelegramPacks(stickerSetIds: Set<string>) {
+    const existingTelegramPacks = (await this.options.libraryService.listPacks()).filter(
+      (pack) => pack.source === "telegram",
+    );
+    await Promise.all(
+      existingTelegramPacks
+        .filter((pack) => {
+          const stickerSetId = pack.telegram?.stickerSetId;
+          return stickerSetId ? !stickerSetIds.has(stickerSetId) : false;
+        })
+        .map((pack) => this.options.libraryService.deletePack({ packId: pack.id })),
+    );
+  }
+
+  private async downloadPackMediaInternal(input: { packId: string; force?: boolean }) {
+    await this.options.auth.requireConnectedState();
+    const details = await this.options.libraryService.getPack(input.packId);
+    const stickerSetId = this.requireDownloadableStickerSetId(details);
+    const remoteSet = await this.getRemoteStickerSetOrThrow(stickerSetId);
+
+    await this.backfillTelegramThumbnail(details, remoteSet);
+    await this.downloadStickerAssets({
+      details,
+      stickerSetId,
+      remoteSet,
+      force: input.force ?? false,
+    });
+  }
+
+  private requireDownloadableStickerSetId(details: StickerPackDetails) {
+    const stickerSetId = details.pack.telegram?.stickerSetId;
+    if (!stickerSetId) {
+      throw new Error(`Pack ${details.pack.id} is not a Telegram mirror.`);
+    }
+    if (
+      details.pack.telegram &&
+      !supportsTelegramMirrorEditing(details.pack.telegram.format)
+    ) {
+      throw new Error(describeUnsupportedStickerSet(details.pack.telegram));
+    }
+    return stickerSetId;
+  }
+
+  private async backfillTelegramThumbnail(
+    details: StickerPackDetails,
+    remoteSet: TelegramRemoteStickerSet,
+  ) {
+    const shouldBackfill =
+      details.pack.iconStickerId === null &&
+      !(await this.hasAccessibleLocalFile(details.pack.thumbnailPath));
+    if (!shouldBackfill) {
+      return;
+    }
+
+    const thumbnailPath = await this.resolveStickerSetThumbnailPath(remoteSet, {
+      allowDownload: true,
+    });
+    const hasRemoteThumbnail = this.hasRemoteThumbnail(remoteSet);
+    if (!thumbnailPath && !hasRemoteThumbnail) {
+      return;
+    }
+
+    await this.options.libraryService.syncTelegramThumbnail({
+      packId: details.pack.id,
+      thumbnailPath,
+      hasThumbnail: hasRemoteThumbnail,
+      thumbnailExtension: this.inferStickerSetThumbnailExtension(remoteSet),
+    });
+  }
+
+  private async downloadStickerAssets(input: {
+    details: StickerPackDetails;
+    stickerSetId: string;
+    remoteSet: TelegramRemoteStickerSet;
+    force: boolean;
+  }) {
+    const remoteByStickerId = new Map(
+      input.remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
+    );
+
+    for (const asset of input.details.stickers) {
+      if (!asset.telegram || (!input.force && asset.downloadState === "ready")) {
+        continue;
+      }
+      await this.downloadStickerAsset({
+        packId: input.details.pack.id,
+        stickerSetId: input.stickerSetId,
+        asset,
+        remoteSticker: remoteByStickerId.get(asset.telegram.stickerId),
+      });
+    }
+  }
+
+  private async downloadStickerAsset(input: {
+    packId: string;
+    stickerSetId: string;
+    asset: StickerItem;
+    remoteSticker?: TelegramRemoteStickerSet["stickers"][number];
+  }) {
+    if (!input.remoteSticker || input.remoteSticker.numericFileId <= 0) {
+      await this.options.mirrorService.markStickerFailed(input.packId, input.asset.id);
+      return;
+    }
+
+    this.activeDownloads.set(input.remoteSticker.numericFileId, {
+      packId: input.packId,
+      stickerId: input.asset.id,
+      stickerSetId: input.stickerSetId,
+    });
+
+    try {
+      await this.options.mirrorService.markStickerQueued(input.packId, input.asset.id);
+      await this.options.mirrorService.markStickerDownloading(
+        input.packId,
+        input.asset.id,
+      );
+      const file = await this.options.auth.tdlibService.downloadFile(
+        input.remoteSticker.numericFileId,
+      );
+      await this.options.mirrorService.storeDownloadedSticker({
+        packId: input.packId,
+        stickerId: input.asset.id,
+        sticker: input.remoteSticker,
+        file,
+      });
+    } catch {
+      await this.options.mirrorService.markStickerFailed(input.packId, input.asset.id);
+    } finally {
+      this.activeDownloads.delete(input.remoteSticker.numericFileId);
+    }
+  }
+
   private async resolveStickerSetThumbnailPath(
     stickerSet: TelegramRemoteStickerSet,
     options: { allowDownload?: boolean } = {},
   ) {
-    const resolveExistingLocalPath = async (localPath: string | null | undefined) =>
-      localPath && (await pathExists(localPath)) ? localPath : null;
-
-    const thumbnailFile = stickerSet.thumbnailFile;
-    if (thumbnailFile && thumbnailFile.numericFileId > 0) {
-      const existingLocalPath = thumbnailFile.isDownloaded
-        ? await resolveExistingLocalPath(thumbnailFile.localPath)
-        : null;
-      if (existingLocalPath) {
-        return existingLocalPath;
-      }
-
-      if (!options.allowDownload) {
-        return null;
-      }
-
-      try {
-        const downloaded = await this.options.auth.tdlibService.downloadFile(
-          thumbnailFile.numericFileId,
-        );
-        const downloadedLocalPath = await resolveExistingLocalPath(
-          downloaded.localPath,
-        );
-        if (downloadedLocalPath) {
-          return downloadedLocalPath;
-        }
-      } catch {}
+    const thumbnailFilePath = await this.resolveThumbnailFilePath(
+      stickerSet,
+      options.allowDownload ?? false,
+    );
+    if (thumbnailFilePath) {
+      return thumbnailFilePath;
     }
 
-    if (!stickerSet.thumbnailStickerId || !options.allowDownload) {
+    return this.resolveThumbnailStickerPath(
+      stickerSet,
+      options.allowDownload ?? false,
+    );
+  }
+
+  private async resolveThumbnailFilePath(
+    stickerSet: TelegramRemoteStickerSet,
+    allowDownload: boolean,
+  ) {
+    const thumbnailFile = stickerSet.thumbnailFile;
+    if (!thumbnailFile || thumbnailFile.numericFileId <= 0) {
+      return null;
+    }
+
+    const existingLocalPath = thumbnailFile.isDownloaded
+      ? await this.resolveExistingLocalPath(thumbnailFile.localPath)
+      : null;
+    if (existingLocalPath || !allowDownload) {
+      return existingLocalPath;
+    }
+
+    return this.downloadFileLocalPath(thumbnailFile.numericFileId);
+  }
+
+  private async resolveThumbnailStickerPath(
+    stickerSet: TelegramRemoteStickerSet,
+    allowDownload: boolean,
+  ) {
+    if (!stickerSet.thumbnailStickerId || !allowDownload) {
       return null;
     }
 
@@ -342,19 +424,37 @@ export class TelegramSyncService {
       return null;
     }
 
+    return this.downloadFileLocalPath(thumbnailSticker.numericFileId);
+  }
+
+  private async downloadFileLocalPath(numericFileId: number) {
     try {
       const downloaded = await this.options.auth.tdlibService.downloadFile(
-        thumbnailSticker.numericFileId,
+        numericFileId,
       );
-      const downloadedLocalPath = await resolveExistingLocalPath(downloaded.localPath);
-      if (downloadedLocalPath) {
-        return downloadedLocalPath;
-      }
+      return this.resolveExistingLocalPath(downloaded.localPath);
     } catch {
       return null;
     }
+  }
 
-    return null;
+  private async resolveExistingLocalPath(localPath: string | null | undefined) {
+    return localPath && (await pathExists(localPath)) ? localPath : null;
+  }
+
+  private hasRemoteThumbnail(stickerSet: TelegramRemoteStickerSet) {
+    return (
+      Boolean(stickerSet.thumbnailFile && stickerSet.thumbnailFile.numericFileId > 0) ||
+      Boolean(stickerSet.thumbnailStickerId)
+    );
+  }
+
+  private emitPackSyncCompleted(packId: string, stickerSetId: string) {
+    this.options.emit({
+      type: "pack_sync_completed",
+      packId,
+      stickerSetId,
+    });
   }
 
   private hasAccessibleLocalFile(localPath: string | null | undefined) {
