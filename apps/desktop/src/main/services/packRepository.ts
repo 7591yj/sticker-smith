@@ -29,16 +29,30 @@ function isMissingPathError(error: unknown) {
   return (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
 }
 
-function buildStickerPack(record: StickerPackRecord, rootPath: string): StickerPack {
-  const { outputRoot } = resolvePackPaths(rootPath);
-  const iconSticker = record.iconStickerId
+function findIconSticker(record: StickerPackRecord) {
+  return record.iconStickerId
     ? record.stickers.find((sticker) => sticker.id === record.iconStickerId) ?? null
     : null;
-  const thumbnailPath = iconSticker
-    ? path.join(outputRoot, iconSticker.relativePath)
-    : record.source === "telegram"
-      ? record.telegram?.thumbnailPath ?? null
-      : null;
+}
+
+function resolveThumbnailPath(record: StickerPackRecord, outputRoot: string): string | null {
+  const iconSticker = findIconSticker(record);
+
+  if (iconSticker) {
+    return path.join(outputRoot, iconSticker.relativePath);
+  }
+
+  return record.source === "telegram" ? record.telegram?.thumbnailPath ?? null : null;
+}
+
+function resolveTelegramShortName(record: StickerPackRecord): string | null {
+  return record.source === "telegram"
+    ? record.telegram?.shortName ?? null
+    : record.telegramShortName ?? null;
+}
+
+function buildStickerPack(record: StickerPackRecord, rootPath: string): StickerPack {
+  const { outputRoot } = resolvePackPaths(rootPath);
 
   return {
     id: record.id,
@@ -47,11 +61,8 @@ function buildStickerPack(record: StickerPackRecord, rootPath: string): StickerP
     slug: record.slug,
     rootPath,
     iconStickerId: record.iconStickerId,
-    thumbnailPath,
-    telegramShortName:
-      record.source === "telegram"
-        ? record.telegram?.shortName ?? null
-        : record.telegramShortName ?? null,
+    thumbnailPath: resolveThumbnailPath(record, outputRoot),
+    telegramShortName: resolveTelegramShortName(record),
     telegram: record.telegram,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
