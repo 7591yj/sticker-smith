@@ -8,6 +8,16 @@ import { defineConfig } from "vitest/config";
 
 const electronMainExternal = ["keytar", "prebuilt-tdlib", "tdl"];
 
+const manualChunkRules: Array<{ chunk: string; packagePaths: string[] }> = [
+  { chunk: "mui-icons", packagePaths: ["@mui/icons-material"] },
+  { chunk: "mui", packagePaths: ["@mui", "@emotion"] },
+  { chunk: "react", packagePaths: ["react", "react-dom", "scheduler"] },
+];
+
+function includesNodeModulePackage(normalizedId: string, packagePath: string): boolean {
+  return normalizedId.includes(`/node_modules/${packagePath}/`);
+}
+
 function getManualChunk(id: string) {
   const normalizedId = id.replace(/\\/g, "/");
 
@@ -15,26 +25,13 @@ function getManualChunk(id: string) {
     return undefined;
   }
 
-  if (normalizedId.includes("/node_modules/@mui/icons-material/")) {
-    return "mui-icons";
-  }
-
-  if (
-    normalizedId.includes("/node_modules/@mui/") ||
-    normalizedId.includes("/node_modules/@emotion/")
-  ) {
-    return "mui";
-  }
-
-  if (
-    normalizedId.includes("/node_modules/react/") ||
-    normalizedId.includes("/node_modules/react-dom/") ||
-    normalizedId.includes("/node_modules/scheduler/")
-  ) {
-    return "react";
-  }
-
-  return "vendor";
+  return (
+    manualChunkRules.find((rule) =>
+      rule.packagePaths.some((packagePath) =>
+        includesNodeModulePackage(normalizedId, packagePath),
+      ),
+    )?.chunk ?? "vendor"
+  );
 }
 
 export default defineConfig(({ mode }) => ({
