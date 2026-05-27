@@ -37,6 +37,29 @@ interface NdjsonParseResult {
   events: ConversionJobEvent[];
 }
 
+interface ConversionProcessSettler {
+  isSettled: () => boolean;
+  resolveOnce: () => void;
+  rejectOnce: (error: unknown) => void;
+}
+
+interface ConversionEventQueue {
+  enqueue: (events: ConversionJobEvent[]) => void;
+  flush: () => Promise<void>;
+}
+
+interface ConversionBackendProcessInput {
+  backend: BackendCommand;
+  request: ConversionJobRequest;
+  packId: string;
+  stickerPathRegistry: CanonicalStickerPathRegistry;
+  handleEvents: (
+    packId: string,
+    stickerPathRegistry: CanonicalStickerPathRegistry,
+    events: ConversionJobEvent[],
+  ) => Promise<void>;
+}
+
 function isStrictWebmStickerPath(outputPath: string, outputRoot: string): boolean {
   const relativePath = path.relative(outputRoot, outputPath);
   return (
@@ -151,6 +174,119 @@ function consumeNdjsonChunk(buffer: string, chunk: Buffer): NdjsonParseResult {
   return flushed ?? next;
 }
 
+function createConversionEventQueue(
+  input: Pick<ConversionBackendProcessInput, "packId" | "stickerPathRegistry" | "handleEvents">,
+  settler: Pick<ConversionProcessSettler, "isSettled" | "rejectOnce">,
+): ConversionEventQueue {
+  let eventQueue = Promise.resolve();
+
+  return {
+    enqueue(events: ConversionJobEvent[]): void {
+      if (events.length === 0 || settler.isSettled()) {
+        return;
+      }
+
+      eventQueue = eventQueue.then(() =>
+        input.handleEvents(input.packId, input.stickerPathRegistry, events),
+      );
+      eventQueue.catch(settler.rejectOnce);
+    },
+    flush: () => eventQueue,
+  };
+}
+
+function finishConversionBackendProcess(
+  code: number | null,
+  stderrBuffer: string,
+  settler: ConversionProcessSettler,
+): void {
+  if (settler.isSettled()) {
+    return;
+  }
+
+  if (code === 0) {
+    settler.resolveOnce();
+    return;
+  }
+
+  settler.rejectOnce(new Error(stderrBuffer || `Backend exited with code ${code}`));
+}
+
+async function flushConversionStdout(
+  stdoutBuffer: string,
+  queue: ConversionEventQueue,
+): Promise<string> {
+  if (stdoutBuffer.trim()) {
+    queue.enqueue(parseNdjsonChunk(stdoutBuffer));
+    return "";
+  }
+
+  return stdoutBuffer;
+}
+
+async function runConversionBackendProcess(
+  input: ConversionBackendProcessInput,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(input.backend.command, input.backend.args, {
+      cwd: input.backend.cwd,
+      env: input.backend.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
+    let settled = false;
+
+    const settler: ConversionProcessSettler = {
+      isSettled: () => settled,
+      resolveOnce: () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      },
+      rejectOnce: (error: unknown) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(error instanceof Error ? error : new Error(String(error)));
+        if (!child.killed) {
+          child.kill();
+        }
+      },
+    };
+    const queue = createConversionEventQueue(input, settler);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      try {
+        const parsed = consumeNdjsonChunk(stdoutBuffer, chunk);
+        stdoutBuffer = parsed.buffer;
+        queue.enqueue(parsed.events);
+      } catch (error) {
+        settler.rejectOnce(error);
+      }
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBuffer += chunk.toString();
+    });
+
+    child.on("error", settler.rejectOnce);
+    child.on("close", (code) => {
+      void (async () => {
+        stdoutBuffer = await flushConversionStdout(stdoutBuffer, queue);
+        await queue.flush();
+        finishConversionBackendProcess(code, stderrBuffer, settler);
+      })().catch(settler.rejectOnce);
+    });
+
+    child.stdin.end(JSON.stringify(input.request));
+  });
+}
+
 async function commandIsHealthy(command: string, cwd?: string): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const child = spawn(command, ["-version"], {
@@ -254,27 +390,14 @@ async function findWorkspaceRoot(): Promise<string | null> {
   return null;
 }
 
-async function resolveBundledBackend(backendDirectory: string): Promise<BackendCommand | null> {
-  const command = path.join(backendDirectory, GUI_API_BINARY);
-  const ffmpeg = path.join(backendDirectory, FFMPEG_BINARY);
-  const ffprobe = path.join(backendDirectory, FFPROBE_BINARY);
+async function bundledCommandIsAvailable(
+  command: string,
+  cwd: string,
+): Promise<boolean> {
+  return (await pathExists(command)) && (await commandIsHealthy(command, cwd));
+}
 
-  if (!(await pathExists(command))) {
-    return null;
-  }
-
-  const bundledFfmpegAvailable =
-    (await pathExists(ffmpeg)) && (await commandIsHealthy(ffmpeg, backendDirectory));
-  const bundledFfprobeAvailable =
-    (await pathExists(ffprobe)) &&
-    (await commandIsHealthy(ffprobe, backendDirectory));
-
-  if (!bundledFfmpegAvailable || !bundledFfprobeAvailable) {
-    console.warn(
-      "Bundled ffmpeg/ffprobe are unavailable; falling back to system commands.",
-    );
-  }
-
+function getBundledBackendExcludedRoots(backendDirectory: string): string[] {
   const excludedRoots = new Set<string>([
     path.resolve(backendDirectory),
     path.resolve(process.resourcesPath),
@@ -285,22 +408,63 @@ async function resolveBundledBackend(backendDirectory: string): Promise<BackendC
     excludedRoots.add(path.resolve(env.APPDIR));
   }
 
+  return [...excludedRoots];
+}
+
+async function resolveBackendToolCommand(input: {
+  bundledCommand: string;
+  bundledAvailable: boolean;
+  commandName: string;
+  override?: string;
+  excludedRoots: string[];
+}): Promise<string> {
+  if (input.bundledAvailable) {
+    return input.bundledCommand;
+  }
+
+  return input.override ?? resolveSystemCommand(input.commandName, input.excludedRoots);
+}
+
+async function resolveBundledBackend(backendDirectory: string): Promise<BackendCommand | null> {
+  const command = path.join(backendDirectory, GUI_API_BINARY);
+  const ffmpeg = path.join(backendDirectory, FFMPEG_BINARY);
+  const ffprobe = path.join(backendDirectory, FFPROBE_BINARY);
+
+  if (!(await pathExists(command))) {
+    return null;
+  }
+
+  const bundledFfmpegAvailable = await bundledCommandIsAvailable(ffmpeg, backendDirectory);
+  const bundledFfprobeAvailable = await bundledCommandIsAvailable(ffprobe, backendDirectory);
+
+  if (!bundledFfmpegAvailable || !bundledFfprobeAvailable) {
+    console.warn(
+      "Bundled ffmpeg/ffprobe are unavailable; falling back to system commands.",
+    );
+  }
+
+  const excludedRoots = getBundledBackendExcludedRoots(backendDirectory);
+
   return {
     command,
     args: [] as string[],
     cwd: backendDirectory,
     env: {
       ...process.env,
-      STICKER_SMITH_FFMPEG:
-        bundledFfmpegAvailable
-          ? ffmpeg
-          : env.STICKER_SMITH_FFMPEG ??
-            (await resolveSystemCommand(FFMPEG_BINARY, [...excludedRoots])),
-      STICKER_SMITH_FFPROBE:
-        bundledFfprobeAvailable
-          ? ffprobe
-          : env.STICKER_SMITH_FFPROBE ??
-            (await resolveSystemCommand(FFPROBE_BINARY, [...excludedRoots])),
+      STICKER_SMITH_FFMPEG: await resolveBackendToolCommand({
+        bundledCommand: ffmpeg,
+        bundledAvailable: bundledFfmpegAvailable,
+        commandName: FFMPEG_BINARY,
+        override: env.STICKER_SMITH_FFMPEG,
+        excludedRoots,
+      }),
+      STICKER_SMITH_FFPROBE: await resolveBackendToolCommand({
+        bundledCommand: ffprobe,
+        bundledAvailable: bundledFfprobeAvailable,
+        commandName: FFPROBE_BINARY,
+        override: env.STICKER_SMITH_FFPROBE,
+        excludedRoots,
+      }),
     },
   };
 }
@@ -480,98 +644,18 @@ export class ConverterService {
     tasks: ConversionTask[],
   ): Promise<void> {
     await fs.mkdir(outputRoot, { recursive: true });
-    const jobId = randomUUID();
     const request: ConversionJobRequest = {
-      jobId,
+      jobId: randomUUID(),
       outputRoot,
       tasks,
     };
-    const stickerPathRegistry = new CanonicalStickerPathRegistry(outputRoot, tasks);
 
-    const backend = await this.resolveBackendCommand();
-
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(backend.command, backend.args, {
-        cwd: backend.cwd,
-        env: backend.env,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stdoutBuffer = "";
-      let stderrBuffer = "";
-      let eventQueue = Promise.resolve();
-      let settled = false;
-
-      const rejectOnce = (error: unknown): void => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        reject(error instanceof Error ? error : new Error(String(error)));
-        if (!child.killed) {
-          child.kill();
-        }
-      };
-
-      const resolveOnce = (): void => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        resolve();
-      };
-
-      const enqueueEvents = (events: ConversionJobEvent[]): void => {
-        if (events.length === 0 || settled) {
-          return;
-        }
-
-        eventQueue = eventQueue.then(() =>
-          this.handleQueuedJobEvents(packId, stickerPathRegistry, events),
-        );
-        eventQueue.catch(rejectOnce);
-      };
-
-      child.stdout.on("data", (chunk: Buffer) => {
-        try {
-          const parsed = consumeNdjsonChunk(stdoutBuffer, chunk);
-          stdoutBuffer = parsed.buffer;
-          enqueueEvents(parsed.events);
-        } catch (error) {
-          rejectOnce(error);
-        }
-      });
-
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderrBuffer += chunk.toString();
-      });
-
-      child.on("error", rejectOnce);
-      child.on("close", (code) => {
-        void (async () => {
-          if (stdoutBuffer.trim()) {
-            enqueueEvents(parseNdjsonChunk(stdoutBuffer));
-            stdoutBuffer = "";
-          }
-
-          await eventQueue;
-          if (settled) {
-            return;
-          }
-
-          if (code === 0) {
-            resolveOnce();
-          } else {
-            rejectOnce(
-              new Error(stderrBuffer || `Backend exited with code ${code}`),
-            );
-          }
-        })().catch(rejectOnce);
-      });
-
-      child.stdin.end(JSON.stringify(request));
+    await runConversionBackendProcess({
+      backend: await this.resolveBackendCommand(),
+      request,
+      packId,
+      stickerPathRegistry: new CanonicalStickerPathRegistry(outputRoot, tasks),
+      handleEvents: this.handleQueuedJobEvents.bind(this),
     });
   }
 
