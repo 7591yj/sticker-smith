@@ -76,6 +76,32 @@ export function createDefaultState(): StoredTelegramState {
   };
 }
 
+function withDefault<T>(value: T | null | undefined, fallback: T): T {
+  return value ?? fallback;
+}
+
+function normalizeTdlibState(
+  state: Partial<StoredTelegramState> | null | undefined,
+  defaults: StoredTelegramState,
+): StoredTelegramState["tdlib"] {
+  return {
+    apiId: withDefault(state?.tdlib?.apiId, defaults.tdlib.apiId),
+    apiHashConfigured: withDefault(
+      state?.tdlib?.apiHashConfigured,
+      defaults.tdlib.apiHashConfigured,
+    ),
+  };
+}
+
+function normalizeUserState(
+  state: Partial<StoredTelegramState> | null | undefined,
+  defaults: StoredTelegramState,
+): StoredTelegramState["user"] {
+  return {
+    phoneNumber: withDefault(state?.user?.phoneNumber, defaults.user.phoneNumber),
+  };
+}
+
 export function normalizeState(
   state: Partial<StoredTelegramState> | null | undefined,
 ): StoredTelegramState {
@@ -84,22 +110,16 @@ export function normalizeState(
   return {
     schemaVersion: 1,
     backend: "tdlib",
-    status: state?.status ?? defaults.status,
-    authStep: state?.authStep ?? defaults.authStep,
+    status: withDefault(state?.status, defaults.status),
+    authStep: withDefault(state?.authStep, defaults.authStep),
     selectedMode: "user",
     recommendedMode: "user",
-    message: state?.message ?? defaults.message,
-    tdlib: {
-      apiId: state?.tdlib?.apiId ?? defaults.tdlib.apiId,
-      apiHashConfigured:
-        state?.tdlib?.apiHashConfigured ?? defaults.tdlib.apiHashConfigured,
-    },
-    user: {
-      phoneNumber: state?.user?.phoneNumber ?? defaults.user.phoneNumber,
-    },
-    sessionUser: state?.sessionUser ?? defaults.sessionUser,
-    lastError: state?.lastError ?? defaults.lastError,
-    updatedAt: state?.updatedAt ?? defaults.updatedAt,
+    message: withDefault(state?.message, defaults.message),
+    tdlib: normalizeTdlibState(state, defaults),
+    user: normalizeUserState(state, defaults),
+    sessionUser: withDefault(state?.sessionUser, defaults.sessionUser),
+    lastError: withDefault(state?.lastError, defaults.lastError),
+    updatedAt: withDefault(state?.updatedAt, defaults.updatedAt),
   };
 }
 
@@ -277,6 +297,155 @@ function createTdlibDatabaseEncryptionKey() {
   return randomBytes(32).toString("base64");
 }
 
+type TdlibCredentials = {
+  apiId: string;
+  apiHash: string;
+  originalApiHash: string;
+};
+
+type TdlibCredentialResult =
+  | { credentials: TdlibCredentials; state?: never }
+  | { credentials?: never; state: StoredTelegramState };
+
+type SanitizedPersistedState = {
+  state: StoredTelegramState;
+  changed: boolean;
+};
+
+type SanitizedPersistedInputs = {
+  apiId: string | null;
+  phoneNumber: string | null;
+  inlineApiHash: string | null;
+  inlineBotToken: string | null;
+};
+
+type LegacyState = {
+  credentials?: {
+    apiId?: string | null;
+    apiHash?: string | null;
+    phoneNumber?: string | null;
+  };
+} & Partial<StoredTelegramState>;
+
+type RuntimeAuthState = ReturnType<TelegramTdlibService["getCurrentAuthState"]>;
+
+function getSanitizedPersistedInputs(
+  state: PersistedTelegramState,
+): SanitizedPersistedInputs {
+  return {
+    apiId: extractInlineApiId(state),
+    phoneNumber: extractInlinePhoneNumber(state),
+    inlineApiHash: extractInlineSecret(state, "apiHash"),
+    inlineBotToken: extractInlineSecret(state, "botToken"),
+  };
+}
+
+function hasInlineSecret(secret: string | null): secret is string {
+  return typeof secret === "string" && secret.length > 0;
+}
+
+function getSanitizedAuthState(
+  state: PersistedTelegramState,
+  input: Pick<SanitizedPersistedInputs, "apiId" | "phoneNumber" | "inlineApiHash">,
+) {
+  const apiHashConfigured =
+    Boolean(input.inlineApiHash) || state.tdlib?.apiHashConfigured === true;
+  const status = normalizeTelegramStatus(state.status, {
+    apiId: input.apiId,
+    apiHashConfigured,
+  });
+
+  return {
+    status,
+    authStep: normalizeTelegramAuthStep(state.authStep, {
+      apiId: input.apiId,
+      apiHashConfigured,
+      phoneNumber: input.phoneNumber,
+      status,
+    }),
+    apiHashConfigured,
+  };
+}
+
+const SANITIZED_STATE_CHANGE_TESTS = [
+  (state: PersistedTelegramState, next: StoredTelegramState) =>
+    state.credentials !== undefined,
+  (state, next) => state.tdlib?.apiId !== next.tdlib.apiId,
+  (state, next) =>
+    state.tdlib?.apiHashConfigured !== next.tdlib.apiHashConfigured,
+  (state, next) => state.user?.phoneNumber !== next.user.phoneNumber,
+  (state, next) => state.status !== next.status,
+  (state, next) => state.authStep !== next.authStep,
+  (state) => state.selectedMode !== "user",
+  (state) => state.recommendedMode !== "user",
+  (state) => state.schemaVersion !== 1,
+] satisfies Array<
+  (state: PersistedTelegramState, next: StoredTelegramState) => boolean
+>;
+
+function hasSanitizedStateChanged(
+  state: PersistedTelegramState,
+  next: StoredTelegramState,
+  input: Pick<SanitizedPersistedInputs, "inlineApiHash" | "inlineBotToken">,
+) {
+  return (
+    Boolean(input.inlineApiHash) ||
+    Boolean(input.inlineBotToken) ||
+    SANITIZED_STATE_CHANGE_TESTS.some((isChanged) => isChanged(state, next))
+  );
+}
+
+function legacyApiId(legacy: LegacyState) {
+  return legacy.credentials?.apiId ?? legacy.tdlib?.apiId ?? null;
+}
+
+function legacyApiHashConfigured(legacy: LegacyState) {
+  return Boolean(legacy.credentials?.apiHash) || legacy.tdlib?.apiHashConfigured || false;
+}
+
+function legacyPhoneNumber(legacy: LegacyState) {
+  return legacy.credentials?.phoneNumber ?? legacy.user?.phoneNumber ?? null;
+}
+
+function normalizeLegacyState(legacy: LegacyState) {
+  return normalizeState({
+    ...legacy,
+    tdlib: {
+      apiId: legacyApiId(legacy),
+      apiHashConfigured: legacyApiHashConfigured(legacy),
+    },
+    user: {
+      phoneNumber: legacyPhoneNumber(legacy),
+    },
+  });
+}
+
+function getRuntimeStatePatch(runtimeState: RuntimeAuthState) {
+  const isReady = runtimeState.authStep === "ready";
+
+  return {
+    status: isReady ? "connected" : "awaiting_credentials",
+    authStep: runtimeState.authStep,
+    message: describeTelegramAuthStep(runtimeState.authStep),
+    sessionUser: isReady ? runtimeState.sessionUser ?? null : null,
+  } satisfies Pick<
+    StoredTelegramState,
+    "status" | "authStep" | "message" | "sessionUser"
+  >;
+}
+
+function shouldSyncRuntimeState(
+  state: StoredTelegramState,
+  patch: ReturnType<typeof getRuntimeStatePatch>,
+) {
+  return (
+    state.status !== patch.status ||
+    state.authStep !== patch.authStep ||
+    state.message !== patch.message ||
+    state.sessionUser?.id !== patch.sessionUser?.id
+  );
+}
+
 export class TelegramAuthService {
   readonly telegramRoot: string;
   readonly statePath: string;
@@ -310,89 +479,46 @@ export class TelegramAuthService {
     await fs.mkdir(this.telegramRoot, { recursive: true });
   }
 
-  private async sanitizePersistedState(state: PersistedTelegramState) {
-    const apiId = extractInlineApiId(state);
-    const phoneNumber = extractInlinePhoneNumber(state);
-    const inlineApiHash = extractInlineSecret(state, "apiHash");
-    const inlineBotToken = extractInlineSecret(state, "botToken");
+  private async sanitizePersistedState(
+    state: PersistedTelegramState,
+  ): Promise<SanitizedPersistedState> {
+    const input = getSanitizedPersistedInputs(state);
 
-    if (typeof inlineApiHash === "string" && inlineApiHash.length > 0) {
+    const { inlineApiHash, inlineBotToken } = input;
+
+    if (hasInlineSecret(inlineApiHash)) {
       await this.secretsService.setSecret(ACCOUNT_KEY, "api_hash", inlineApiHash);
     }
 
-    if (typeof inlineBotToken === "string" && inlineBotToken.length > 0) {
+    if (hasInlineSecret(inlineBotToken)) {
       await this.secretsService.setSecret(ACCOUNT_KEY, "bot_token", inlineBotToken);
     }
 
-    const apiHashConfigured =
-      Boolean(inlineApiHash) || state.tdlib?.apiHashConfigured === true;
-
-    const status = normalizeTelegramStatus(state.status, {
-      apiId,
-      apiHashConfigured,
-    });
-    const authStep = normalizeTelegramAuthStep(state.authStep, {
-      apiId,
-      apiHashConfigured,
-      phoneNumber,
-      status,
-    });
-
+    const auth = getSanitizedAuthState(state, input);
     const nextState = normalizeState({
       ...state,
-      status,
-      authStep,
+      status: auth.status,
+      authStep: auth.authStep,
       tdlib: {
-        apiId,
-        apiHashConfigured,
+        apiId: input.apiId,
+        apiHashConfigured: auth.apiHashConfigured,
       },
       user: {
-        phoneNumber,
+        phoneNumber: input.phoneNumber,
       },
     });
 
     return {
       state: nextState,
-      changed:
-        Boolean(inlineApiHash) ||
-        Boolean(inlineBotToken) ||
-        state.credentials !== undefined ||
-        state.tdlib?.apiId !== nextState.tdlib.apiId ||
-        state.tdlib?.apiHashConfigured !== nextState.tdlib.apiHashConfigured ||
-        state.user?.phoneNumber !== nextState.user.phoneNumber ||
-        state.status !== nextState.status ||
-        state.authStep !== nextState.authStep ||
-        state.selectedMode !== "user" ||
-        state.recommendedMode !== "user" ||
-        state.schemaVersion !== 1,
+      changed: hasSanitizedStateChanged(state, nextState, input),
     };
   }
 
   private async migrateLegacyState() {
     try {
       const raw = await fs.readFile(this.legacyStatePath, "utf8");
-      const legacy = JSON.parse(raw) as {
-        credentials?: {
-          apiId?: string | null;
-          apiHash?: string | null;
-          phoneNumber?: string | null;
-        };
-      } & Partial<StoredTelegramState>;
-
-      const nextState = normalizeState({
-        ...legacy,
-        tdlib: {
-          apiId: legacy.credentials?.apiId ?? legacy.tdlib?.apiId ?? null,
-          apiHashConfigured:
-            Boolean(legacy.credentials?.apiHash) ||
-            legacy.tdlib?.apiHashConfigured ||
-            false,
-        },
-        user: {
-          phoneNumber:
-            legacy.credentials?.phoneNumber ?? legacy.user?.phoneNumber ?? null,
-        },
-      });
+      const legacy = JSON.parse(raw) as LegacyState;
+      const nextState = normalizeLegacyState(legacy);
 
       if (legacy.credentials?.apiHash) {
         await this.secretsService.setSecret(
@@ -489,86 +615,90 @@ export class TelegramAuthService {
     return toPublicState(next);
   }
 
-  async ensureRuntimeStarted() {
-    const state = await this.readState();
-    if (!state.tdlib.apiId || !state.tdlib.apiHashConfigured) {
-      return state;
-    }
+  private async markApiHashUnavailable(message: string) {
+    return this.updateState((current) => ({
+      ...current,
+      status: "awaiting_credentials",
+      authStep: "wait_tdlib_parameters",
+      tdlib: {
+        ...current.tdlib,
+        apiHashConfigured: false,
+      },
+      message,
+      lastError: message,
+      updatedAt: nowIso(),
+    }));
+  }
 
-    let apiHash: string | null;
-    try {
-      apiHash = await this.secretsService.getSecret(ACCOUNT_KEY, "api_hash");
-    } catch (error) {
-      const message = (error as Error)?.message ?? INVALID_TDLIB_CREDENTIALS_MESSAGE;
-      return this.updateState((current) => ({
+  private async markInvalidTdlibCredentials() {
+    await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
+    return this.updateState((current) => {
+      const normalizedApiId = normalizeTdlibCredential(current.tdlib.apiId ?? "");
+
+      return {
         ...current,
         status: "awaiting_credentials",
         authStep: "wait_tdlib_parameters",
         tdlib: {
-          ...current.tdlib,
-          apiHashConfigured: false,
-        },
-        message,
-        lastError: message,
-        updatedAt: nowIso(),
-      }));
-    }
-
-    if (!apiHash) {
-      return this.updateState((current) => ({
-        ...current,
-        status: "awaiting_credentials",
-        authStep: "wait_tdlib_parameters",
-        tdlib: {
-          ...current.tdlib,
-          apiHashConfigured: false,
-        },
-        message: "Telegram api_hash is missing. Enter your TDLib credentials again.",
-        lastError: "Telegram api_hash is missing. Enter your TDLib credentials again.",
-        updatedAt: nowIso(),
-      }));
-    }
-
-    let normalizedApiId: string;
-    let normalizedApiHash: string;
-    try {
-      const normalized = parseTdlibParameters({
-        apiId: state.tdlib.apiId,
-        apiHash,
-      });
-      normalizedApiId = normalized.apiId;
-      normalizedApiHash = normalized.apiHash;
-    } catch {
-      await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
-      return this.updateState((current) => ({
-        ...current,
-        status: "awaiting_credentials",
-        authStep: "wait_tdlib_parameters",
-        tdlib: {
-          apiId: /^\d+$/.test(normalizeTdlibCredential(current.tdlib.apiId ?? ""))
-            ? normalizeTdlibCredential(current.tdlib.apiId ?? "")
-            : null,
+          apiId: /^\d+$/.test(normalizedApiId) ? normalizedApiId : null,
           apiHashConfigured: false,
         },
         message: INVALID_TDLIB_CREDENTIALS_MESSAGE,
         lastError: INVALID_TDLIB_CREDENTIALS_MESSAGE,
         updatedAt: nowIso(),
-      }));
+      };
+    });
+  }
+
+  private async readTdlibCredentials(
+    state: StoredTelegramState,
+  ): Promise<TdlibCredentialResult> {
+    let apiHash: string | null;
+    try {
+      apiHash = await this.secretsService.getSecret(ACCOUNT_KEY, "api_hash");
+    } catch (error) {
+      const message = (error as Error)?.message ?? INVALID_TDLIB_CREDENTIALS_MESSAGE;
+      return { state: await this.markApiHashUnavailable(message) };
     }
 
-    if (normalizedApiId !== state.tdlib.apiId || normalizedApiHash !== apiHash) {
-      await this.secretsService.setSecret(ACCOUNT_KEY, "api_hash", normalizedApiHash);
-      await this.updateState((current) => ({
-        ...current,
-        tdlib: {
-          ...current.tdlib,
-          apiId: normalizedApiId,
-        },
-        updatedAt: nowIso(),
-      }));
+    if (!apiHash) {
+      const message = "Telegram api_hash is missing. Enter your TDLib credentials again.";
+      return { state: await this.markApiHashUnavailable(message) };
     }
 
-    const accountRoot = path.join(this.telegramRoot, "tdlib", ACCOUNT_KEY);
+    try {
+      const normalized = parseTdlibParameters({
+        apiId: state.tdlib.apiId ?? "",
+        apiHash,
+      });
+      return { credentials: { ...normalized, originalApiHash: apiHash } };
+    } catch {
+      return { state: await this.markInvalidTdlibCredentials() };
+    }
+  }
+
+  private async persistNormalizedTdlibCredentials(input: {
+    state: StoredTelegramState;
+    apiId: string;
+    apiHash: string;
+    originalApiHash: string;
+  }) {
+    if (input.apiId === input.state.tdlib.apiId && input.apiHash === input.originalApiHash) {
+      return;
+    }
+
+    await this.secretsService.setSecret(ACCOUNT_KEY, "api_hash", input.apiHash);
+    await this.updateState((current) => ({
+      ...current,
+      tdlib: {
+        ...current.tdlib,
+        apiId: input.apiId,
+      },
+      updatedAt: nowIso(),
+    }));
+  }
+
+  private async ensureDatabaseEncryptionKey(accountRoot: string) {
     let databaseEncryptionKey = await this.secretsService.getSecret(
       ACCOUNT_KEY,
       "database_encryption_key",
@@ -586,15 +716,51 @@ export class TelegramAuthService {
       );
     }
 
+    return databaseEncryptionKey;
+  }
+
+  private async markTdlibStartupParameterError(message: string) {
+    await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
+    const detailedMessage = [
+      "Telegram rejected the saved TDLib parameters.",
+      "TDLib reported:",
+      message,
+    ].join(" ");
+    return this.updateState((current) => ({
+      ...current,
+      status: "awaiting_credentials",
+      authStep: "wait_tdlib_parameters",
+      tdlib: {
+        apiId: null,
+        apiHashConfigured: false,
+      },
+      user: {
+        phoneNumber: null,
+      },
+      sessionUser: null,
+      message: detailedMessage,
+      lastError: detailedMessage,
+      updatedAt: nowIso(),
+    }));
+  }
+
+  private async startTdlibRuntime(input: {
+    accountRoot: string;
+    apiId: string;
+    apiHash: string;
+    phoneNumber: string | null;
+    databaseEncryptionKey: string;
+  }) {
     try {
       await this.tdlibService.ensureStarted({
-        apiId: Number(normalizedApiId),
-        apiHash: normalizedApiHash,
-        phoneNumber: state.user.phoneNumber,
-        databaseDirectory: path.join(accountRoot, "db"),
-        filesDirectory: path.join(accountRoot, "files"),
-        databaseEncryptionKey,
+        apiId: Number(input.apiId),
+        apiHash: input.apiHash,
+        phoneNumber: input.phoneNumber,
+        databaseDirectory: path.join(input.accountRoot, "db"),
+        filesDirectory: path.join(input.accountRoot, "files"),
+        databaseEncryptionKey: input.databaseEncryptionKey,
       });
+      return null;
     } catch (error) {
       const message = (error as Error)?.message ?? "Telegram startup failed.";
       const isParameterParseError =
@@ -603,57 +769,62 @@ export class TelegramAuthService {
         );
 
       if (isParameterParseError) {
-        await this.secretsService.deleteSecret(ACCOUNT_KEY, "api_hash");
-        const detailedMessage = [
-          "Telegram rejected the saved TDLib parameters.",
-          "TDLib reported:",
-          message,
-        ].join(" ");
-        return this.updateState((current) => ({
-          ...current,
-          status: "awaiting_credentials",
-          authStep: "wait_tdlib_parameters",
-          tdlib: {
-            apiId: null,
-            apiHashConfigured: false,
-          },
-          user: {
-            phoneNumber: null,
-          },
-          sessionUser: null,
-          message: detailedMessage,
-          lastError: detailedMessage,
-          updatedAt: nowIso(),
-        }));
+        return this.markTdlibStartupParameterError(message);
       }
 
       throw error;
     }
+  }
 
+  private async syncStateFromRuntime(state: StoredTelegramState) {
     const runtimeState = this.tdlibService.getCurrentAuthState();
-    const expectedStatus =
-      runtimeState.authStep === "ready" ? "connected" : "awaiting_credentials";
-    const expectedSessionUser =
-      runtimeState.authStep === "ready" ? runtimeState.sessionUser ?? null : null;
+    const patch = getRuntimeStatePatch(runtimeState);
 
-    if (
-      state.status !== expectedStatus ||
-      state.authStep !== runtimeState.authStep ||
-      state.message !== describeTelegramAuthStep(runtimeState.authStep) ||
-      state.sessionUser?.id !== expectedSessionUser?.id
-    ) {
+    if (shouldSyncRuntimeState(state, patch)) {
       return this.updateState((current) => ({
         ...current,
-        status: expectedStatus,
-        authStep: runtimeState.authStep,
-        message: describeTelegramAuthStep(runtimeState.authStep),
-        sessionUser: expectedSessionUser,
-        lastError: runtimeState.authStep === "ready" ? null : current.lastError,
+        ...patch,
+        lastError: patch.authStep === "ready" ? null : current.lastError,
         updatedAt: nowIso(),
       }));
     }
 
     return state;
+  }
+
+  async ensureRuntimeStarted() {
+    const state = await this.readState();
+    if (!state.tdlib.apiId || !state.tdlib.apiHashConfigured) {
+      return state;
+    }
+
+    const credentialResult = await this.readTdlibCredentials(state);
+    if (credentialResult.state) {
+      return credentialResult.state;
+    }
+
+    const { apiId, apiHash, originalApiHash } = credentialResult.credentials;
+    await this.persistNormalizedTdlibCredentials({
+      state,
+      apiId,
+      apiHash,
+      originalApiHash,
+    });
+
+    const accountRoot = path.join(this.telegramRoot, "tdlib", ACCOUNT_KEY);
+    const databaseEncryptionKey = await this.ensureDatabaseEncryptionKey(accountRoot);
+    const startupErrorState = await this.startTdlibRuntime({
+      accountRoot,
+      apiId,
+      apiHash,
+      phoneNumber: state.user.phoneNumber,
+      databaseEncryptionKey,
+    });
+    if (startupErrorState) {
+      return startupErrorState;
+    }
+
+    return this.syncStateFromRuntime(state);
   }
 
   async requireConnectedState() {

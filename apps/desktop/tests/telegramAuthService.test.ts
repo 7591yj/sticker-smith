@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeTdlibError,
+  normalizeState,
   normalizeTelegramAuthStep,
   normalizeTelegramPhoneNumber,
   normalizeTelegramStatus,
@@ -11,6 +12,46 @@ import {
 const VALID_API_HASH = "0123456789abcdef0123456789abcdef";
 
 describe("telegram auth helpers", () => {
+  it("normalizes stored state defaults while forcing supported mode metadata", () => {
+    expect(
+      normalizeState({
+        status: "connected",
+        authStep: "ready",
+        selectedMode: "bot",
+        recommendedMode: "bot",
+        message: "Ready",
+        tdlib: {
+          apiId: "12345",
+          apiHashConfigured: true,
+        },
+        user: {
+          phoneNumber: "+12025550123",
+        },
+        sessionUser: { id: 1, firstName: "Ada", username: "ada" },
+        lastError: "old error",
+        updatedAt: "2025-01-01T00:00:00.000Z",
+      }),
+    ).toEqual({
+      schemaVersion: 1,
+      backend: "tdlib",
+      status: "connected",
+      authStep: "ready",
+      selectedMode: "user",
+      recommendedMode: "user",
+      message: "Ready",
+      tdlib: {
+        apiId: "12345",
+        apiHashConfigured: true,
+      },
+      user: {
+        phoneNumber: "+12025550123",
+      },
+      sessionUser: { id: 1, firstName: "Ada", username: "ada" },
+      lastError: "old error",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+  });
+
   it("parses tdlib parameters after trimming quotes and invisible characters", () => {
     expect(
       parseTdlibParameters({
