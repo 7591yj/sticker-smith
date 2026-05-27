@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type MouseEvent } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -36,6 +36,54 @@ import {
 import { RenameDialog } from "./RenameDialog";
 import { TelegramAuthDialog } from "./TelegramAuthDialog";
 
+function packThumbnailMediaProps(name: string, thumbnailPath: string) {
+  const isVideo = isVideoPath(thumbnailPath);
+
+  return {
+    component: isVideo ? "video" : "img",
+    src: toFileUrl(thumbnailPath),
+    alt: isVideo ? undefined : name,
+    "aria-label": isVideo ? `${name} icon preview` : undefined,
+    muted: isVideo ? true : undefined,
+    autoPlay: isVideo ? true : undefined,
+    loop: isVideo ? true : undefined,
+    playsInline: isVideo ? true : undefined,
+    preload: isVideo ? "metadata" : undefined,
+  } as const;
+}
+
+function PackThumbnailMedia({
+  name,
+  thumbnailPath,
+}: {
+  name: string;
+  thumbnailPath: string;
+}) {
+  return (
+    <Box
+      {...packThumbnailMediaProps(name, thumbnailPath)}
+      sx={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block",
+      }}
+    />
+  );
+}
+
+function PackThumbnailFallback({ name }: { name: string }) {
+  return (
+    <Inventory2OutlinedIcon
+      aria-label={`${name} fallback pack icon`}
+      sx={{
+        fontSize: appTokens.sizes.preview.fallbackIcon,
+        color: "text.secondary",
+      }}
+    />
+  );
+}
+
 function PackThumbnail({
   name,
   thumbnailPath,
@@ -43,8 +91,6 @@ function PackThumbnail({
   name: string;
   thumbnailPath: string | null;
 }) {
-  const isVideo = thumbnailPath ? isVideoPath(thumbnailPath) : false;
-
   return (
     <ListItemAvatar sx={{ minWidth: 32 }}>
       <Box
@@ -62,31 +108,9 @@ function PackThumbnail({
         }}
       >
         {thumbnailPath ? (
-          <Box
-            component={isVideo ? "video" : "img"}
-            src={toFileUrl(thumbnailPath)}
-            alt={isVideo ? undefined : name}
-            aria-label={isVideo ? `${name} icon preview` : undefined}
-            muted={isVideo ? true : undefined}
-            autoPlay={isVideo ? true : undefined}
-            loop={isVideo ? true : undefined}
-            playsInline={isVideo ? true : undefined}
-            preload={isVideo ? "metadata" : undefined}
-            sx={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-            }}
-          />
+          <PackThumbnailMedia name={name} thumbnailPath={thumbnailPath} />
         ) : (
-          <Inventory2OutlinedIcon
-            aria-label={`${name} fallback pack icon`}
-            sx={{
-              fontSize: appTokens.sizes.preview.fallbackIcon,
-              color: "text.secondary",
-            }}
-          />
+          <PackThumbnailFallback name={name} />
         )}
       </Box>
     </ListItemAvatar>
@@ -169,24 +193,13 @@ function emptyTelegramStateLabel(options: { telegramSyncBusy: boolean }) {
 
 type SidebarPackFilter = "local" | "telegram";
 
-export function Sidebar({
-  packs,
-  telegramState,
-  telegramSyncInProgress,
-  telegramSyncRecommended,
-  selectedPackId,
-  width,
-  onSelect,
-  onSubmitTelegramTdlibParameters,
-  onSubmitTelegramPhoneNumber,
-  onSubmitTelegramCode,
-  onSubmitTelegramPassword,
-  onLogoutTelegram,
-  onResetTelegram,
-  onSyncTelegramPacks,
-  refreshPacks,
-  setSelectedPackId,
-}: Props) {
+type PackContextMenuState = {
+  mouseX: number;
+  mouseY: number;
+  pack: StickerPack;
+} | null;
+
+function getSidebarPackGroups(packs: StickerPack[]) {
   const localPacks = packs.filter((pack) => pack.source === "local");
   const telegramPacks = packs.filter(
     (pack) =>
@@ -196,146 +209,133 @@ export function Sidebar({
     (pack) =>
       pack.source === "telegram" && pack.telegram?.syncState === "unsupported",
   );
-  const telegramSyncBusy =
-    telegramSyncInProgress ||
-    telegramPacks.some((pack) => pack.telegram?.syncState === "syncing");
-  const telegramReady =
-    telegramState?.status === "connected" && telegramState.authStep === "ready";
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    pack: StickerPack;
-  } | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [renamePack, setRenamePack] = useState<StickerPack | null>(null);
-  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
-  const [activePackFilter, setActivePackFilter] =
-    useState<SidebarPackFilter>("telegram");
-  const [showUnsupportedTelegram, setShowUnsupportedTelegram] = useState(false);
-  const [telegramMenuAnchor, setTelegramMenuAnchor] =
-    useState<HTMLElement | null>(null);
-  const syncActionLabel = telegramSyncBusy
+
+  return { localPacks, telegramPacks, unsupportedTelegramPacks };
+}
+
+function getSidebarLabels(options: {
+  telegramPacks: StickerPack[];
+  telegramSyncBusy: boolean;
+  telegramSyncRecommended: boolean;
+  telegramState: TelegramState | null;
+}) {
+  const syncActionLabel = options.telegramSyncBusy
     ? appTokens.copy.labels.telegramSyncInProgress
-    : telegramSyncRecommended
+    : options.telegramSyncRecommended
       ? "Sync needed"
-      : telegramPacks.length > 0
+      : options.telegramPacks.length > 0
         ? appTokens.copy.actions.resync
         : appTokens.copy.actions.sync;
   const telegramManageLabel =
-    telegramState?.status === "connected"
+    options.telegramState?.status === "connected"
       ? appTokens.copy.actions.manageTelegram
       : appTokens.copy.actions.connectTelegram;
 
-  const visiblePacks =
-    activePackFilter === "local"
-      ? localPacks
-      : showUnsupportedTelegram
-        ? [...telegramPacks, ...unsupportedTelegramPacks]
-        : telegramPacks;
-  const emptyState =
-    activePackFilter === "local"
-      ? appTokens.copy.emptyStates.noLocalPacks
-      : emptyTelegramStateLabel({ telegramSyncBusy });
+  return { syncActionLabel, telegramManageLabel };
+}
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, pack: StickerPack) => {
-      e.preventDefault();
-      setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pack });
-    },
-    [],
+function getVisiblePacks(options: {
+  activePackFilter: SidebarPackFilter;
+  localPacks: StickerPack[];
+  telegramPacks: StickerPack[];
+  unsupportedTelegramPacks: StickerPack[];
+  showUnsupportedTelegram: boolean;
+}) {
+  if (options.activePackFilter === "local") {
+    return options.localPacks;
+  }
+
+  return options.showUnsupportedTelegram
+    ? [...options.telegramPacks, ...options.unsupportedTelegramPacks]
+    : options.telegramPacks;
+}
+
+function SidebarHeader() {
+  return (
+    <Box
+      sx={{
+        pl: "90px",
+        pr: appTokens.layout.spacing.sidebarPaddingX,
+        py: appTokens.layout.spacing.panelPaddingY,
+        minHeight: appTokens.layout.panelHeaderMinHeight,
+        display: "flex",
+        alignItems: "center",
+        WebkitAppRegion: "drag",
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        fontWeight={appTokens.typography.fontWeights.bold}
+        sx={{ letterSpacing: appTokens.typography.letterSpacing.tight }}
+      >
+        {appTokens.copy.appName}
+      </Typography>
+    </Box>
   );
+}
 
-  const handleCloseMenu = useCallback(() => setContextMenu(null), []);
-
-  const handleCreate = async (name: string) => {
-    const pack = await window.stickerSmith.packs.create({ name });
-    await refreshPacks();
-    setSelectedPackId(pack.id);
-    setCreateDialogOpen(false);
-  };
-
-  const handleImportDir = async () => {
-    const result = await window.stickerSmith.packs.createFromDirectory();
-    if (result) {
-      await refreshPacks();
-      setSelectedPackId(result.pack.id);
-    }
-  };
-
-  const handleRenameOpen = useCallback(() => {
-    if (!contextMenu) return;
-    setRenamePack(contextMenu.pack);
-    handleCloseMenu();
-  }, [contextMenu, handleCloseMenu]);
-
-  const handleRenameConfirm = async (name: string) => {
-    if (!renamePack) return;
-    await window.stickerSmith.packs.rename({ packId: renamePack.id, name });
-    await refreshPacks();
-    setRenamePack(null);
-  };
-
-  const runContextPackAction = useCallback(
-    async (action: (pack: StickerPack) => Promise<void>) => {
-      if (!contextMenu) {
-        return;
-      }
-
-      const { pack } = contextMenu;
-      handleCloseMenu();
-      await action(pack);
-    },
-    [contextMenu, handleCloseMenu],
+function PackSourceFilter({
+  activePackFilter,
+  onChange,
+}: {
+  activePackFilter: SidebarPackFilter;
+  onChange: (filter: SidebarPackFilter) => void;
+}) {
+  return (
+    <Box
+      aria-label="Pack source filters"
+      sx={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        gap: 0.25,
+        px: appTokens.layout.spacing.sidebarPaddingX,
+        pt: 0.75,
+        pb: 0.75,
+        WebkitAppRegion: "no-drag",
+      }}
+    >
+      <Tooltip title={appTokens.copy.labels.localPacks}>
+        <IconButton
+          size="small"
+          aria-label={appTokens.copy.labels.localPacks}
+          onClick={() => onChange("local")}
+          color={activePackFilter === "local" ? "primary" : "default"}
+        >
+          <ComputerIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={appTokens.copy.labels.telegramPacks}>
+        <IconButton
+          size="small"
+          aria-label={appTokens.copy.labels.telegramPacks}
+          onClick={() => onChange("telegram")}
+          color={activePackFilter === "telegram" ? "primary" : "default"}
+        >
+          <TelegramIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Box>
   );
+}
 
-  const handleChooseIcon = useCallback(
-    async () =>
-      runContextPackAction(async (pack) => {
-        if (pack.thumbnailPath) {
-          const confirmed = window.confirm(
-            "Replace this pack's existing icon? The pack will need a Telegram update after the new icon is converted.",
-          );
-          if (!confirmed) {
-            return;
-          }
-        }
-        await window.stickerSmith.packs.chooseIcon({ packId: pack.id });
-        await refreshPacks();
-      }),
-    [refreshPacks, runContextPackAction],
-  );
-
-  const handleDelete = useCallback(
-    async () =>
-      runContextPackAction(async (pack) => {
-        await window.stickerSmith.packs.delete({ packId: pack.id });
-        const next = await refreshPacks();
-        if (selectedPackId === pack.id) {
-          setSelectedPackId(next[0]?.id ?? null);
-        }
-      }),
-    [refreshPacks, runContextPackAction, selectedPackId, setSelectedPackId],
-  );
-
-  const handleOpenStickers = useCallback(
-    async () =>
-      runContextPackAction(async (pack) => {
-        await window.stickerSmith.stickers.revealInFolder({ packId: pack.id });
-      }),
-    [runContextPackAction],
-  );
-
-  const handleExportStickers = useCallback(
-    async () =>
-      runContextPackAction(async (pack) => {
-        await window.stickerSmith.stickers.exportFolder({ packId: pack.id });
-      }),
-    [runContextPackAction],
-  );
-
-  const renderPackList = (sectionPacks: StickerPack[], emptyState: string) => {
-    if (sectionPacks.length === 0) {
-      return (
+function PackList({
+  packs,
+  emptyState,
+  selectedPackId,
+  onSelect,
+  onContextMenu,
+}: {
+  packs: StickerPack[];
+  emptyState: string;
+  selectedPackId: string | null;
+  onSelect: (id: string) => void;
+  onContextMenu: (e: MouseEvent, pack: StickerPack) => void;
+}) {
+  return (
+    <List sx={{ flex: 1, overflowY: "auto", py: 0.5, px: 0.5 }}>
+      {packs.length === 0 ? (
         <Typography
           variant="body2"
           color="text.secondary"
@@ -347,347 +347,447 @@ export function Sidebar({
         >
           {emptyState}
         </Typography>
-      );
-    }
-
-    return sectionPacks.map((pack) => (
-      <ListItemButton
-        key={pack.id}
-        selected={pack.id === selectedPackId}
-        onClick={() => onSelect(pack.id)}
-        onContextMenu={(e) => handleContextMenu(e, pack)}
-        dense
-        sx={{ borderRadius: appTokens.shape.radius.panel }}
-      >
-        <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
-        <ListItemText
-          primary={pack.name}
-          secondary={secondaryLabelForPack(pack)}
-          primaryTypographyProps={{
-            variant: "body2",
-            noWrap: true,
-            fontWeight: pack.id === selectedPackId ? 600 : 400,
-            fontSize: appTokens.typography.fontSizes.bodyDefault,
-          }}
-          secondaryTypographyProps={{
-            variant: "caption",
-            noWrap: true,
-            sx: { fontSize: appTokens.typography.fontSizes.caption },
-          }}
-        />
-      </ListItemButton>
-    ));
-  };
-
-  return (
-    <Box
-      sx={{
-        width,
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-        bgcolor: "background.paper",
-        borderRight: 1,
-        borderColor: "divider",
-        height: "100%",
-      }}
-    >
-      <Box
-        sx={{
-          pl: "90px",
-          pr: appTokens.layout.spacing.sidebarPaddingX,
-          py: appTokens.layout.spacing.panelPaddingY,
-          minHeight: appTokens.layout.panelHeaderMinHeight,
-          display: "flex",
-          alignItems: "center",
-          WebkitAppRegion: "drag",
-        }}
-      >
-        <Typography
-          variant="subtitle2"
-          fontWeight={appTokens.typography.fontWeights.bold}
-          sx={{ letterSpacing: appTokens.typography.letterSpacing.tight }}
-        >
-          {appTokens.copy.appName}
-        </Typography>
-      </Box>
-
-      <Box
-        aria-label="Pack source filters"
-        sx={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          gap: 0.25,
-          px: appTokens.layout.spacing.sidebarPaddingX,
-          pt: 0.75,
-          pb: 0.75,
-          WebkitAppRegion: "no-drag",
-        }}
-      >
-        <Tooltip title={appTokens.copy.labels.localPacks}>
-          <IconButton
-            size="small"
-            aria-label={appTokens.copy.labels.localPacks}
-            onClick={() => setActivePackFilter("local")}
-            color={activePackFilter === "local" ? "primary" : "default"}
-          >
-            <ComputerIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={appTokens.copy.labels.telegramPacks}>
-          <IconButton
-            size="small"
-            aria-label={appTokens.copy.labels.telegramPacks}
-            onClick={() => setActivePackFilter("telegram")}
-            color={activePackFilter === "telegram" ? "primary" : "default"}
-          >
-            <TelegramIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
-
-      <List sx={{ flex: 1, overflowY: "auto", py: 0.5, px: 0.5 }}>
-        {renderPackList(visiblePacks, emptyState)}
-      </List>
-
-      {activePackFilter === "telegram" &&
-      unsupportedTelegramPacks.length > 0 ? (
-        <Box sx={{ px: 0.5, py: 0.5 }}>
+      ) : (
+        packs.map((pack) => (
           <ListItemButton
+            key={pack.id}
+            selected={pack.id === selectedPackId}
+            onClick={() => onSelect(pack.id)}
+            onContextMenu={(e) => onContextMenu(e, pack)}
             dense
-            onClick={() => setShowUnsupportedTelegram((show) => !show)}
-            sx={{
-              borderRadius: appTokens.shape.radius.panel,
-              justifyContent: "flex-start",
-              px: 1.5,
-            }}
+            sx={{ borderRadius: appTokens.shape.radius.panel }}
           >
+            <PackThumbnail name={pack.name} thumbnailPath={pack.thumbnailPath} />
             <ListItemText
-              primary={
-                showUnsupportedTelegram
-                  ? "Hide unsupported stickers"
-                  : "Show unsupported stickers"
-              }
+              primary={pack.name}
+              secondary={secondaryLabelForPack(pack)}
               primaryTypographyProps={{
+                variant: "body2",
+                noWrap: true,
+                fontWeight: pack.id === selectedPackId ? 600 : 400,
+                fontSize: appTokens.typography.fontSizes.bodyDefault,
+              }}
+              secondaryTypographyProps={{
                 variant: "caption",
-                color: "text.secondary",
-                align: "left",
+                noWrap: true,
                 sx: { fontSize: appTokens.typography.fontSizes.caption },
               }}
             />
-            <Tooltip title="Sticker Smith currently supports video stickers only.">
-              <HelpOutlineIcon
-                sx={{
-                  ml: 0.5,
-                  fontSize: 16,
-                  color: "text.secondary",
-                }}
-              />
-            </Tooltip>
           </ListItemButton>
-        </Box>
-      ) : null}
+        ))
+      )}
+    </List>
+  );
+}
 
-      <Divider />
-
-      <Box
-        component="footer"
+function UnsupportedTelegramToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <Box sx={{ px: 0.5, py: 0.5 }}>
+      <ListItemButton
+        dense
+        onClick={onToggle}
         sx={{
-          px: appTokens.layout.spacing.sidebarPaddingX,
-          py: appTokens.layout.spacing.panelPaddingY,
-          minHeight: appTokens.layout.panelHeaderMinHeight,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: appTokens.layout.spacing.compactGap,
+          borderRadius: appTokens.shape.radius.panel,
+          justifyContent: "flex-start",
+          px: 1.5,
         }}
       >
-        <Tooltip title={appTokens.copy.labels.importFolderAsNewPack}>
-          <IconButton size="small" onClick={handleImportDir}>
-            <DriveFileMoveIcon fontSize="small" />
-          </IconButton>
+        <ListItemText
+          primary={show ? "Hide unsupported stickers" : "Show unsupported stickers"}
+          primaryTypographyProps={{
+            variant: "caption",
+            color: "text.secondary",
+            align: "left",
+            sx: { fontSize: appTokens.typography.fontSizes.caption },
+          }}
+        />
+        <Tooltip title="Sticker Smith currently supports video stickers only.">
+          <HelpOutlineIcon sx={{ ml: 0.5, fontSize: 16, color: "text.secondary" }} />
         </Tooltip>
-        <Tooltip title={appTokens.copy.actions.newPack}>
-          <IconButton size="small" onClick={() => setCreateDialogOpen(true)}>
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={appTokens.copy.labels.telegramAccount}>
+      </ListItemButton>
+    </Box>
+  );
+}
+
+function SidebarFooter({
+  syncActionLabel,
+  telegramReady,
+  telegramSyncBusy,
+  telegramSyncRecommended,
+  onImportDir,
+  onCreatePack,
+  onOpenTelegramMenu,
+  onSyncTelegramPacks,
+}: {
+  syncActionLabel: string;
+  telegramReady: boolean;
+  telegramSyncBusy: boolean;
+  telegramSyncRecommended: boolean;
+  onImportDir: () => void;
+  onCreatePack: () => void;
+  onOpenTelegramMenu: (event: MouseEvent<HTMLElement>) => void;
+  onSyncTelegramPacks: () => Promise<unknown>;
+}) {
+  return (
+    <Box
+      component="footer"
+      sx={{
+        px: appTokens.layout.spacing.sidebarPaddingX,
+        py: appTokens.layout.spacing.panelPaddingY,
+        minHeight: appTokens.layout.panelHeaderMinHeight,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: appTokens.layout.spacing.compactGap,
+      }}
+    >
+      <Tooltip title={appTokens.copy.labels.importFolderAsNewPack}>
+        <IconButton size="small" onClick={onImportDir}>
+          <DriveFileMoveIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={appTokens.copy.actions.newPack}>
+        <IconButton size="small" onClick={onCreatePack}>
+          <AddIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={appTokens.copy.labels.telegramAccount}>
+        <IconButton
+          size="small"
+          aria-label={appTokens.copy.labels.telegramAccount}
+          onClick={onOpenTelegramMenu}
+          sx={{ color: telegramReady ? "text.secondary" : "error.main" }}
+        >
+          <ManageAccountsIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={syncActionLabel}>
+        <span>
           <IconButton
             size="small"
-            aria-label={appTokens.copy.labels.telegramAccount}
-            onClick={(event) => setTelegramMenuAnchor(event.currentTarget)}
-            sx={{ color: telegramReady ? "text.secondary" : "error.main" }}
+            aria-label={syncActionLabel}
+            disabled={!telegramReady || telegramSyncBusy}
+            onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
           >
-            <ManageAccountsIcon fontSize="small" />
+            <SyncIcon
+              fontSize="small"
+              sx={{
+                color:
+                  telegramSyncRecommended && telegramReady && !telegramSyncBusy
+                    ? "error.main"
+                    : "text.secondary",
+                animation: telegramSyncBusy
+                  ? "telegram-sync-spin 1s linear infinite"
+                  : "none",
+                "@keyframes telegram-sync-spin": {
+                  from: { transform: "rotate(0deg)" },
+                  to: { transform: "rotate(360deg)" },
+                },
+              }}
+            />
           </IconButton>
-        </Tooltip>
-        <Tooltip title={syncActionLabel}>
-          <span>
-            <IconButton
-              size="small"
-              aria-label={syncActionLabel}
-              disabled={!telegramReady || telegramSyncBusy}
-              onClick={() => void onSyncTelegramPacks().catch(() => undefined)}
-            >
-              <SyncIcon
-                fontSize="small"
-                sx={{
-                  color:
-                    telegramSyncRecommended &&
-                    telegramReady &&
-                    !telegramSyncBusy
-                      ? "error.main"
-                      : "text.secondary",
-                  animation: telegramSyncBusy
-                    ? "telegram-sync-spin 1s linear infinite"
-                    : "none",
-                  "@keyframes telegram-sync-spin": {
-                    from: {
-                      transform: "rotate(0deg)",
-                    },
-                    to: {
-                      transform: "rotate(360deg)",
-                    },
-                  },
-                }}
-              />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Box>
+        </span>
+      </Tooltip>
+    </Box>
+  );
+}
 
-      <Menu
-        open={Boolean(contextMenu)}
-        onClose={handleCloseMenu}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-        slotProps={{
-          paper: { sx: browserMenuPaperSx },
-        }}
-      >
-        {contextMenu && (
-          <MenuItem disabled dense sx={browserMenuTitleSx}>
-            {contextMenu.pack.name}
-          </MenuItem>
-        )}
-        <Divider />
-        <MenuItem onClick={handleRenameOpen} dense>
-          <EditIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.rename}
-        </MenuItem>
-        <MenuItem onClick={handleOpenStickers} dense>
-          <FolderOpenIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.openFolder}
-        </MenuItem>
-        <MenuItem onClick={handleChooseIcon} dense>
-          <PhotoIcon sx={browserMenuIconSx} />
-          Change icon
-        </MenuItem>
-        <MenuItem onClick={handleExportStickers} dense>
-          <IosShareIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.export}
-        </MenuItem>
-        <MenuItem onClick={handleDelete} dense sx={{ color: "error.light" }}>
-          <DeleteIcon sx={browserMenuIconSx} />
-          {appTokens.copy.actions.delete}
-        </MenuItem>
-      </Menu>
+function PackContextMenu({
+  contextMenu,
+  onClose,
+  onRename,
+  onOpenStickers,
+  onChooseIcon,
+  onExportStickers,
+  onDelete,
+}: {
+  contextMenu: { mouseX: number; mouseY: number; pack: StickerPack } | null;
+  onClose: () => void;
+  onRename: () => void;
+  onOpenStickers: () => void;
+  onChooseIcon: () => void;
+  onExportStickers: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Menu
+      open={Boolean(contextMenu)}
+      onClose={onClose}
+      anchorReference="anchorPosition"
+      anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+      slotProps={{ paper: { sx: browserMenuPaperSx } }}
+    >
+      {contextMenu && <MenuItem disabled dense sx={browserMenuTitleSx}>{contextMenu.pack.name}</MenuItem>}
+      <Divider />
+      <MenuItem onClick={onRename} dense><EditIcon sx={browserMenuIconSx} />{appTokens.copy.actions.rename}</MenuItem>
+      <MenuItem onClick={onOpenStickers} dense><FolderOpenIcon sx={browserMenuIconSx} />{appTokens.copy.actions.openFolder}</MenuItem>
+      <MenuItem onClick={onChooseIcon} dense><PhotoIcon sx={browserMenuIconSx} />Change icon</MenuItem>
+      <MenuItem onClick={onExportStickers} dense><IosShareIcon sx={browserMenuIconSx} />{appTokens.copy.actions.export}</MenuItem>
+      <MenuItem onClick={onDelete} dense sx={{ color: "error.light" }}><DeleteIcon sx={browserMenuIconSx} />{appTokens.copy.actions.delete}</MenuItem>
+    </Menu>
+  );
+}
 
-      <Menu
-        anchorEl={telegramMenuAnchor}
-        open={Boolean(telegramMenuAnchor)}
-        onClose={() => setTelegramMenuAnchor(null)}
-        slotProps={{
-          paper: { sx: { minWidth: appTokens.sizes.menu.telegram } },
-        }}
-      >
-        <MenuItem disabled dense sx={browserMenuTitleSx}>
-          {statusLabelForTelegram(telegramState)}
+function TelegramAccountMenu({
+  anchorEl,
+  telegramState,
+  telegramManageLabel,
+  onClose,
+  onManage,
+  onLogoutTelegram,
+  onResetTelegram,
+}: {
+  anchorEl: HTMLElement | null;
+  telegramState: TelegramState | null;
+  telegramManageLabel: string;
+  onClose: () => void;
+  onManage: () => void;
+  onLogoutTelegram: () => Promise<unknown>;
+  onResetTelegram: () => Promise<unknown>;
+}) {
+  return (
+    <Menu
+      anchorEl={anchorEl}
+      open={Boolean(anchorEl)}
+      onClose={onClose}
+      slotProps={{ paper: { sx: { minWidth: appTokens.sizes.menu.telegram } } }}
+    >
+      <MenuItem disabled dense sx={browserMenuTitleSx}>{statusLabelForTelegram(telegramState)}</MenuItem>
+      {telegramState?.sessionUser ? (
+        <MenuItem disabled dense sx={{ opacity: "1 !important", fontSize: appTokens.typography.fontSizes.caption, color: "text.secondary" }}>
+          {telegramState.sessionUser.username
+            ? `${telegramState.sessionUser.displayName} (@${telegramState.sessionUser.username})`
+            : telegramState.sessionUser.displayName}
         </MenuItem>
-        {telegramState?.sessionUser ? (
-          <MenuItem
-            disabled
-            dense
-            sx={{
-              opacity: "1 !important",
-              fontSize: appTokens.typography.fontSizes.caption,
-              color: "text.secondary",
-            }}
-          >
-            {telegramState.sessionUser.username
-              ? `${telegramState.sessionUser.displayName} (@${telegramState.sessionUser.username})`
-              : telegramState.sessionUser.displayName}
-          </MenuItem>
-        ) : null}
-        <Divider />
-        <MenuItem
-          onClick={() => {
-            setTelegramMenuAnchor(null);
-            setTelegramDialogOpen(true);
-          }}
-          dense
-        >
-          <ManageAccountsIcon sx={browserMenuIconSx} />
-          {telegramManageLabel}
+      ) : null}
+      <Divider />
+      <MenuItem onClick={onManage} dense><ManageAccountsIcon sx={browserMenuIconSx} />{telegramManageLabel}</MenuItem>
+      {telegramState?.status === "connected" ? (
+        <MenuItem onClick={() => { onClose(); void onLogoutTelegram().catch(() => undefined); }} dense>
+          {appTokens.copy.actions.logout}
         </MenuItem>
-        {telegramState?.status === "connected" ? (
-          <MenuItem
-            onClick={() => {
-              setTelegramMenuAnchor(null);
-              void onLogoutTelegram().catch(() => undefined);
-            }}
-            dense
-          >
-            {appTokens.copy.actions.logout}
-          </MenuItem>
-        ) : (
-          <MenuItem
-            onClick={() => {
-              setTelegramMenuAnchor(null);
-              void onResetTelegram().catch(() => undefined);
-            }}
-            dense
-          >
-            {appTokens.copy.actions.resetTelegram}
-          </MenuItem>
-        )}
-      </Menu>
-
-      <RenameDialog
-        open={createDialogOpen}
-        title={appTokens.copy.dialogs.newPack}
-        label={appTokens.copy.dialogs.packName}
-        initialValue=""
-        onConfirm={handleCreate}
-        onClose={() => setCreateDialogOpen(false)}
-      />
-
-      {renamePack && (
-        <RenameDialog
-          open
-          title={appTokens.copy.dialogs.renamePack}
-          initialValue={renamePack.name}
-          onConfirm={handleRenameConfirm}
-          onClose={() => setRenamePack(null)}
-        />
+      ) : (
+        <MenuItem onClick={() => { onClose(); void onResetTelegram().catch(() => undefined); }} dense>
+          {appTokens.copy.actions.resetTelegram}
+        </MenuItem>
       )}
+    </Menu>
+  );
+}
 
+function usePackContextHandlers({
+  contextMenu,
+  refreshPacks,
+  selectedPackId,
+  setSelectedPackId,
+  setContextMenu,
+  setRenamePack,
+}: {
+  contextMenu: PackContextMenuState;
+  refreshPacks: () => Promise<StickerPack[]>;
+  selectedPackId: string | null;
+  setSelectedPackId: (id: string | null) => void;
+  setContextMenu: (menu: PackContextMenuState) => void;
+  setRenamePack: (pack: StickerPack | null) => void;
+}) {
+  const handleContextMenu = useCallback((e: MouseEvent, pack: StickerPack) => {
+    e.preventDefault();
+    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pack });
+  }, [setContextMenu]);
+  const handleCloseMenu = useCallback(() => setContextMenu(null), [setContextMenu]);
+  const handleRenameOpen = useCallback(() => {
+    if (!contextMenu) return;
+    setRenamePack(contextMenu.pack);
+    handleCloseMenu();
+  }, [contextMenu, handleCloseMenu, setRenamePack]);
+  const runContextPackAction = useCallback(
+    async (action: (pack: StickerPack) => Promise<void>) => {
+      if (!contextMenu) return;
+      const { pack } = contextMenu;
+      handleCloseMenu();
+      await action(pack);
+    },
+    [contextMenu, handleCloseMenu],
+  );
+  const handleChooseIcon = useCallback(
+    async () => runContextPackAction(async (pack) => {
+      if (pack.thumbnailPath) {
+        const confirmed = window.confirm(
+          "Replace this pack's existing icon? The pack will need a Telegram update after the new icon is converted.",
+        );
+        if (!confirmed) return;
+      }
+      await window.stickerSmith.packs.chooseIcon({ packId: pack.id });
+      await refreshPacks();
+    }),
+    [refreshPacks, runContextPackAction],
+  );
+  const handleDelete = useCallback(
+    async () => runContextPackAction(async (pack) => {
+      await window.stickerSmith.packs.delete({ packId: pack.id });
+      const next = await refreshPacks();
+      if (selectedPackId === pack.id) setSelectedPackId(next[0]?.id ?? null);
+    }),
+    [refreshPacks, runContextPackAction, selectedPackId, setSelectedPackId],
+  );
+  const handleOpenStickers = useCallback(
+    async () => runContextPackAction(async (pack) => {
+      await window.stickerSmith.stickers.revealInFolder({ packId: pack.id });
+    }),
+    [runContextPackAction],
+  );
+  const handleExportStickers = useCallback(
+    async () => runContextPackAction(async (pack) => {
+      await window.stickerSmith.stickers.exportFolder({ packId: pack.id });
+    }),
+    [runContextPackAction],
+  );
+
+  return {
+    handleContextMenu,
+    handleCloseMenu,
+    handleRenameOpen,
+    handleChooseIcon,
+    handleDelete,
+    handleOpenStickers,
+    handleExportStickers,
+  };
+}
+
+function useSidebarModel({
+  packs,
+  telegramState,
+  telegramSyncInProgress,
+  telegramSyncRecommended,
+  selectedPackId,
+  refreshPacks,
+  setSelectedPackId,
+}: Props) {
+  const groups = getSidebarPackGroups(packs);
+  const { localPacks, telegramPacks, unsupportedTelegramPacks } = groups;
+  const telegramSyncBusy = telegramSyncInProgress || telegramPacks.some((pack) => pack.telegram?.syncState === "syncing");
+  const telegramReady = telegramState?.status === "connected" && telegramState.authStep === "ready";
+  const [contextMenu, setContextMenu] = useState<PackContextMenuState>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [renamePack, setRenamePack] = useState<StickerPack | null>(null);
+  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [activePackFilter, setActivePackFilter] = useState<SidebarPackFilter>("telegram");
+  const [showUnsupportedTelegram, setShowUnsupportedTelegram] = useState(false);
+  const [telegramMenuAnchor, setTelegramMenuAnchor] = useState<HTMLElement | null>(null);
+  const labels = getSidebarLabels({ telegramPacks, telegramSyncBusy, telegramSyncRecommended, telegramState });
+  const visiblePacks = getVisiblePacks({ activePackFilter, localPacks, telegramPacks, unsupportedTelegramPacks, showUnsupportedTelegram });
+  const emptyState = activePackFilter === "local" ? appTokens.copy.emptyStates.noLocalPacks : emptyTelegramStateLabel({ telegramSyncBusy });
+  const contextHandlers = usePackContextHandlers({ contextMenu, refreshPacks, selectedPackId, setContextMenu, setRenamePack, setSelectedPackId });
+  const handleCreate = async (name: string) => {
+    const pack = await window.stickerSmith.packs.create({ name });
+    await refreshPacks();
+    setSelectedPackId(pack.id);
+    setCreateDialogOpen(false);
+  };
+  const handleImportDir = async () => {
+    const result = await window.stickerSmith.packs.createFromDirectory();
+    if (result) {
+      await refreshPacks();
+      setSelectedPackId(result.pack.id);
+    }
+  };
+  const handleRenameConfirm = async (name: string) => {
+    if (!renamePack) return;
+    await window.stickerSmith.packs.rename({ packId: renamePack.id, name });
+    await refreshPacks();
+    setRenamePack(null);
+  };
+
+  return {
+    ...groups,
+    ...labels,
+    ...contextHandlers,
+    activePackFilter,
+    contextMenu,
+    createDialogOpen,
+    emptyState,
+    handleCreate,
+    handleImportDir,
+    handleRenameConfirm,
+    renamePack,
+    setActivePackFilter,
+    setCreateDialogOpen,
+    setRenamePack,
+    setShowUnsupportedTelegram,
+    setTelegramDialogOpen,
+    setTelegramMenuAnchor,
+    showUnsupportedTelegram,
+    telegramDialogOpen,
+    telegramMenuAnchor,
+    telegramReady,
+    telegramSyncBusy,
+    visiblePacks,
+  };
+}
+
+type SidebarModel = ReturnType<typeof useSidebarModel>;
+
+function SidebarDialogs({ model, props }: { model: SidebarModel; props: Props }) {
+  return (
+    <>
+      <RenameDialog open={model.createDialogOpen} title={appTokens.copy.dialogs.newPack} label={appTokens.copy.dialogs.packName} initialValue="" onConfirm={model.handleCreate} onClose={() => model.setCreateDialogOpen(false)} />
+      {model.renamePack && <RenameDialog open title={appTokens.copy.dialogs.renamePack} initialValue={model.renamePack.name} onConfirm={model.handleRenameConfirm} onClose={() => model.setRenamePack(null)} />}
       <TelegramAuthDialog
-        open={telegramDialogOpen}
-        state={telegramState}
-        onClose={() => setTelegramDialogOpen(false)}
-        onSubmitTdlibParameters={onSubmitTelegramTdlibParameters}
-        onSubmitPhoneNumber={onSubmitTelegramPhoneNumber}
-        onSubmitCode={onSubmitTelegramCode}
-        onSubmitPassword={onSubmitTelegramPassword}
+        open={model.telegramDialogOpen}
+        state={props.telegramState}
+        onClose={() => model.setTelegramDialogOpen(false)}
+        onSubmitTdlibParameters={props.onSubmitTelegramTdlibParameters}
+        onSubmitPhoneNumber={props.onSubmitTelegramPhoneNumber}
+        onSubmitCode={props.onSubmitTelegramCode}
+        onSubmitPassword={props.onSubmitTelegramPassword}
       />
+    </>
+  );
+}
+
+function SidebarMenus({ model, props }: { model: SidebarModel; props: Props }) {
+  return (
+    <>
+      <PackContextMenu contextMenu={model.contextMenu} onClose={model.handleCloseMenu} onRename={model.handleRenameOpen} onOpenStickers={model.handleOpenStickers} onChooseIcon={model.handleChooseIcon} onExportStickers={model.handleExportStickers} onDelete={model.handleDelete} />
+      <TelegramAccountMenu
+        anchorEl={model.telegramMenuAnchor}
+        telegramState={props.telegramState}
+        telegramManageLabel={model.telegramManageLabel}
+        onClose={() => model.setTelegramMenuAnchor(null)}
+        onManage={() => {
+          model.setTelegramMenuAnchor(null);
+          model.setTelegramDialogOpen(true);
+        }}
+        onLogoutTelegram={props.onLogoutTelegram}
+        onResetTelegram={props.onResetTelegram}
+      />
+    </>
+  );
+}
+
+function SidebarBody({ model, props }: { model: SidebarModel; props: Props }) {
+  return (
+    <>
+      <SidebarHeader />
+      <PackSourceFilter activePackFilter={model.activePackFilter} onChange={model.setActivePackFilter} />
+      <PackList packs={model.visiblePacks} emptyState={model.emptyState} selectedPackId={props.selectedPackId} onSelect={props.onSelect} onContextMenu={model.handleContextMenu} />
+      {model.activePackFilter === "telegram" && model.unsupportedTelegramPacks.length > 0 ? (
+        <UnsupportedTelegramToggle show={model.showUnsupportedTelegram} onToggle={() => model.setShowUnsupportedTelegram((show) => !show)} />
+      ) : null}
+      <Divider />
+      <SidebarFooter syncActionLabel={model.syncActionLabel} telegramReady={model.telegramReady} telegramSyncBusy={model.telegramSyncBusy} telegramSyncRecommended={props.telegramSyncRecommended} onImportDir={model.handleImportDir} onCreatePack={() => model.setCreateDialogOpen(true)} onOpenTelegramMenu={(event) => model.setTelegramMenuAnchor(event.currentTarget)} onSyncTelegramPacks={props.onSyncTelegramPacks} />
+    </>
+  );
+}
+
+export function Sidebar(props: Props) {
+  const model = useSidebarModel(props);
+
+  return (
+    <Box sx={{ width: props.width, flexShrink: 0, display: "flex", flexDirection: "column", bgcolor: "background.paper", borderRight: 1, borderColor: "divider", height: "100%" }}>
+      <SidebarBody model={model} props={props} />
+      <SidebarMenus model={model} props={props} />
+      <SidebarDialogs model={model} props={props} />
     </Box>
   );
 }
