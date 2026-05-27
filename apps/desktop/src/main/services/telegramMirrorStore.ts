@@ -42,12 +42,165 @@ export interface TelegramMirrorUpsertInput {
   stickers: TelegramMirrorStickerInput[];
 }
 
+type StickerRecord = StickerPackRecord["stickers"][number];
+type ExistingStickerByTelegramId = Map<string, StickerRecord>;
+type BuildMirrorRecordInput = {
+  existing: StickerPackRecord | null;
+  upsertInput: TelegramMirrorUpsertInput;
+  storedThumbnailPath: string | null;
+};
+
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "pack";
 }
 
 function stickerRelativePath(stickerId: string) {
   return `${stickerId}.webm`;
+}
+
+function resolveMirrorStickerId(stickerInput: TelegramMirrorStickerInput, existing?: StickerRecord) {
+  return existing?.id ?? stickerInput.id ?? randomUUID();
+}
+
+function resolveMirrorStickerRelativePath(id: string, existing?: StickerRecord) {
+  return existing?.relativePath ?? stickerRelativePath(id);
+}
+
+function resolveMirrorStickerOriginalFileName(stickerInput: TelegramMirrorStickerInput, existing?: StickerRecord) {
+  return existing?.originalFileName ?? path.basename(stickerInput.relativePath);
+}
+
+function resolveMirrorStickerBaselineHash(stickerInput: TelegramMirrorStickerInput, existing?: StickerRecord) {
+  return existing?.telegram?.baselineStickerHash ?? stickerInput.telegram.baselineStickerHash ?? null;
+}
+
+function buildTelegramMetadata(stickerInput: TelegramMirrorStickerInput, existing: StickerRecord | undefined, order: number) {
+  return {
+    ...stickerInput.telegram,
+    baselineStickerHash: resolveMirrorStickerBaselineHash(stickerInput, existing),
+    position: order,
+  };
+}
+
+function resolveMirrorStickerSizeBytes(existing?: StickerRecord) {
+  return existing?.sizeBytes ?? 0;
+}
+
+function resolveMirrorStickerSha256(existing?: StickerRecord) {
+  return existing?.sha256 ?? null;
+}
+
+function resolveMirrorStickerImportedAt(now: string, existing?: StickerRecord) {
+  return existing?.importedAt ?? now;
+}
+
+function resolveMirrorStickerUpdatedAt(now: string, existing?: StickerRecord) {
+  return existing?.updatedAt ?? now;
+}
+
+function resolveMirrorStickerDownloadState(stickerInput: TelegramMirrorStickerInput, existing?: StickerRecord) {
+  return existing?.downloadState ?? stickerInput.downloadState;
+}
+
+function buildTelegramMirrorSticker(input: {
+  stickerInput: TelegramMirrorStickerInput;
+  existingByTelegramId: ExistingStickerByTelegramId;
+  packId: string;
+  order: number;
+  now: string;
+}): StickerRecord {
+  const { stickerInput, existingByTelegramId, packId, order, now } = input;
+  const existing = existingByTelegramId.get(stickerInput.telegram.stickerId);
+  const id = resolveMirrorStickerId(stickerInput, existing);
+
+  return {
+    id,
+    packId,
+    order,
+    relativePath: resolveMirrorStickerRelativePath(id, existing),
+    originalFileName: resolveMirrorStickerOriginalFileName(stickerInput, existing),
+    emojiList: stickerInput.emojiList,
+    sizeBytes: resolveMirrorStickerSizeBytes(existing),
+    sha256: resolveMirrorStickerSha256(existing),
+    importedAt: resolveMirrorStickerImportedAt(now, existing),
+    updatedAt: resolveMirrorStickerUpdatedAt(now, existing),
+    downloadState: resolveMirrorStickerDownloadState(stickerInput, existing),
+    telegram: buildTelegramMetadata(stickerInput, existing, order),
+  };
+}
+
+function buildTelegramMirrorStickers(input: {
+  stickers: TelegramMirrorStickerInput[];
+  existingByTelegramId: ExistingStickerByTelegramId;
+  packId: string;
+  now: string;
+}): StickerRecord[] {
+  return input.stickers
+    .slice()
+    .sort((a, b) => a.telegram.position - b.telegram.position)
+    .map((stickerInput, order) => buildTelegramMirrorSticker({ ...input, stickerInput, order }));
+}
+
+function resolveTelegramMirrorIconStickerId(input: {
+  stickers: StickerRecord[];
+  thumbnailStickerId?: string | null;
+  existingIconStickerId?: string | null;
+}) {
+  const iconSticker = input.thumbnailStickerId
+    ? input.stickers.find((sticker) => sticker.telegram?.stickerId === input.thumbnailStickerId)
+    : null;
+  return iconSticker?.id ?? (input.existingIconStickerId && input.stickers.some((sticker) => sticker.id === input.existingIconStickerId) ? input.existingIconStickerId : null);
+}
+
+function resolveMirrorPackId(existing: StickerPackRecord | null, upsertInput: TelegramMirrorUpsertInput) {
+  return existing?.id ?? `telegram-${upsertInput.stickerSetId}`;
+}
+
+function resolveMirrorCreatedAt(existing: StickerPackRecord | null, now: string) {
+  return existing?.createdAt ?? now;
+}
+
+function resolveMirrorUpdatedAt(existing: StickerPackRecord | null, now: string) {
+  return existing?.updatedAt ?? now;
+}
+
+function resolveMirrorPublishedFromLocalPackId(existing: StickerPackRecord | null, upsertInput: TelegramMirrorUpsertInput) {
+  return upsertInput.publishedFromLocalPackId ?? existing?.telegram?.publishedFromLocalPackId ?? null;
+}
+
+function buildMirrorTelegramSummary(input: BuildMirrorRecordInput) {
+  const { existing, upsertInput, storedThumbnailPath } = input;
+  return createDefaultTelegramSummary({
+    stickerSetId: upsertInput.stickerSetId,
+    shortName: upsertInput.shortName,
+    title: upsertInput.title,
+    format: upsertInput.format,
+    thumbnailPath: storedThumbnailPath,
+    syncState: upsertInput.syncState,
+    lastSyncedAt: upsertInput.lastSyncedAt,
+    lastSyncError: upsertInput.lastSyncError,
+    publishedFromLocalPackId: resolveMirrorPublishedFromLocalPackId(existing, upsertInput),
+  });
+}
+
+function resolveMirrorIconStickerId(stickers: StickerRecord[], existing: StickerPackRecord | null, upsertInput: TelegramMirrorUpsertInput) {
+  return resolveTelegramMirrorIconStickerId({
+    stickers,
+    thumbnailStickerId: upsertInput.thumbnailStickerId,
+    existingIconStickerId: existing?.iconStickerId,
+  });
+}
+
+function markMissingIfReady(sticker: StickerRecord) {
+  if (sticker.downloadState === "ready") sticker.downloadState = "missing";
+}
+
+async function markMirrorStickerFileReady(sticker: StickerRecord, absolutePath: string) {
+  const stat = await fs.stat(absolutePath);
+  sticker.sizeBytes = stat.size;
+  sticker.sha256 ??= await sha256ForFile(absolutePath);
+  sticker.telegram && (sticker.telegram.baselineStickerHash ??= sticker.sha256);
+  sticker.downloadState = "ready";
 }
 
 async function syncTelegramThumbnailFile(
@@ -93,98 +246,61 @@ export class TelegramMirrorStore {
     );
   }
 
-  private buildMirrorRecord(input: {
-    existing: StickerPackRecord | null;
-    upsertInput: TelegramMirrorUpsertInput;
-    storedThumbnailPath: string | null;
-  }): StickerPackRecord {
-    const existingByTelegramId = this.findExistingByTelegramStickerId(input.existing);
+  private buildMirrorRecord(input: BuildMirrorRecordInput): StickerPackRecord {
+    const { existing, upsertInput } = input;
+    const existingByTelegramId = this.findExistingByTelegramStickerId(existing);
     const now = nowIso();
-    const packId = input.existing?.id ?? `telegram-${input.upsertInput.stickerSetId}`;
-    const stickers = input.upsertInput.stickers
-      .slice()
-      .sort((a, b) => a.telegram.position - b.telegram.position)
-      .map((stickerInput, index) => {
-        const existing = existingByTelegramId.get(stickerInput.telegram.stickerId);
-        const id = existing?.id ?? stickerInput.id ?? randomUUID();
-        return {
-          id,
-          packId,
-          order: index,
-          relativePath: existing?.relativePath ?? stickerRelativePath(id),
-          originalFileName: existing?.originalFileName ?? path.basename(stickerInput.relativePath),
-          emojiList: stickerInput.emojiList,
-          sizeBytes: existing?.sizeBytes ?? 0,
-          sha256: existing?.sha256 ?? null,
-          importedAt: existing?.importedAt ?? now,
-          updatedAt: existing?.updatedAt ?? now,
-          downloadState: existing?.downloadState ?? stickerInput.downloadState,
-          telegram: {
-            ...stickerInput.telegram,
-            baselineStickerHash: existing?.telegram?.baselineStickerHash ?? stickerInput.telegram.baselineStickerHash ?? null,
-            position: index,
-          },
-        };
-      });
-
-    const iconSticker = input.upsertInput.thumbnailStickerId
-      ? stickers.find((sticker) => sticker.telegram?.stickerId === input.upsertInput.thumbnailStickerId)
-      : null;
+    const packId = resolveMirrorPackId(existing, upsertInput);
+    const stickers = buildTelegramMirrorStickers({ stickers: upsertInput.stickers, existingByTelegramId, packId, now });
 
     return {
       schemaVersion: 4,
       id: packId,
       source: "telegram",
-      name: input.upsertInput.title,
-      slug: slugify(input.upsertInput.shortName || input.upsertInput.title),
-      iconStickerId: iconSticker?.id ?? (input.existing?.iconStickerId && stickers.some((sticker) => sticker.id === input.existing?.iconStickerId) ? input.existing.iconStickerId : null),
+      name: upsertInput.title,
+      slug: slugify(upsertInput.shortName || upsertInput.title),
+      iconStickerId: resolveMirrorIconStickerId(stickers, existing, upsertInput),
       telegramShortName: null,
-      telegram: createDefaultTelegramSummary({
-        stickerSetId: input.upsertInput.stickerSetId,
-        shortName: input.upsertInput.shortName,
-        title: input.upsertInput.title,
-        format: input.upsertInput.format,
-        thumbnailPath: input.storedThumbnailPath,
-        syncState: input.upsertInput.syncState,
-        lastSyncedAt: input.upsertInput.lastSyncedAt,
-        lastSyncError: input.upsertInput.lastSyncError,
-        publishedFromLocalPackId: input.upsertInput.publishedFromLocalPackId ?? input.existing?.telegram?.publishedFromLocalPackId ?? null,
-      }),
-      createdAt: input.existing?.createdAt ?? now,
-      updatedAt: input.existing?.updatedAt ?? now,
+      telegram: buildMirrorTelegramSummary(input),
+      createdAt: resolveMirrorCreatedAt(existing, now),
+      updatedAt: resolveMirrorUpdatedAt(existing, now),
       stickers,
     };
+  }
+
+  private async reconcileTelegramMirrorSticker(sticker: StickerRecord, outputRoot: string) {
+    const absolutePath = path.join(outputRoot, sticker.relativePath);
+    if (!(await pathExists(absolutePath))) {
+      markMissingIfReady(sticker);
+      return;
+    }
+
+    await markMirrorStickerFileReady(sticker, absolutePath);
   }
 
   async reconcileTelegramMirrorStickers(record: StickerPackRecord, rootPath: string) {
     if (record.source !== "telegram") return;
     const { outputRoot } = resolvePackPaths(rootPath);
     for (const sticker of record.stickers) {
-      const absolutePath = path.join(outputRoot, sticker.relativePath);
-      if (!(await pathExists(absolutePath))) {
-        if (sticker.downloadState === "ready") sticker.downloadState = "missing";
-        continue;
-      }
-      const stat = await fs.stat(absolutePath);
-      sticker.sizeBytes = stat.size;
-      sticker.sha256 ??= await sha256ForFile(absolutePath);
-      sticker.telegram && (sticker.telegram.baselineStickerHash ??= sticker.sha256);
-      sticker.downloadState = "ready";
+      await this.reconcileTelegramMirrorSticker(sticker, outputRoot);
     }
+  }
+
+  private async writeUpsertedTelegramMirror(input: TelegramMirrorUpsertInput, existing: Awaited<ReturnType<PackRepository["findPackByTelegramStickerSetId"]>>, rootPath: string) {
+    const storedThumbnailPath = await syncTelegramThumbnailFile(rootPath, input.thumbnailPath, { hasThumbnail: input.hasThumbnail, preferredExtension: input.thumbnailExtension });
+    const record = this.buildMirrorRecord({ existing: existing?.record ?? null, upsertInput: input, storedThumbnailPath });
+    await this.reconcileTelegramMirrorStickers(record, rootPath);
+    compactStickerOrders(record);
+    await this.repo.writePackRecord(rootPath, record);
+    return { record, rootPath };
   }
 
   async upsertTelegramMirror(input: TelegramMirrorUpsertInput) {
     await this.repo.ensureReady();
     const existing = await this.repo.findPackByTelegramStickerSetId(input.stickerSetId);
     const rootPath = existing?.rootPath ?? path.join(this.repo.getPacksRoot(), `telegram-${input.stickerSetId}`);
-    return this.repo.withPackMutationLock(existing?.record.id ?? `telegram-${input.stickerSetId}`, async () => {
-      const storedThumbnailPath = await syncTelegramThumbnailFile(rootPath, input.thumbnailPath, { hasThumbnail: input.hasThumbnail, preferredExtension: input.thumbnailExtension });
-      const record = this.buildMirrorRecord({ existing: existing?.record ?? null, upsertInput: input, storedThumbnailPath });
-      await this.reconcileTelegramMirrorStickers(record, rootPath);
-      compactStickerOrders(record);
-      await this.repo.writePackRecord(rootPath, record);
-      return { record, rootPath };
-    });
+    const lockId = existing?.record.id ?? `telegram-${input.stickerSetId}`;
+    return this.repo.withPackMutationLock(lockId, () => this.writeUpsertedTelegramMirror(input, existing, rootPath));
   }
 
   private requireSticker(record: StickerPackRecord, stickerId: string) {
