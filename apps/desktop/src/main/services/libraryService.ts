@@ -3,53 +3,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  DownloadState,
   ImportResult,
-  SourceMediaKind,
-  StickerItem,
   StickerPack,
   StickerPackDetails,
   StickerPackRecord,
 } from "@sticker-smith/shared";
-import { supportedMediaKinds } from "@sticker-smith/shared";
 
 import type { SettingsService } from "./settingsService";
 import { compactStickerOrders } from "./packNormalizer";
+import { collectFiles, importStickerFiles, removeStickers, reorderStickers, slugify } from "./libraryServiceHelpers";
 import { hydratePackDetails, PackRepository, resolvePackPaths } from "./packRepository";
 import { markStickerFileReady } from "./stickerFileState";
 import { TelegramMirrorStore } from "./telegramMirrorStore";
-import { pathExists, sha256ForFile } from "../utils/fsUtils";
+import { sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
-
-const supportedMediaKindsSet = new Set<SourceMediaKind>(supportedMediaKinds);
-
-function slugify(value: string) {
-  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "pack";
-}
-
-function extToKind(filePath: string): SourceMediaKind | null {
-  const extension = path.extname(filePath).slice(1).toLowerCase();
-  return supportedMediaKindsSet.has(extension as SourceMediaKind) ? (extension as SourceMediaKind) : null;
-}
-
-function stickerRelativePath(stickerId: string) {
-  return `${stickerId}.webm`;
-}
-
-async function collectFiles(directoryPath: string): Promise<string[]> {
-  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
-  const result: string[] = [];
-  for (const entry of entries) {
-    const absolutePath = path.join(directoryPath, entry.name);
-    if (entry.isDirectory()) result.push(...(await collectFiles(absolutePath)));
-    else if (entry.isFile()) result.push(absolutePath);
-  }
-  return result.sort((a, b) => a.localeCompare(b));
-}
-
-function nextStickerOrder(record: StickerPackRecord) {
-  return record.stickers.reduce((max, sticker) => Math.max(max, sticker.order), -1) + 1;
-}
 
 export class LibraryService {
   private readonly repo: PackRepository;
@@ -145,38 +112,12 @@ export class LibraryService {
   }
 
   async importFiles(packId: string, filePaths: string[]): Promise<ImportResult> {
-    const skipped: string[] = [];
-    const imported: StickerItem[] = [];
+    let result: ImportResult = { imported: [], skipped: [] };
     await this.mutatePackRecord(packId, async (record, rootPath) => {
-      const { outputRoot } = resolvePackPaths(rootPath);
-      await fs.mkdir(outputRoot, { recursive: true });
-      for (const filePath of filePaths) {
-        const kind = extToKind(filePath);
-        if (!kind) { skipped.push(filePath); continue; }
-        const id = randomUUID();
-        const relativePath = stickerRelativePath(id);
-        const absolutePath = path.join(outputRoot, relativePath);
-        await fs.copyFile(filePath, absolutePath);
-        const stat = await fs.stat(absolutePath);
-        const sticker: StickerPackRecord["stickers"][number] = {
-          id,
-          packId: record.id,
-          order: nextStickerOrder(record),
-          relativePath,
-          originalFileName: path.basename(filePath),
-          emojiList: [],
-          sizeBytes: stat.size,
-          sha256: await sha256ForFile(absolutePath),
-          importedAt: nowIso(),
-          updatedAt: nowIso(),
-          downloadState: "ready",
-        };
-        record.stickers.push(sticker);
-        imported.push({ ...sticker, absolutePath });
-      }
+      result = await importStickerFiles(record, rootPath, filePaths);
       this.markTelegramMirrorStale(record);
     });
-    return { imported, skipped };
+    return result;
   }
 
   async importDirectory(packId: string, directoryPath: string): Promise<ImportResult> {
@@ -205,19 +146,7 @@ export class LibraryService {
 
   async reorderSticker(input: { packId: string; stickerId: string; beforeStickerId: string | null }) {
     return this.mutatePackRecord(input.packId, (record) => {
-      const stickers = [...record.stickers].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-      const current = stickers.findIndex((item) => item.id === input.stickerId);
-      if (current === -1) throw new Error(`Sticker not found: ${input.stickerId}`);
-      const [moved] = stickers.splice(current, 1);
-      if (!moved) throw new Error(`Sticker not found: ${input.stickerId}`);
-      if (input.beforeStickerId === null) stickers.push(moved);
-      else {
-        const next = stickers.findIndex((item) => item.id === input.beforeStickerId);
-        if (next === -1) throw new Error(`Sticker not found: ${input.beforeStickerId}`);
-        stickers.splice(next, 0, moved);
-      }
-      stickers.forEach((sticker, order) => { sticker.order = order; });
-      record.stickers = stickers;
+      reorderStickers(record, input.stickerId, input.beforeStickerId);
       this.markTelegramMirrorStale(record);
     });
   }
@@ -228,11 +157,7 @@ export class LibraryService {
 
   async deleteManyStickers(input: { packId: string; stickerIds: string[] }) {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const ids = new Set(input.stickerIds);
-      const removed = record.stickers.filter((sticker) => ids.has(sticker.id));
-      if (removed.length !== ids.size) throw new Error("Sticker not found");
-      record.stickers = record.stickers.filter((sticker) => !ids.has(sticker.id));
-      if (record.iconStickerId && ids.has(record.iconStickerId)) record.iconStickerId = null;
+      const removed = removeStickers(record, input.stickerIds);
       await this.repo.deleteStickerFilesIfUnreferenced(record, rootPath, removed.map((sticker) => sticker.relativePath));
       this.markTelegramMirrorStale(record);
     });
