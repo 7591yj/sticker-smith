@@ -65,34 +65,49 @@ type BrowserItemFrameProps = Omit<
   children: ReactNode;
 };
 
-function browserItemStateSx(input: {
+type BrowserItemStateInput = {
   isPinned: boolean;
   selected: boolean;
   isDragOver: boolean;
   draggable: boolean;
-}) {
+};
+
+function browserItemBorderColor(input: BrowserItemStateInput) {
+  if (input.isDragOver) return "primary.light";
+  if (input.selected || input.isPinned) return "primary.main";
+  return "divider";
+}
+
+function browserItemHoverBorderColor(input: BrowserItemStateInput) {
+  return input.selected || input.isPinned ? "primary.light" : "action.selected";
+}
+
+function browserItemShadow(input: BrowserItemStateInput) {
+  return input.isDragOver || input.selected
+    ? "0 0 0 1px rgba(96,165,250,0.35)"
+    : "none";
+}
+
+function browserItemActiveSx(input: BrowserItemStateInput) {
+  return input.draggable ? { cursor: "grabbing" } : undefined;
+}
+
+function browserItemStateSx(input: BrowserItemStateInput) {
   return {
     position: "relative",
     border: "1px solid",
-    borderColor:
-      input.isDragOver
-        ? "primary.light"
-        : input.selected || input.isPinned
-          ? "primary.main"
-          : "divider",
+    borderColor: browserItemBorderColor(input),
     bgcolor: input.selected ? "action.selected" : "action.hover",
     cursor: input.draggable ? "grab" : "default",
     userSelect: "none",
     WebkitUserSelect: "none",
     transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
-    boxShadow:
-      input.isDragOver || input.selected ? "0 0 0 1px rgba(96,165,250,0.35)" : "none",
+    boxShadow: browserItemShadow(input),
     "&:hover": {
       bgcolor: "action.selected",
-      borderColor:
-        input.selected || input.isPinned ? "primary.light" : "action.selected",
+      borderColor: browserItemHoverBorderColor(input),
     },
-    "&:active": input.draggable ? { cursor: "grabbing" } : undefined,
+    "&:active": browserItemActiveSx(input),
   } as const;
 }
 
@@ -127,96 +142,77 @@ export function sortItemsWithPinnedFirst<T>(
     .map(({ item }) => item);
 }
 
-export function FilePreview({
-  absolutePath,
-  relativePath,
-  kind,
-  placeholderLabel,
-}: PreviewProps) {
-  const filename = getLeafName(relativePath);
-  const extension = (kind ?? getFileExtension(relativePath)).toLowerCase();
+interface PlaceholderPreviewProps {
+  label?: string;
+}
 
-  if (!absolutePath) {
-    return (
-      <Box
-        sx={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          bgcolor: "action.hover",
-          color: "text.secondary",
-          textAlign: "center",
-          px: 1,
-        }}
-      >
-        <Typography
-          variant="caption"
-          sx={{
-            fontSize: appTokens.typography.fontSizes.caption,
-          }}
-        >
-          {placeholderLabel ?? "Waiting for Telegram media"}
-        </Typography>
-      </Box>
-    );
-  }
+interface MediaPreviewProps {
+  fileUrl: string;
+  filename: string;
+}
 
-  const fileUrl = toFileUrl(absolutePath);
+interface GenericFilePreviewProps {
+  extension: string;
+}
 
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return (
-      <Box
-        component="img"
-        src={fileUrl}
-        alt={filename}
-        draggable={false}
-        sx={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          display: "block",
-        }}
-      />
-    );
-  }
-
-  if (VIDEO_EXTENSIONS.has(extension)) {
-    return (
-      <Box
-        component="video"
-        src={fileUrl}
-        draggable={false}
-        muted
-        autoPlay
-        loop
-        playsInline
-        preload="metadata"
-        sx={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          display: "block",
-        }}
-      />
-    );
-  }
-
+function PlaceholderPreview({ label }: PlaceholderPreviewProps) {
   return (
     <Box
       sx={{
+        width: "100%",
+        height: "100%",
         display: "flex",
-        flexDirection: "column",
         alignItems: "center",
-        gap: 0.5,
+        justifyContent: "center",
+        bgcolor: "action.hover",
+        color: "text.secondary",
+        textAlign: "center",
+        px: 1,
       }}
     >
+      <Typography
+        variant="caption"
+        sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+      >
+        {label ?? "Waiting for Telegram media"}
+      </Typography>
+    </Box>
+  );
+}
+
+function ImagePreview({ fileUrl, filename }: MediaPreviewProps) {
+  return (
+    <Box
+      component="img"
+      src={fileUrl}
+      alt={filename}
+      draggable={false}
+      sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+    />
+  );
+}
+
+function VideoPreview({ fileUrl }: Pick<MediaPreviewProps, "fileUrl">) {
+  return (
+    <Box
+      component="video"
+      src={fileUrl}
+      draggable={false}
+      muted
+      autoPlay
+      loop
+      playsInline
+      preload="metadata"
+      sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+    />
+  );
+}
+
+function GenericFilePreview({ extension }: GenericFilePreviewProps) {
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5 }}>
       <InsertDriveFileIcon
-        sx={{
-          fontSize: appTokens.sizes.preview.fileTypeIcon,
-          color: "text.disabled",
-        }}
+        sx={{ fontSize: appTokens.sizes.preview.fileTypeIcon, color: "text.disabled" }}
       />
       <Typography
         variant="caption"
@@ -231,6 +227,31 @@ export function FilePreview({
       </Typography>
     </Box>
   );
+}
+
+export function FilePreview({
+  absolutePath,
+  relativePath,
+  kind,
+  placeholderLabel,
+}: PreviewProps) {
+  const extension = (kind ?? getFileExtension(relativePath)).toLowerCase();
+
+  if (!absolutePath) {
+    return <PlaceholderPreview label={placeholderLabel} />;
+  }
+
+  const fileUrl = toFileUrl(absolutePath);
+
+  if (IMAGE_EXTENSIONS.has(extension)) {
+    return <ImagePreview fileUrl={fileUrl} filename={getLeafName(relativePath)} />;
+  }
+
+  if (VIDEO_EXTENSIONS.has(extension)) {
+    return <VideoPreview fileUrl={fileUrl} />;
+  }
+
+  return <GenericFilePreview extension={extension} />;
 }
 
 export function BrowserViewToggle({
