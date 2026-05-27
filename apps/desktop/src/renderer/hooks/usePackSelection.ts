@@ -1,15 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { StickerPack, StickerPackDetails } from "@sticker-smith/shared";
 
-export function usePackSelection() {
-  const [packs, setPacks] = useState<StickerPack[]>([]);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [details, setDetails] = useState<StickerPackDetails | null>(null);
-  const latestDetailsRef = useRef<StickerPackDetails | null>(null);
+type PackDetailsState = StickerPackDetails | null;
+type PackListState = StickerPack[];
+type SetDetails = Dispatch<SetStateAction<PackDetailsState>>;
+
+type PackListSelection = {
+  packs: PackListState;
+  refreshPacks: () => Promise<PackListState>;
+  selectedPackId: string | null;
+  setSelectedPackId: Dispatch<SetStateAction<string | null>>;
+};
+
+type PackDetailsSelection = {
+  details: PackDetailsState;
+  latestDetailsRef: MutableRefObject<PackDetailsState>;
+  refreshDetails: (packId: string) => Promise<StickerPackDetails>;
+  refreshDetailsSafely: (packId: string) => Promise<PackDetailsState>;
+  setDetails: SetDetails;
+};
+
+function useLatestDetailsRef(details: PackDetailsState) {
+  const latestDetailsRef = useRef<PackDetailsState>(null);
 
   useEffect(() => {
     latestDetailsRef.current = details;
   }, [details]);
+
+  return latestDetailsRef;
+}
+
+function usePackListSelection(): PackListSelection {
+  const [packs, setPacks] = useState<PackListState>([]);
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
 
   const refreshPacks = useCallback(async () => {
     const next = await window.stickerSmith.packs.list();
@@ -21,6 +45,17 @@ export function usePackSelection() {
     );
     return next;
   }, []);
+
+  useEffect(() => {
+    void refreshPacks();
+  }, [refreshPacks]);
+
+  return { packs, refreshPacks, selectedPackId, setSelectedPackId };
+}
+
+function usePackDetailsSelection(refreshPacks: () => Promise<PackListState>): PackDetailsSelection {
+  const [details, setDetails] = useState<PackDetailsState>(null);
+  const latestDetailsRef = useLatestDetailsRef(details);
 
   const refreshDetails = useCallback(async (packId: string) => {
     const next = await window.stickerSmith.packs.get(packId);
@@ -41,10 +76,20 @@ export function usePackSelection() {
     [refreshDetails, refreshPacks],
   );
 
-  useEffect(() => {
-    void refreshPacks();
-  }, [refreshPacks]);
+  return {
+    details,
+    latestDetailsRef,
+    refreshDetails,
+    refreshDetailsSafely,
+    setDetails,
+  };
+}
 
+function useSelectedPackDetails(
+  selectedPackId: string | null,
+  refreshPacks: () => Promise<PackListState>,
+  setDetails: SetDetails,
+) {
   useEffect(() => {
     let active = true;
 
@@ -71,7 +116,21 @@ export function usePackSelection() {
     return () => {
       active = false;
     };
-  }, [refreshPacks, selectedPackId]);
+  }, [refreshPacks, selectedPackId, setDetails]);
+}
+
+export function usePackSelection() {
+  const { packs, refreshPacks, selectedPackId, setSelectedPackId } =
+    usePackListSelection();
+  const {
+    details,
+    latestDetailsRef,
+    refreshDetails,
+    refreshDetailsSafely,
+    setDetails,
+  } = usePackDetailsSelection(refreshPacks);
+
+  useSelectedPackDetails(selectedPackId, refreshPacks, setDetails);
 
   return {
     details,

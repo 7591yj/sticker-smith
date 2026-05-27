@@ -1,7 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConversionJobEvent, StickerPackDetails } from "@sticker-smith/shared";
 import type { ConversionFailureDialogState } from "../components/ConversionFailureDialog";
 import { getLeafName } from "../utils/pathDisplay";
+
+type UseConversionStateArgs = {
+  latestDetailsRef: React.RefObject<StickerPackDetails | null>;
+  refreshDetails: (packId: string) => Promise<StickerPackDetails>;
+};
+
+type ConversionJobRefs = {
+  failures: React.MutableRefObject<
+    Record<string, ConversionFailureDialogState["failures"]>
+  >;
+  packNames: React.MutableRefObject<Record<string, string | null>>;
+  stickerNames: React.MutableRefObject<Record<string, Record<string, string>>>;
+};
+
+type ConversionJobHandlers = {
+  captureConversionJobStart: (event: ConversionJobEvent) => void;
+  captureConversionFailure: (event: ConversionJobEvent) => void;
+  finishConversionJob: (event: ConversionJobEvent) => void;
+};
 
 function createFallbackFailure(
   failures: ConversionFailureDialogState["failures"],
@@ -17,45 +36,52 @@ function createFallbackFailure(
       ];
 }
 
-export function useConversionState({
-  latestDetailsRef,
-  refreshDetails,
-}: {
-  latestDetailsRef: React.RefObject<StickerPackDetails | null>;
-  refreshDetails: (packId: string) => Promise<StickerPackDetails>;
-}) {
-  const [conversionEvents, setConversionEvents] = useState<ConversionJobEvent[]>([]);
-  const [converting, setConverting] = useState(false);
-  const [failureDialog, setFailureDialog] =
-    useState<ConversionFailureDialogState | null>(null);
-  const jobFailuresRef = useRef<
+function getStickerNames(details: StickerPackDetails | null) {
+  return Object.fromEntries(
+    (details?.stickers ?? []).map((sticker) => [
+      sticker.id,
+      getLeafName(sticker.relativePath),
+    ]),
+  );
+}
+
+function useConversionJobRefs(): ConversionJobRefs {
+  const failures = useRef<
     Record<string, ConversionFailureDialogState["failures"]>
   >({});
-  const jobPackNamesRef = useRef<Record<string, string | null>>({});
-  const jobStickerNamesRef = useRef<Record<string, Record<string, string>>>({});
+  const packNames = useRef<Record<string, string | null>>({});
+  const stickerNames = useRef<Record<string, Record<string, string>>>({});
 
-  const dismissFailureDialog = useCallback(() => {
-    setFailureDialog(null);
-  }, []);
+  return useMemo(
+    () => ({ failures, packNames, stickerNames }),
+    [failures, packNames, stickerNames],
+  );
+}
 
+function useConversionJobHandlers({
+  jobRefs,
+  latestDetailsRef,
+  refreshDetails,
+  setConverting,
+  setFailureDialog,
+}: UseConversionStateArgs & {
+  jobRefs: ConversionJobRefs;
+  setConverting: React.Dispatch<React.SetStateAction<boolean>>;
+  setFailureDialog: React.Dispatch<
+    React.SetStateAction<ConversionFailureDialogState | null>
+  >;
+}): ConversionJobHandlers {
   const captureConversionJobStart = useCallback((event: ConversionJobEvent) => {
     if (event.type !== "job_started") {
       return;
     }
 
-    const stickerNames = Object.fromEntries(
-      (latestDetailsRef.current?.stickers ?? []).map((sticker) => [
-        sticker.id,
-        getLeafName(sticker.relativePath),
-      ]),
-    );
-
     setFailureDialog(null);
-    jobFailuresRef.current[event.jobId] = [];
-    jobPackNamesRef.current[event.jobId] = latestDetailsRef.current?.pack.name ?? null;
-    jobStickerNamesRef.current[event.jobId] = stickerNames;
+    jobRefs.failures.current[event.jobId] = [];
+    jobRefs.packNames.current[event.jobId] = latestDetailsRef.current?.pack.name ?? null;
+    jobRefs.stickerNames.current[event.jobId] = getStickerNames(latestDetailsRef.current);
     setConverting(true);
-  }, [latestDetailsRef]);
+  }, [jobRefs, latestDetailsRef, setConverting, setFailureDialog]);
 
   const captureConversionFailure = useCallback((event: ConversionJobEvent) => {
     if (event.type !== "sticker_failed") {
@@ -63,19 +89,19 @@ export function useConversionState({
     }
 
     const assetLabel =
-      (event.stickerId ? jobStickerNamesRef.current[event.jobId]?.[event.stickerId] : null) ??
+      (event.stickerId ? jobRefs.stickerNames.current[event.jobId]?.[event.stickerId] : null) ??
       event.stickerId ??
       "Unknown file";
 
-    jobFailuresRef.current[event.jobId] = [
-      ...(jobFailuresRef.current[event.jobId] ?? []),
+    jobRefs.failures.current[event.jobId] = [
+      ...(jobRefs.failures.current[event.jobId] ?? []),
       {
         assetLabel,
         error: event.error ?? "Conversion failed for an unknown reason.",
         mode: event.mode,
       },
     ];
-  }, []);
+  }, [jobRefs]);
 
   const finishConversionJob = useCallback(
     (event: ConversionJobEvent) => {
@@ -83,7 +109,7 @@ export function useConversionState({
         return;
       }
 
-      const failures = jobFailuresRef.current[event.jobId] ?? [];
+      const failures = jobRefs.failures.current[event.jobId] ?? [];
       const failureCount = event.failureCount ?? failures.length;
 
       setConverting(false);
@@ -94,7 +120,7 @@ export function useConversionState({
       if (failureCount > 0) {
         setFailureDialog({
           packName:
-            jobPackNamesRef.current[event.jobId] ??
+            jobRefs.packNames.current[event.jobId] ??
             latestDetailsRef.current?.pack.name ??
             null,
           successCount: event.successCount ?? 0,
@@ -103,22 +129,59 @@ export function useConversionState({
         });
       }
 
-      delete jobFailuresRef.current[event.jobId];
-      delete jobPackNamesRef.current[event.jobId];
-      delete jobStickerNamesRef.current[event.jobId];
+      delete jobRefs.failures.current[event.jobId];
+      delete jobRefs.packNames.current[event.jobId];
+      delete jobRefs.stickerNames.current[event.jobId];
     },
-    [latestDetailsRef, refreshDetails],
+    [jobRefs, latestDetailsRef, refreshDetails, setConverting, setFailureDialog],
   );
+
+  return useMemo(
+    () => ({
+      captureConversionJobStart,
+      captureConversionFailure,
+      finishConversionJob,
+    }),
+    [captureConversionJobStart, captureConversionFailure, finishConversionJob],
+  );
+}
+
+function useConversionEventsSubscription(handlers: ConversionJobHandlers) {
+  const [conversionEvents, setConversionEvents] = useState<ConversionJobEvent[]>([]);
 
   useEffect(() => {
     const unsub = window.stickerSmith.conversion.subscribe((event) => {
       setConversionEvents((current) => [event, ...current].slice(0, 50));
-      captureConversionJobStart(event);
-      captureConversionFailure(event);
-      finishConversionJob(event);
+      handlers.captureConversionJobStart(event);
+      handlers.captureConversionFailure(event);
+      handlers.finishConversionJob(event);
     });
     return unsub;
-  }, [captureConversionJobStart, captureConversionFailure, finishConversionJob]);
+  }, [handlers]);
+
+  return conversionEvents;
+}
+
+export function useConversionState({
+  latestDetailsRef,
+  refreshDetails,
+}: UseConversionStateArgs) {
+  const [converting, setConverting] = useState(false);
+  const [failureDialog, setFailureDialog] =
+    useState<ConversionFailureDialogState | null>(null);
+  const jobRefs = useConversionJobRefs();
+  const handlers = useConversionJobHandlers({
+    jobRefs,
+    latestDetailsRef,
+    refreshDetails,
+    setConverting,
+    setFailureDialog,
+  });
+  const conversionEvents = useConversionEventsSubscription(handlers);
+
+  const dismissFailureDialog = useCallback(() => {
+    setFailureDialog(null);
+  }, []);
 
   return {
     conversionEvents,
