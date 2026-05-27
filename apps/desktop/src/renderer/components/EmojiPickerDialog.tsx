@@ -18,6 +18,8 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { appTokens } from "../../theme/appTokens";
 
+const MAX_EMOJI_SELECTION = 20;
+
 interface Props {
   open: boolean;
   title: string;
@@ -26,14 +28,13 @@ interface Props {
   onClose: () => void;
 }
 
-export function EmojiPickerDialog({
+type ToggleEmoji = (emoji: string) => void;
+
+function useSelectedEmojis({
   open,
-  title,
   initialEmojis,
   onConfirm,
-  onClose,
-}: Props) {
-  const theme = useTheme();
+}: Pick<Props, "open" | "initialEmojis" | "onConfirm">) {
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>(initialEmojis);
   const [submitting, setSubmitting] = useState(false);
 
@@ -46,7 +47,49 @@ export function EmojiPickerDialog({
     setSubmitting(false);
   }, [initialEmojis, open]);
 
-  const emojiPickerStyle = useMemo(() => {
+  const toggleEmoji: ToggleEmoji = (emoji) => {
+    setSelectedEmojis((current) => toggleEmojiInSelection(current, emoji));
+  };
+
+  const confirmSelection = async () => {
+    if (submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await onConfirm(selectedEmojis);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return {
+    clearSelection: () => setSelectedEmojis([]),
+    confirmSelection,
+    selectedEmojis,
+    submitting,
+    toggleEmoji,
+  };
+}
+
+function toggleEmojiInSelection(current: string[], emoji: string) {
+  if (current.includes(emoji)) {
+    return current.filter((item) => item !== emoji);
+  }
+
+  if (current.length >= MAX_EMOJI_SELECTION) {
+    return current;
+  }
+
+  return [...current, emoji];
+}
+
+function useEmojiPickerStyle() {
+  const theme = useTheme();
+
+  return useMemo(() => {
     const dialogBackground = "#38383D";
     const dialogInputBackground = "#303035";
     const dialogBorder = alpha(theme.palette.common.white, 0.12);
@@ -87,129 +130,169 @@ export function EmojiPickerDialog({
       boxShadow: "none",
     } as CSSProperties;
   }, [theme]);
+}
 
-  const toggleEmoji = (emoji: string) => {
-    setSelectedEmojis((current) => {
-      if (current.includes(emoji)) {
-        return current.filter((item) => item !== emoji);
-      }
+function EmojiPickerDialogGlobalStyles() {
+  const theme = useTheme();
 
-      if (current.length >= 20) {
-        return current;
-      }
+  return (
+    <GlobalStyles
+      styles={{
+        ".EmojiPickerReact, .EmojiPickerReact input, .EmojiPickerReact button:not(.epr-emoji), .EmojiPickerReact .epr-emoji-category-label":
+          {
+            fontFamily: `${theme.typography.fontFamily} !important`,
+          },
+        ".EmojiPickerReact input": {
+          fontSize: `${appTokens.typography.fontSizes.caption} !important`,
+        },
+        ".EmojiPickerReact .epr-emoji-category-label": {
+          fontSize: `${appTokens.typography.fontSizes.caption} !important`,
+          fontWeight: `${appTokens.typography.fontWeights.medium} !important`,
+        },
+      }}
+    />
+  );
+}
 
-      return [...current, emoji];
-    });
-  };
+function SelectedEmojiChips({
+  selectedEmojis,
+  toggleEmoji,
+}: {
+  selectedEmojis: string[];
+  toggleEmoji: ToggleEmoji;
+}) {
+  return (
+    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+      {selectedEmojis.length > 0 ? (
+        selectedEmojis.map((emoji) => (
+          <Chip
+            key={emoji}
+            label={emoji}
+            onDelete={() => toggleEmoji(emoji)}
+            size="small"
+          />
+        ))
+      ) : (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+        >
+          {appTokens.copy.labels.noEmoji}
+        </Typography>
+      )}
+    </Stack>
+  );
+}
 
-  const handleEmojiSelect = (emoji: EmojiClickData) => {
-    toggleEmoji(emoji.emoji);
-  };
+function EmojiPickerDialogBody({
+  selectedEmojis,
+  toggleEmoji,
+}: {
+  selectedEmojis: string[];
+  toggleEmoji: ToggleEmoji;
+}) {
+  const emojiPickerStyle = useEmojiPickerStyle();
+  const handleEmojiSelect = (emoji: EmojiClickData) => toggleEmoji(emoji.emoji);
 
-  const handleConfirm = async () => {
-    if (submitting) {
-      return;
-    }
+  return (
+    <DialogContent sx={{ pt: "8px !important" }}>
+      <Stack spacing={1.5}>
+        <SelectedEmojiChips
+          selectedEmojis={selectedEmojis}
+          toggleEmoji={toggleEmoji}
+        />
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontSize: appTokens.typography.fontSizes.caption }}
+        >
+          Pick up to 20 emojis from the list.
+        </Typography>
+        <EmojiPicker
+          width="100%"
+          height={360}
+          emojiStyle={EmojiStyle.NATIVE}
+          emojiVersion="15.0"
+          theme={Theme.DARK}
+          style={emojiPickerStyle}
+          previewConfig={{ showPreview: false }}
+          skinTonePickerLocation={SkinTonePickerLocation.SEARCH}
+          suggestedEmojisMode={SuggestionMode.RECENT}
+          onEmojiClick={handleEmojiSelect}
+        />
+      </Stack>
+    </DialogContent>
+  );
+}
 
-    setSubmitting(true);
+function EmojiPickerDialogActions({
+  canClear,
+  clearSelection,
+  confirmSelection,
+  onClose,
+  submitting,
+}: {
+  canClear: boolean;
+  clearSelection: () => void;
+  confirmSelection: () => Promise<void>;
+  onClose: () => void;
+  submitting: boolean;
+}) {
+  return (
+    <DialogActions sx={{ px: 3, pb: 2 }}>
+      <Button size="small" onClick={onClose} disabled={submitting}>
+        {appTokens.copy.actions.cancel}
+      </Button>
+      <Button size="small" onClick={clearSelection} disabled={submitting || !canClear}>
+        {appTokens.copy.actions.clear}
+      </Button>
+      <Button
+        size="small"
+        variant="contained"
+        onClick={() => void confirmSelection()}
+        disabled={submitting}
+      >
+        {appTokens.copy.actions.apply}
+      </Button>
+    </DialogActions>
+  );
+}
 
-    try {
-      await onConfirm(selectedEmojis);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+export function EmojiPickerDialog({
+  open,
+  title,
+  initialEmojis,
+  onConfirm,
+  onClose,
+}: Props) {
+  const { clearSelection, confirmSelection, selectedEmojis, submitting, toggleEmoji } =
+    useSelectedEmojis({ initialEmojis, onConfirm, open });
 
   return (
     <>
-      <GlobalStyles
-        styles={{
-          ".EmojiPickerReact, .EmojiPickerReact input, .EmojiPickerReact button:not(.epr-emoji), .EmojiPickerReact .epr-emoji-category-label":
-            {
-              fontFamily: `${theme.typography.fontFamily} !important`,
-            },
-          ".EmojiPickerReact input": {
-            fontSize: `${appTokens.typography.fontSizes.caption} !important`,
-          },
-          ".EmojiPickerReact .epr-emoji-category-label": {
-            fontSize: `${appTokens.typography.fontSizes.caption} !important`,
-            fontWeight: `${appTokens.typography.fontWeights.medium} !important`,
-          },
-        }}
-      />
+      <EmojiPickerDialogGlobalStyles />
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle
-        sx={{
-          fontSize: appTokens.typography.fontSizes.dialogTitle,
-          fontWeight: appTokens.typography.fontWeights.medium,
-          pb: 1,
-        }}
-      >
-        {title}
-      </DialogTitle>
-      <DialogContent sx={{ pt: "8px !important" }}>
-        <Stack spacing={1.5}>
-          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-            {selectedEmojis.length > 0 ? (
-              selectedEmojis.map((emoji) => (
-                <Chip
-                  key={emoji}
-                  label={emoji}
-                  onDelete={() => toggleEmoji(emoji)}
-                  size="small"
-                />
-              ))
-            ) : (
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
-              >
-                {appTokens.copy.labels.noEmoji}
-              </Typography>
-            )}
-          </Stack>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontSize: appTokens.typography.fontSizes.caption }}
-          >
-            Pick up to 20 emojis from the list.
-          </Typography>
-          <EmojiPicker
-            width="100%"
-            height={360}
-            emojiStyle={EmojiStyle.NATIVE}
-            emojiVersion="15.0"
-            theme={Theme.DARK}
-            style={emojiPickerStyle}
-            previewConfig={{ showPreview: false }}
-            skinTonePickerLocation={SkinTonePickerLocation.SEARCH}
-            suggestedEmojisMode={SuggestionMode.RECENT}
-            onEmojiClick={handleEmojiSelect}
-          />
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button size="small" onClick={onClose} disabled={submitting}>
-          {appTokens.copy.actions.cancel}
-        </Button>
-        <Button
-          size="small"
-          onClick={() => setSelectedEmojis([])}
-          disabled={submitting || selectedEmojis.length === 0}
+        <DialogTitle
+          sx={{
+            fontSize: appTokens.typography.fontSizes.dialogTitle,
+            fontWeight: appTokens.typography.fontWeights.medium,
+            pb: 1,
+          }}
         >
-          {appTokens.copy.actions.clear}
-        </Button>
-        <Button
-          size="small"
-          variant="contained"
-          onClick={() => void handleConfirm()}
-          disabled={submitting}
-        >
-          {appTokens.copy.actions.apply}
-        </Button>
-      </DialogActions>
+          {title}
+        </DialogTitle>
+        <EmojiPickerDialogBody
+          selectedEmojis={selectedEmojis}
+          toggleEmoji={toggleEmoji}
+        />
+        <EmojiPickerDialogActions
+          canClear={selectedEmojis.length > 0}
+          clearSelection={clearSelection}
+          confirmSelection={confirmSelection}
+          onClose={onClose}
+          submitting={submitting}
+        />
       </Dialog>
     </>
   );
