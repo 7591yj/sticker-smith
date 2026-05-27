@@ -27,6 +27,15 @@ interface TelegramPackMutationServiceOptions {
   emit: (event: TelegramEvent) => void;
 }
 
+type StickerPackSticker = StickerPackDetails["stickers"][number];
+type StickerSticker = StickerPackSticker;
+type StickerOutput = StickerPackSticker | undefined;
+type UpdateTelegramPackContext = {
+  details: StickerPackDetails;
+  telegram: NonNullable<StickerPackDetails["pack"]["telegram"]>;
+  stickerStickers: StickerSticker[];
+};
+
 export class TelegramPackMutationService {
   constructor(private readonly options: TelegramPackMutationServiceOptions) {}
 
@@ -34,81 +43,146 @@ export class TelegramPackMutationService {
     await this.options.auth.requireConnectedState();
     const details = await this.preflightPublishPack(input);
     let createdStickerSetId: string | null = null;
-    this.options.emit({
-      type: "publish_started",
-      localPackId: input.packId,
-    });
+    this.emitPublishStarted(input.packId);
 
     try {
-      await this.options.auth.tdlibService.checkStickerSetName(input.shortName);
-      createdStickerSetId =
-        await this.options.auth.tdlibService.createNewStickerSet({
-          title: input.title,
-          shortName: input.shortName,
-          stickers: this.getStickerStickers(details).map((sticker) => {
-            const output = findSticker(details.stickers, sticker.id);
-            if (!output) {
-              throw new Error(`Sticker file for ${sticker.relativePath} is missing.`);
-            }
-
-            return {
-              stickerPath: output.absolutePath,
-              emojis: sticker.emojiList,
-              format: "video" as const,
-            };
-          }),
-        });
-
-      const iconSticker = this.getIconSticker(details);
-      if (iconSticker) {
-        await this.ensureStickerFileExists(
-          iconSticker.absolutePath,
-          `Icon file for ${details.pack.name}`,
-        );
-        await this.options.auth.tdlibService.setStickerSetThumbnail({
-          shortName: input.shortName,
-          thumbnailPath: iconSticker.absolutePath,
-          format: "video",
-        });
-      }
-
-      this.options.emit({
-        type: "publish_finished",
+      createdStickerSetId = await this.createTelegramStickerSet(input, details);
+      await this.publishTelegramPackIcon(input.shortName, details);
+      this.emitPublishFinished(input.packId, input.packId, createdStickerSetId);
+    } catch (error) {
+      await this.handlePublishFailure({
+        error,
         localPackId: input.packId,
-        packId: input.packId,
         stickerSetId: createdStickerSetId,
       });
-      return;
-    } catch (error) {
-      const errorMessage = describeTdlibError(error);
-      if (createdStickerSetId) {
-        const recoveredPackId = await this.recoverPublishedMirrorAfterFailure({
-          localPackId: input.packId,
-          stickerSetId: createdStickerSetId,
-          errorMessage,
-        });
-        if (recoveredPackId) {
-          this.options.emit({
-            type: "publish_finished",
-            localPackId: input.packId,
-            packId: recoveredPackId,
-            stickerSetId: createdStickerSetId,
-          });
-          return;
-        }
-      }
-
-      this.options.emit({
-        type: "publish_failed",
-        localPackId: input.packId,
-        error: errorMessage,
-      });
-      throw error;
     }
   }
 
   async updateTelegramPack(input: UpdateTelegramPackInput) {
     await this.options.auth.requireConnectedState();
+    const context = await this.prepareTelegramPackUpdate(input);
+
+    this.options.emit({
+      type: "update_started",
+      packId: input.packId,
+      stickerSetId: context.telegram.stickerSetId,
+    });
+    await this.options.mirrorService.markPackSyncState(input.packId, "syncing", null);
+
+    try {
+      await this.applyTelegramPackUpdate(input.packId, context);
+      await this.options.mirrorService.markPackSyncState(input.packId, "idle", null);
+      this.options.emit({
+        type: "update_finished",
+        packId: input.packId,
+        stickerSetId: context.telegram.stickerSetId,
+      });
+    } catch (error) {
+      await this.handleTelegramPackUpdateFailure(input.packId, context.telegram, error);
+    }
+  }
+
+  private emitPublishStarted(localPackId: string) {
+    this.options.emit({
+      type: "publish_started",
+      localPackId,
+    });
+  }
+
+  private emitPublishFinished(
+    localPackId: string,
+    packId: string,
+    stickerSetId: string,
+  ) {
+    this.options.emit({
+      type: "publish_finished",
+      localPackId,
+      packId,
+      stickerSetId,
+    });
+  }
+
+  private async createTelegramStickerSet(
+    input: PublishLocalPackInput,
+    details: StickerPackDetails,
+  ) {
+    await this.options.auth.tdlibService.checkStickerSetName(input.shortName);
+    return this.options.auth.tdlibService.createNewStickerSet({
+      title: input.title,
+      shortName: input.shortName,
+      stickers: this.buildTelegramUploadStickers(details),
+    });
+  }
+
+  private buildTelegramUploadStickers(details: StickerPackDetails) {
+    return this.getStickerStickers(details).map((sticker) => {
+      const output = findSticker(details.stickers, sticker.id);
+      if (!output) {
+        throw new Error(`Sticker file for ${sticker.relativePath} is missing.`);
+      }
+
+      return {
+        stickerPath: output.absolutePath,
+        emojis: sticker.emojiList,
+        format: "video" as const,
+      };
+    });
+  }
+
+  private async publishTelegramPackIcon(
+    shortName: string,
+    details: StickerPackDetails,
+  ) {
+    const iconSticker = this.getIconSticker(details);
+    if (!iconSticker) {
+      return;
+    }
+
+    await this.ensureStickerFileExists(
+      iconSticker.absolutePath,
+      `Icon file for ${details.pack.name}`,
+    );
+    await this.options.auth.tdlibService.setStickerSetThumbnail({
+      shortName,
+      thumbnailPath: iconSticker.absolutePath,
+      format: "video",
+    });
+  }
+
+  private async handlePublishFailure(input: {
+    error: unknown;
+    localPackId: string;
+    stickerSetId: string | null;
+  }) {
+    const errorMessage = describeTdlibError(input.error);
+    const recoveredPackId = input.stickerSetId
+      ? await this.recoverPublishedMirrorAfterFailure({
+          localPackId: input.localPackId,
+          stickerSetId: input.stickerSetId,
+          errorMessage,
+        })
+      : null;
+
+    if (recoveredPackId && input.stickerSetId) {
+      this.emitPublishFinished(
+        input.localPackId,
+        recoveredPackId,
+        input.stickerSetId,
+      );
+      return;
+    }
+
+    this.options.emit({
+      type: "publish_failed",
+      localPackId: input.localPackId,
+      error: errorMessage,
+    });
+    throw input.error;
+  }
+
+  private async prepareTelegramPackUpdate(
+    input: UpdateTelegramPackInput,
+  ): Promise<UpdateTelegramPackContext> {
     const details = await this.options.libraryService.getPack(input.packId);
     const telegram = details.pack.telegram;
     const stickerStickers = this.getStickerStickers(details);
@@ -119,92 +193,94 @@ export class TelegramPackMutationService {
       throw new Error(describeUnsupportedStickerSet(telegram));
     }
 
-    this.options.emit({
-      type: "update_started",
-      packId: input.packId,
-      stickerSetId: telegram.stickerSetId,
+    return { details, telegram, stickerStickers };
+  }
+
+  private async applyTelegramPackUpdate(
+    packId: string,
+    context: UpdateTelegramPackContext,
+  ) {
+    this.assertTelegramMirrorHasStickers(context.stickerStickers);
+    await this.validateTelegramPackStickers(context.details, {
+      operation: "update",
+      requireIconSticker: false,
     });
-    await this.options.mirrorService.markPackSyncState(input.packId, "syncing", null);
 
-    try {
-      if (stickerStickers.length === 0) {
-        throw new Error(
-          "Telegram mirrors must keep at least one sticker. Deleting the entire remote sticker set is not supported by Update.",
-        );
-      }
+    const remoteSet = await this.options.syncService.getRemoteStickerSetOrThrow(
+      context.telegram.stickerSetId,
+    );
+    await this.syncTelegramMirrorWithRemote({ packId, ...context, remoteSet });
+  }
 
-      await this.validateTelegramPackStickers(details, {
-        operation: "update",
-        requireIconSticker: false,
-      });
-
-      const remoteSet = await this.options.syncService.getRemoteStickerSetOrThrow(
-        telegram.stickerSetId,
+  private assertTelegramMirrorHasStickers(
+    stickerStickers: readonly StickerPackSticker[],
+  ) {
+    if (stickerStickers.length === 0) {
+      throw new Error(
+        "Telegram mirrors must keep at least one sticker. Deleting the entire remote sticker set is not supported by Update.",
       );
-      const telegramShortName = await this.resolveTelegramMirrorShortName({
-        packId: input.packId,
-        telegram,
-        remoteSet,
-      });
-      const remoteByStickerId = new Map(
-        remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
-      );
-      const duplicateLocalStickerStickerIds =
-        this.getDuplicateLocalStickerStickerIds(details);
-      const localByStickerId = new Map(
-        details.stickers
-          .filter((sticker) => sticker.telegram)
-          .map((sticker) => [sticker.telegram!.stickerId, sticker]),
-      );
-
-      await this.syncTelegramMirrorTitle({
-        details,
-        remoteSet,
-        telegramShortName,
-      });
-      await this.reorderExistingRemoteStickerStickers(remoteSet, stickerStickers);
-      const remotelyAddedStickerIds = await this.applyTelegramStickerStickerChanges({
-        details,
-        stickerStickers,
-        telegramShortName,
-        remoteByStickerId,
-        duplicateLocalStickerStickerIds,
-      });
-      await this.removeDeletedRemoteStickers({
-        telegram,
-        remoteSet,
-        localByStickerId,
-      });
-      await this.syncTelegramMirrorThumbnail({
-        details,
-        telegramShortName,
-      });
-      await this.resyncUpdatedTelegramMirror({
-        stickerSetId: telegram.stickerSetId,
-        stickerStickers,
-        remotelyAddedStickerIds,
-      });
-      await this.options.mirrorService.markPackSyncState(input.packId, "idle", null);
-      this.options.emit({
-        type: "update_finished",
-        packId: input.packId,
-        stickerSetId: telegram.stickerSetId,
-      });
-    } catch (error) {
-      const errorMessage = describeTdlibError(error);
-      await this.recoverMirrorAfterFailedUpdate({
-        packId: input.packId,
-        stickerSetId: telegram.stickerSetId,
-        errorMessage,
-      });
-      this.options.emit({
-        type: "update_failed",
-        packId: input.packId,
-        stickerSetId: telegram.stickerSetId,
-        error: errorMessage,
-      });
-      throw error;
     }
+  }
+
+  private async syncTelegramMirrorWithRemote(input: UpdateTelegramPackContext & {
+    packId: string;
+    remoteSet: TelegramRemoteStickerSet;
+  }) {
+    const telegramShortName = await this.resolveTelegramMirrorShortName(input);
+    const remoteByStickerId = new Map(
+      input.remoteSet.stickers.map((sticker) => [sticker.stickerId, sticker]),
+    );
+    const localByStickerId = new Map(
+      input.details.stickers
+        .filter((sticker) => sticker.telegram)
+        .map((sticker) => [sticker.telegram!.stickerId, sticker]),
+    );
+
+    await this.syncTelegramMirrorTitle({ ...input, telegramShortName });
+    await this.reorderExistingRemoteStickerStickers(
+      input.remoteSet,
+      input.stickerStickers,
+    );
+    const remotelyAddedStickerIds = await this.applyTelegramStickerStickerChanges({
+      details: input.details,
+      stickerStickers: input.stickerStickers,
+      telegramShortName,
+      remoteByStickerId,
+      duplicateLocalStickerStickerIds: this.getDuplicateLocalStickerStickerIds(
+        input.details,
+      ),
+    });
+    await this.removeDeletedRemoteStickers({
+      telegram: input.telegram,
+      remoteSet: input.remoteSet,
+      localByStickerId,
+    });
+    await this.syncTelegramMirrorThumbnail({ details: input.details, telegramShortName });
+    await this.resyncUpdatedTelegramMirror({
+      stickerSetId: input.telegram.stickerSetId,
+      stickerStickers: input.stickerStickers,
+      remotelyAddedStickerIds,
+    });
+  }
+
+  private async handleTelegramPackUpdateFailure(
+    packId: string,
+    telegram: NonNullable<StickerPackDetails["pack"]["telegram"]>,
+    error: unknown,
+  ) {
+    const errorMessage = describeTdlibError(error);
+    await this.recoverMirrorAfterFailedUpdate({
+      packId,
+      stickerSetId: telegram.stickerSetId,
+      errorMessage,
+    });
+    this.options.emit({
+      type: "update_failed",
+      packId,
+      stickerSetId: telegram.stickerSetId,
+      error: errorMessage,
+    });
+    throw error;
   }
 
   private getStickerStickers(details: StickerPackDetails) {
@@ -333,46 +409,78 @@ export class TelegramPackMutationService {
   }
 
   private getDuplicateLocalStickerStickerIds(details: StickerPackDetails) {
-    const remoteSignatures = new Set<string>();
-    const duplicateStickerIds = new Set<string>();
+    const stickerStickers = this.getStickerStickers(details);
+    const remoteSignatures = this.getRemoteStickerSignatures(details, stickerStickers);
 
-    for (const sticker of this.getStickerStickers(details)) {
+    return new Set(
+      stickerStickers
+        .filter((sticker) => this.isDuplicateLocalSticker(details, sticker, remoteSignatures))
+        .map((sticker) => sticker.id),
+    );
+  }
+
+  private getRemoteStickerSignatures(
+    details: StickerPackDetails,
+    stickerStickers: readonly StickerSticker[],
+  ) {
+    const remoteSignatures = new Set<string>();
+
+    for (const sticker of stickerStickers) {
       if (!sticker.telegram) {
         continue;
       }
 
-      const output = findSticker(details.stickers, sticker.id);
-      for (const signature of collectTelegramStickerSignatures({
-        emojis: sticker.emojiList,
-        sha256Values: [
-          sticker.telegram.baselineStickerHash ?? null,
-          output?.sha256 ?? null,
-        ],
-      })) {
-        if (signature) {
-          remoteSignatures.add(signature);
-        }
+      const telegramSticker = sticker as StickerSticker & {
+        telegram: NonNullable<StickerSticker["telegram"]>;
+      };
+      for (const signature of this.collectExistingRemoteStickerSignatures(
+        details,
+        telegramSticker,
+      )) {
+        remoteSignatures.add(signature);
       }
     }
 
-    for (const sticker of this.getStickerStickers(details)) {
-      if (sticker.telegram) {
-        continue;
-      }
+    return remoteSignatures;
+  }
 
-      const output = findSticker(details.stickers, sticker.id);
-      const signatures = collectTelegramStickerSignatures({
-        emojis: sticker.emojiList,
-        sha256Values: [output?.sha256 ?? null],
-      });
-      if (!signatures.some((signature) => remoteSignatures.has(signature))) {
-        continue;
-      }
+  private collectExistingRemoteStickerSignatures(
+    details: StickerPackDetails,
+    sticker: StickerSticker & { telegram: NonNullable<StickerSticker["telegram"]> },
+  ) {
+    const output = findSticker(details.stickers, sticker.id);
+    return collectTelegramStickerSignatures({
+      emojis: sticker.emojiList,
+      sha256Values: [
+        sticker.telegram.baselineStickerHash ?? null,
+        output?.sha256 ?? null,
+      ],
+    }).filter(Boolean);
+  }
 
-      duplicateStickerIds.add(sticker.id);
+  private isDuplicateLocalSticker(
+    details: StickerPackDetails,
+    sticker: StickerSticker,
+    remoteSignatures: ReadonlySet<string>,
+  ) {
+    if (sticker.telegram) {
+      return false;
     }
 
-    return duplicateStickerIds;
+    return this.collectLocalStickerSignatures(details, sticker).some((signature) =>
+      remoteSignatures.has(signature),
+    );
+  }
+
+  private collectLocalStickerSignatures(
+    details: StickerPackDetails,
+    sticker: StickerSticker,
+  ) {
+    const output = findSticker(details.stickers, sticker.id);
+    return collectTelegramStickerSignatures({
+      emojis: sticker.emojiList,
+      sha256Values: [output?.sha256 ?? null],
+    });
   }
 
   private async validateTelegramPackStickers(
@@ -555,72 +663,150 @@ export class TelegramPackMutationService {
     const remotelyAddedStickerIds = new Set<string>();
 
     for (const sticker of input.stickerStickers) {
-      const output = findSticker(input.details.stickers, sticker.id);
-      this.assertStickerHasEmojis(sticker, "update");
-
-      if (!sticker.telegram) {
-        if (input.duplicateLocalStickerStickerIds.has(sticker.id)) {
-          continue;
-        }
-
-        if (!output) {
-          throw new Error(
-            `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram update.`,
-          );
-        }
-        await this.ensureStickerFileExists(
-          output.absolutePath,
-          `Sticker file for ${sticker.relativePath}`,
-        );
-
-        await this.options.auth.tdlibService.addStickerToSet({
-          shortName: input.telegramShortName,
-          stickerPath: output.absolutePath,
-          emojis: sticker.emojiList,
-        });
+      const added = await this.applyTelegramStickerStickerChange(input, sticker);
+      if (added) {
         remotelyAddedStickerIds.add(sticker.id);
-        continue;
-      }
-
-      const remoteSticker = input.remoteByStickerId.get(sticker.telegram.stickerId);
-      if (!remoteSticker) {
-        continue;
-      }
-
-      const remoteFileId = sticker.telegram.fileId ?? remoteSticker.fileId;
-      if (output) {
-        await this.ensureStickerFileExists(
-          output.absolutePath,
-          `Sticker file for ${sticker.relativePath}`,
-        );
-      }
-
-      if (
-        output &&
-        output.sha256 !== sticker.telegram.baselineStickerHash &&
-        remoteFileId
-      ) {
-        await this.options.auth.tdlibService.replaceStickerInSet({
-          shortName: input.telegramShortName,
-          oldFileId: remoteFileId,
-          newStickerPath: output.absolutePath,
-          emojis: sticker.emojiList,
-        });
-        continue;
-      }
-
-      const remoteEmojis = remoteSticker.emojiList.join(" ");
-      const localEmojis = sticker.emojiList.join(" ");
-      if (localEmojis !== remoteEmojis && remoteFileId) {
-        await this.options.auth.tdlibService.setStickerEmojis({
-          stickerSetId: input.details.pack.telegram!.stickerSetId,
-          fileId: remoteFileId,
-          emojis: sticker.emojiList,
-        });
       }
     }
 
     return remotelyAddedStickerIds;
+  }
+
+  private async applyTelegramStickerStickerChange(
+    input: {
+      details: StickerPackDetails;
+      telegramShortName: string;
+      remoteByStickerId: ReadonlyMap<string, TelegramRemoteSticker>;
+      duplicateLocalStickerStickerIds: ReadonlySet<string>;
+    },
+    sticker: StickerSticker,
+  ) {
+    const output = findSticker(input.details.stickers, sticker.id);
+    this.assertStickerHasEmojis(sticker, "update");
+
+    if (!sticker.telegram) {
+      return this.addLocalStickerToTelegramSet(input, sticker, output);
+    }
+
+    await this.updateExistingTelegramSticker(input, sticker, output);
+    return false;
+  }
+
+  private async addLocalStickerToTelegramSet(
+    input: {
+      details: StickerPackDetails;
+      telegramShortName: string;
+      duplicateLocalStickerStickerIds: ReadonlySet<string>;
+    },
+    sticker: StickerSticker,
+    output: StickerOutput,
+  ) {
+    if (input.duplicateLocalStickerStickerIds.has(sticker.id)) {
+      return false;
+    }
+
+    if (!output) {
+      throw new Error(
+        `Sticker file for ${sticker.relativePath} is missing. Add the sticker again before Telegram update.`,
+      );
+    }
+    await this.ensureStickerFileExists(
+      output.absolutePath,
+      `Sticker file for ${sticker.relativePath}`,
+    );
+
+    await this.options.auth.tdlibService.addStickerToSet({
+      shortName: input.telegramShortName,
+      stickerPath: output.absolutePath,
+      emojis: sticker.emojiList,
+    });
+    return true;
+  }
+
+  private async updateExistingTelegramSticker(
+    input: {
+      details: StickerPackDetails;
+      telegramShortName: string;
+      remoteByStickerId: ReadonlyMap<string, TelegramRemoteSticker>;
+    },
+    sticker: StickerSticker,
+    output: StickerOutput,
+  ) {
+    if (!sticker.telegram) {
+      return;
+    }
+
+    const telegramSticker = sticker as StickerSticker & {
+      telegram: NonNullable<StickerSticker["telegram"]>;
+    };
+    const remoteSticker = input.remoteByStickerId.get(telegramSticker.telegram.stickerId);
+    if (!remoteSticker) {
+      return;
+    }
+
+    const remoteFileId = telegramSticker.telegram.fileId ?? remoteSticker.fileId;
+    if (output) {
+      await this.ensureStickerFileExists(
+        output.absolutePath,
+        `Sticker file for ${sticker.relativePath}`,
+      );
+    }
+
+    if (
+      await this.replaceTelegramStickerIfChanged(
+        input,
+        telegramSticker,
+        output,
+        remoteFileId,
+      )
+    ) {
+      return;
+    }
+
+    await this.updateTelegramStickerEmojisIfChanged(
+      input.details,
+      sticker,
+      remoteSticker,
+      remoteFileId,
+    );
+  }
+
+  private async replaceTelegramStickerIfChanged(
+    input: { telegramShortName: string },
+    sticker: StickerSticker & { telegram: NonNullable<StickerSticker["telegram"]> },
+    output: StickerOutput,
+    remoteFileId: string | null | undefined,
+  ) {
+    if (!output || output.sha256 === sticker.telegram.baselineStickerHash || !remoteFileId) {
+      return false;
+    }
+
+    await this.options.auth.tdlibService.replaceStickerInSet({
+      shortName: input.telegramShortName,
+      oldFileId: remoteFileId,
+      newStickerPath: output.absolutePath,
+      emojis: sticker.emojiList,
+    });
+    return true;
+  }
+
+  private async updateTelegramStickerEmojisIfChanged(
+    details: StickerPackDetails,
+    sticker: StickerSticker,
+    remoteSticker: TelegramRemoteSticker,
+    remoteFileId: string | null | undefined,
+  ) {
+    const remoteEmojis = remoteSticker.emojiList.join(" ");
+    const localEmojis = sticker.emojiList.join(" ");
+    if (localEmojis === remoteEmojis || !remoteFileId) {
+      return;
+    }
+
+    await this.options.auth.tdlibService.setStickerEmojis({
+      stickerSetId: details.pack.telegram!.stickerSetId,
+      fileId: remoteFileId,
+      emojis: sticker.emojiList,
+    });
   }
 
   private async removeDeletedRemoteStickers(input: {
