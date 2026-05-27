@@ -16,17 +16,25 @@ interface Props {
   initialShortName: string;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (input: { title: string; shortName: string }) => Promise<unknown>;
+  onConfirm: (input: PublishInput) => Promise<unknown>;
 }
 
-export function TelegramPublishDialog({
-  open,
-  initialTitle,
+interface PublishInput {
+  title: string;
+  shortName: string;
+}
+
+interface PublishFormState extends PublishInput {
+  canSubmit: boolean;
+  setTitle: (title: string) => void;
+  setShortName: (shortName: string) => void;
+}
+
+function useTelegramPublishForm({
   initialShortName,
-  submitting,
-  onClose,
-  onConfirm,
-}: Props) {
+  initialTitle,
+  open,
+}: Pick<Props, "initialShortName" | "initialTitle" | "open">): PublishFormState {
   const [title, setTitle] = useState(initialTitle);
   const [shortName, setShortName] = useState(initialShortName);
 
@@ -39,82 +47,146 @@ export function TelegramPublishDialog({
     setShortName(initialShortName);
   }, [initialShortName, initialTitle, open]);
 
-  const canSubmit =
-    title.trim().length > 0 &&
-    /^[A-Za-z][A-Za-z0-9_]{4,63}$/.test(shortName.trim());
+  return {
+    title,
+    shortName,
+    canSubmit: isValidPublishInput({ title, shortName }),
+    setTitle,
+    setShortName,
+  };
+}
+
+function isValidPublishInput({ title, shortName }: PublishInput): boolean {
+  return title.trim().length > 0 && /^[A-Za-z][A-Za-z0-9_]{4,63}$/.test(shortName.trim());
+}
+
+interface PublishDialogContentProps extends PublishInput {
+  submitting: boolean;
+  setTitle: (title: string) => void;
+  setShortName: (shortName: string) => void;
+}
+
+function TelegramPublishDialogContent({
+  title,
+  shortName,
+  submitting,
+  setTitle,
+  setShortName,
+}: PublishDialogContentProps) {
+  return (
+    <DialogContent sx={{ pt: "8px !important" }}>
+      <Stack spacing={1.5}>
+        <TelegramPublishDescription />
+        {submitting ? <TelegramPublishProgress /> : null}
+        <TextField
+          autoFocus
+          size="small"
+          label={appTokens.copy.labels.telegramTitle}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          disabled={submitting}
+        />
+        <TextField
+          size="small"
+          label={appTokens.copy.labels.telegramShortName}
+          value={shortName}
+          onChange={(event) => setShortName(event.target.value.replace(/-/g, "_"))}
+          helperText="Start with a letter and use only letters, numbers, or underscores."
+          disabled={submitting}
+        />
+      </Stack>
+    </DialogContent>
+  );
+}
+
+function TelegramPublishDescription() {
+  return (
+    <Typography
+      variant="body2"
+      color="text.secondary"
+      sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+    >
+      Telegram creates a separate mirror pack. The local pack stays in the Local section.
+    </Typography>
+  );
+}
+
+function TelegramPublishProgress() {
+  return (
+    <Stack spacing={0.75}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+      >
+        Uploading to Telegram. Sync manually after it finishes.
+      </Typography>
+      <LinearProgress />
+    </Stack>
+  );
+}
+
+interface PublishDialogActionsProps {
+  canSubmit: boolean;
+  submitting: boolean;
+  onClose: () => void;
+}
+
+function TelegramPublishDialogActions({
+  canSubmit,
+  submitting,
+  onClose,
+}: PublishDialogActionsProps) {
+  return (
+    <DialogActions sx={{ px: 3, pb: 2 }}>
+      <Button size="small" onClick={onClose} disabled={submitting}>
+        {appTokens.copy.actions.cancel}
+      </Button>
+      <Button size="small" type="submit" variant="contained" disabled={!canSubmit || submitting}>
+        {submitting ? appTokens.copy.actions.uploading : appTokens.copy.actions.upload}
+      </Button>
+    </DialogActions>
+  );
+}
+
+export function TelegramPublishDialog({
+  open,
+  initialTitle,
+  initialShortName,
+  submitting,
+  onClose,
+  onConfirm,
+}: Props) {
+  const { title, shortName, canSubmit, setTitle, setShortName } = useTelegramPublishForm({
+    initialShortName,
+    initialTitle,
+    open,
+  });
 
   return (
-    <Dialog
-      open={open}
-      onClose={submitting ? undefined : onClose}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="sm" fullWidth>
       <form
         onSubmit={(event) => {
           event.preventDefault();
           if (!canSubmit || submitting) {
             return;
           }
-          void onConfirm({
-            title: title.trim(),
-            shortName: shortName.trim(),
-          });
+          void onConfirm({ title: title.trim(), shortName: shortName.trim() });
         }}
       >
         <DialogTitle>{appTokens.copy.dialogs.telegramPublish}</DialogTitle>
-        <DialogContent sx={{ pt: "8px !important" }}>
-          <Stack spacing={1.5}>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
-            >
-              Telegram creates a separate mirror pack. The local pack stays in the Local section.
-            </Typography>
-            {submitting ? (
-              <Stack spacing={0.75}>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
-                >
-                  Uploading to Telegram. Sync manually after it finishes.
-                </Typography>
-                <LinearProgress />
-              </Stack>
-            ) : null}
-            <TextField
-              autoFocus
-              size="small"
-              label={appTokens.copy.labels.telegramTitle}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              disabled={submitting}
-            />
-            <TextField
-              size="small"
-              label={appTokens.copy.labels.telegramShortName}
-              value={shortName}
-              onChange={(event) => setShortName(event.target.value.replace(/-/g, "_"))}
-              helperText="Start with a letter and use only letters, numbers, or underscores."
-              disabled={submitting}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={onClose} disabled={submitting}>
-            {appTokens.copy.actions.cancel}
-          </Button>
-          <Button
-            size="small"
-            type="submit"
-            variant="contained"
-            disabled={!canSubmit || submitting}
-          >
-            {submitting ? appTokens.copy.actions.uploading : appTokens.copy.actions.upload}
-          </Button>
-        </DialogActions>
+        <TelegramPublishDialogContent
+          title={title}
+          shortName={shortName}
+          submitting={submitting}
+          setTitle={setTitle}
+          setShortName={setShortName}
+        />
+        <TelegramPublishDialogActions
+          canSubmit={canSubmit}
+          submitting={submitting}
+          onClose={onClose}
+        />
       </form>
     </Dialog>
   );
