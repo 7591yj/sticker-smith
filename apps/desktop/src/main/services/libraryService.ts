@@ -11,11 +11,20 @@ import type {
 
 import type { SettingsService } from "./settingsService";
 import { compactStickerOrders } from "./packNormalizer";
-import { collectFiles, importStickerFiles, removeStickers, reorderStickers, slugify } from "./libraryServiceHelpers";
-import { hydratePackDetails, PackRepository, resolvePackPaths } from "./packRepository";
-import { markStickerFileReady } from "./stickerFileState";
+import {
+  applyConversionResult,
+  collectFiles,
+  findStickerOrThrow,
+  importStickerFiles,
+  markTelegramMirrorStale,
+  removeStickers,
+  renameStickerFile,
+  reorderStickers,
+  setPackIconSticker,
+  slugify,
+} from "./libraryServiceHelpers";
+import { hydratePackDetails, PackRepository } from "./packRepository";
 import { TelegramMirrorStore } from "./telegramMirrorStore";
-import { sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
 
 export class LibraryService {
@@ -38,13 +47,6 @@ export class LibraryService {
       await this.repo.writePackRecord(rootPath, record);
       return hydratePackDetails(record, rootPath);
     });
-  }
-
-  private markTelegramMirrorStale(record: StickerPackRecord) {
-    if (record.telegram && record.telegram.syncState !== "unsupported") {
-      record.telegram.syncState = "stale";
-      record.telegram.lastSyncError = null;
-    }
   }
 
   async listPacks(): Promise<StickerPack[]> { return this.repo.listPacks(); }
@@ -78,7 +80,7 @@ export class LibraryService {
       record.name = input.name;
       record.slug = slugify(input.name);
       if (record.telegram) record.telegram.title = input.name;
-      this.markTelegramMirrorStale(record);
+      markTelegramMirrorStale(record);
     });
     return details.pack;
   }
@@ -98,15 +100,7 @@ export class LibraryService {
 
   async setPackIcon(input: { packId: string; stickerId: string | null }) {
     const details = await this.mutatePackRecord(input.packId, (record, rootPath) => {
-      if (input.stickerId && !record.stickers.some((sticker) => sticker.id === input.stickerId)) {
-        throw new Error(`Sticker not found in pack: ${input.stickerId}`);
-      }
-      record.iconStickerId = input.stickerId;
-      const sticker = input.stickerId ? record.stickers.find((item) => item.id === input.stickerId) : null;
-      if (record.telegram) {
-        record.telegram.thumbnailPath = sticker ? path.join(resolvePackPaths(rootPath).outputRoot, sticker.relativePath) : null;
-      }
-      this.markTelegramMirrorStale(record);
+      setPackIconSticker(record, rootPath, input.stickerId);
     });
     return details.pack;
   }
@@ -115,7 +109,7 @@ export class LibraryService {
     let result: ImportResult = { imported: [], skipped: [] };
     await this.mutatePackRecord(packId, async (record, rootPath) => {
       result = await importStickerFiles(record, rootPath, filePaths);
-      this.markTelegramMirrorStale(record);
+      markTelegramMirrorStale(record);
     });
     return result;
   }
@@ -126,28 +120,24 @@ export class LibraryService {
 
   async setStickerEmojis(input: { packId: string; stickerId: string; emojis: string[] }) {
     return this.mutatePackRecord(input.packId, (record) => {
-      const sticker = record.stickers.find((item) => item.id === input.stickerId);
-      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
-      sticker.emojiList = [...input.emojis];
-      this.markTelegramMirrorStale(record);
+      findStickerOrThrow(record, input.stickerId).emojiList = [...input.emojis];
+      markTelegramMirrorStale(record);
     });
   }
 
   async setManyStickerEmojis(input: { packId: string; stickerIds: string[]; emojis: string[] }) {
     return this.mutatePackRecord(input.packId, (record) => {
       for (const stickerId of [...new Set(input.stickerIds)]) {
-        const sticker = record.stickers.find((item) => item.id === stickerId);
-        if (!sticker) throw new Error(`Sticker not found: ${stickerId}`);
-        sticker.emojiList = [...input.emojis];
+        findStickerOrThrow(record, stickerId).emojiList = [...input.emojis];
       }
-      this.markTelegramMirrorStale(record);
+      markTelegramMirrorStale(record);
     });
   }
 
   async reorderSticker(input: { packId: string; stickerId: string; beforeStickerId: string | null }) {
     return this.mutatePackRecord(input.packId, (record) => {
       reorderStickers(record, input.stickerId, input.beforeStickerId);
-      this.markTelegramMirrorStale(record);
+      markTelegramMirrorStale(record);
     });
   }
 
@@ -159,19 +149,13 @@ export class LibraryService {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
       const removed = removeStickers(record, input.stickerIds);
       await this.repo.deleteStickerFilesIfUnreferenced(record, rootPath, removed.map((sticker) => sticker.relativePath));
-      this.markTelegramMirrorStale(record);
+      markTelegramMirrorStale(record);
     });
   }
 
   async renameSticker(input: { packId: string; stickerId: string; nextRelativePath: string }) {
     return this.mutatePackRecord(input.packId, async (record, rootPath) => {
-      const sticker = record.stickers.find((item) => item.id === input.stickerId);
-      if (!sticker) throw new Error(`Sticker not found: ${input.stickerId}`);
-      const nextRelativePath = input.nextRelativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-      const { outputRoot } = resolvePackPaths(rootPath);
-      await fs.mkdir(path.dirname(path.join(outputRoot, nextRelativePath)), { recursive: true });
-      await fs.rename(path.join(outputRoot, sticker.relativePath), path.join(outputRoot, nextRelativePath));
-      sticker.relativePath = nextRelativePath;
+      await renameStickerFile(record, rootPath, input.stickerId, input.nextRelativePath);
     });
   }
 
@@ -192,16 +176,7 @@ export class LibraryService {
 
   async recordConversionResult(packId: string, result: { stickerId: string; mode: "icon" | "sticker"; outputFileName: string; sizeBytes: number }) {
     const { record, rootPath } = await this.repo.readPackRecordById(packId);
-    const sticker = record.stickers.find((item) => item.id === result.stickerId);
-    if (!sticker) throw new Error(`Sticker not found: ${result.stickerId}`);
-    const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, result.outputFileName);
-    markStickerFileReady(sticker, {
-      relativePath: result.outputFileName,
-      sizeBytes: result.sizeBytes,
-      sha256: await sha256ForFile(absolutePath),
-    });
-    if (result.mode === "icon") record.iconStickerId = sticker.id;
-    this.markTelegramMirrorStale(record);
+    await applyConversionResult(record, rootPath, result);
     await this.repo.writePackRecord(rootPath, record);
   }
 

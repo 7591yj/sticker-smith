@@ -6,6 +6,7 @@ import type { SourceMediaKind, StickerItem, StickerPackRecord } from "@sticker-s
 import { supportedMediaKinds } from "@sticker-smith/shared";
 
 import { resolvePackPaths } from "./packRepository";
+import { markStickerFileReady } from "./stickerFileState";
 import { sha256ForFile } from "../utils/fsUtils";
 import { nowIso } from "../utils/timeUtils";
 
@@ -94,6 +95,61 @@ export function reorderStickers(record: StickerPackRecord, stickerId: string, be
   stickers.splice(next, 0, moved);
   stickers.forEach((sticker, order) => { sticker.order = order; });
   record.stickers = stickers;
+}
+
+export function findStickerOrThrow(record: StickerPackRecord, stickerId: string) {
+  const sticker = record.stickers.find((item) => item.id === stickerId);
+  if (!sticker) throw new Error(`Sticker not found: ${stickerId}`);
+  return sticker;
+}
+
+export function markTelegramMirrorStale(record: StickerPackRecord) {
+  if (record.telegram && record.telegram.syncState !== "unsupported") {
+    record.telegram.syncState = "stale";
+    record.telegram.lastSyncError = null;
+  }
+}
+
+export function normalizeStickerRelativePath(relativePath: string) {
+  return relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+export function setPackIconSticker(record: StickerPackRecord, rootPath: string, stickerId: string | null) {
+  if (stickerId && !record.stickers.some((sticker) => sticker.id === stickerId)) {
+    throw new Error(`Sticker not found in pack: ${stickerId}`);
+  }
+
+  record.iconStickerId = stickerId;
+  const sticker = stickerId ? findStickerOrThrow(record, stickerId) : null;
+  if (record.telegram) {
+    record.telegram.thumbnailPath = sticker ? path.join(resolvePackPaths(rootPath).outputRoot, sticker.relativePath) : null;
+  }
+  markTelegramMirrorStale(record);
+}
+
+export async function renameStickerFile(record: StickerPackRecord, rootPath: string, stickerId: string, nextRelativePathInput: string) {
+  const sticker = findStickerOrThrow(record, stickerId);
+  const nextRelativePath = normalizeStickerRelativePath(nextRelativePathInput);
+  const { outputRoot } = resolvePackPaths(rootPath);
+  await fs.mkdir(path.dirname(path.join(outputRoot, nextRelativePath)), { recursive: true });
+  await fs.rename(path.join(outputRoot, sticker.relativePath), path.join(outputRoot, nextRelativePath));
+  sticker.relativePath = nextRelativePath;
+}
+
+export async function applyConversionResult(
+  record: StickerPackRecord,
+  rootPath: string,
+  result: { stickerId: string; mode: "icon" | "sticker"; outputFileName: string; sizeBytes: number },
+) {
+  const sticker = findStickerOrThrow(record, result.stickerId);
+  const absolutePath = path.join(resolvePackPaths(rootPath).outputRoot, result.outputFileName);
+  markStickerFileReady(sticker, {
+    relativePath: result.outputFileName,
+    sizeBytes: result.sizeBytes,
+    sha256: await sha256ForFile(absolutePath),
+  });
+  if (result.mode === "icon") record.iconStickerId = sticker.id;
+  markTelegramMirrorStale(record);
 }
 
 export function removeStickers(record: StickerPackRecord, stickerIds: string[]) {
