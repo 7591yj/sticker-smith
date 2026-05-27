@@ -87,15 +87,31 @@ function summarizeTdlibParameters(credentials: TelegramTdlibCredentials) {
   };
 }
 
+function asNumber(value: unknown, fallback = 0) {
+  return Number(value ?? fallback);
+}
+
+function asPresentString(value: unknown) {
+  return value ? String(value) : null;
+}
+
+function getObjectValue(source: any, key: string) {
+  return source?.[key];
+}
+
 function mapFile(file: any): TelegramDownloadedFile {
+  const remote = getObjectValue(file, "remote");
+  const local = getObjectValue(file, "local");
+  const size = getObjectValue(file, "size") ?? getObjectValue(file, "expected_size");
+
   return {
-    numericFileId: Number(file?.id ?? 0),
-    fileId: file?.remote?.id ?? null,
-    fileUniqueId: file?.remote?.unique_id ?? null,
-    localPath: file?.local?.path || null,
-    size: Number(file?.size ?? file?.expected_size ?? 0),
-    downloadedSize: Number(file?.local?.downloaded_size ?? 0),
-    isDownloaded: Boolean(file?.local?.is_downloading_completed),
+    numericFileId: asNumber(getObjectValue(file, "id")),
+    fileId: getObjectValue(remote, "id") ?? null,
+    fileUniqueId: getObjectValue(remote, "unique_id") ?? null,
+    localPath: getObjectValue(local, "path") || null,
+    size: asNumber(size),
+    downloadedSize: asNumber(getObjectValue(local, "downloaded_size")),
+    isDownloaded: Boolean(getObjectValue(local, "is_downloading_completed")),
   };
 }
 
@@ -112,41 +128,72 @@ function mapStickerFormat(format: any) {
   }
 }
 
-function mapStickerSet(set: any): TelegramRemoteStickerSet {
-  const stickers = Array.isArray(set?.stickers) ? set.stickers : [];
-  const stickerFormats = stickers.map((sticker: any) =>
-    mapStickerFormat(sticker.format),
-  ) as Array<TelegramRemoteStickerSet["format"]>;
+function listStickers(set: any) {
+  return Array.isArray(set?.stickers) ? set.stickers : [];
+}
+
+function getStickerSetFormat(
+  stickerFormats: Array<TelegramRemoteSticker["format"]>,
+): TelegramRemoteStickerSet["format"] {
   const uniqueFormats = new Set(stickerFormats);
-  const format: TelegramRemoteStickerSet["format"] =
-    uniqueFormats.size === 1
-      ? stickerFormats[0] ?? "unknown"
-      : uniqueFormats.size > 1
-        ? "mixed"
-        : "unknown";
+
+  if (uniqueFormats.size === 1) {
+    return stickerFormats[0] ?? "unknown";
+  }
+
+  return uniqueFormats.size > 1 ? "mixed" : "unknown";
+}
+
+function mapStickerEmojiList(emoji: unknown) {
+  if (Array.isArray(emoji)) {
+    return emoji;
+  }
+
+  if (typeof emoji !== "string" || emoji.length === 0) {
+    return [];
+  }
+
+  return emoji.trim().split(/\s+/);
+}
+
+function mapSticker(sticker: any, index: number): TelegramRemoteSticker {
+  const file = getObjectValue(sticker, "sticker");
+  const remote = getObjectValue(file, "remote");
 
   return {
-    stickerSetId: String(set?.id ?? ""),
-    shortName: String(set?.name ?? ""),
-    title: String(set?.title ?? ""),
-    format,
-    thumbnailStickerId: set?.thumbnail?.sticker?.id
-      ? String(set.thumbnail.sticker.id)
-      : null,
-    thumbnailFile: set?.thumbnail?.file ? mapFile(set.thumbnail.file) : null,
-    stickers: stickers.map((sticker: any, index: number) => ({
-      stickerId: String(sticker?.id ?? index),
-      fileId: sticker?.sticker?.remote?.id ?? null,
-      fileUniqueId: sticker?.sticker?.remote?.unique_id ?? null,
-      numericFileId: Number(sticker?.sticker?.id ?? 0),
-      position: index,
-      emojiList: Array.isArray(sticker?.emoji)
-        ? sticker.emoji
-        : typeof sticker?.emoji === "string" && sticker.emoji.length > 0
-          ? sticker.emoji.trim().split(/\s+/)
-          : [],
-      format: mapStickerFormat(sticker?.format),
-    })),
+    stickerId: String(getObjectValue(sticker, "id") ?? index),
+    fileId: getObjectValue(remote, "id") ?? null,
+    fileUniqueId: getObjectValue(remote, "unique_id") ?? null,
+    numericFileId: asNumber(getObjectValue(file, "id")),
+    position: index,
+    emojiList: mapStickerEmojiList(getObjectValue(sticker, "emoji")),
+    format: mapStickerFormat(getObjectValue(sticker, "format")),
+  };
+}
+
+function getStickerSetThumbnail(set: any) {
+  const thumbnail = getObjectValue(set, "thumbnail");
+  return {
+    stickerId: asPresentString(getObjectValue(getObjectValue(thumbnail, "sticker"), "id")),
+    file: getObjectValue(thumbnail, "file"),
+  };
+}
+
+function mapStickerSet(set: any): TelegramRemoteStickerSet {
+  const stickers = listStickers(set);
+  const stickerFormats = stickers.map((sticker: any) =>
+    mapStickerFormat(sticker.format),
+  );
+  const thumbnail = getStickerSetThumbnail(set);
+
+  return {
+    stickerSetId: String(getObjectValue(set, "id") ?? ""),
+    shortName: String(getObjectValue(set, "name") ?? ""),
+    title: String(getObjectValue(set, "title") ?? ""),
+    format: getStickerSetFormat(stickerFormats),
+    thumbnailStickerId: thumbnail.stickerId,
+    thumbnailFile: thumbnail.file ? mapFile(thumbnail.file) : null,
+    stickers: stickers.map(mapSticker),
   };
 }
 
@@ -281,75 +328,81 @@ export class TelegramTdlibService {
     };
   }
 
+  private buildTdlibParameters(credentials: TelegramTdlibCredentials) {
+    return {
+      _: "setTdlibParameters",
+      use_test_dc: false,
+      database_directory: credentials.databaseDirectory,
+      files_directory: credentials.filesDirectory,
+      database_encryption_key: credentials.databaseEncryptionKey,
+      use_message_database: true,
+      use_secret_chats: false,
+      system_language_code: "en",
+      application_version: "1.0",
+      device_model: "Unknown device",
+      system_version: "Unknown",
+      api_id: credentials.apiId,
+      api_hash: credentials.apiHash,
+    };
+  }
+
+  private async submitTdlibParameters() {
+    this.emitAuthStateChanged("wait_tdlib_parameters");
+
+    if (!this.client || !this.credentials || this.tdlibParametersSubmitted) {
+      return;
+    }
+
+    this.tdlibParametersSubmitted = true;
+    try {
+      await this.client.invoke(this.buildTdlibParameters(this.credentials));
+    } catch (error) {
+      this.tdlibParametersSubmitted = false;
+      console.error("TDLib rejected setTdlibParameters", {
+        error,
+        parameters: summarizeTdlibParameters(this.credentials),
+      });
+      throw error;
+    }
+  }
+
+  private async requestPhoneNumberIfAvailable() {
+    this.emitAuthStateChanged("wait_phone_number");
+
+    if (this.credentials?.phoneNumber) {
+      await this.submitPhoneNumber(this.credentials.phoneNumber);
+    }
+  }
+
+  private async markAuthorizationReady() {
+    const me = await this.getSessionUser();
+    this.emitAuthStateChanged("ready", { sessionUser: me });
+  }
+
+  private getAuthorizationStateHandlers() {
+    return {
+      authorizationStateWaitTdlibParameters: () => this.submitTdlibParameters(),
+      authorizationStateWaitPhoneNumber: () => this.requestPhoneNumberIfAvailable(),
+      authorizationStateWaitCode: () => this.emitAuthStateChanged("wait_code"),
+      authorizationStateWaitPassword: () => this.emitAuthStateChanged("wait_password"),
+      authorizationStateReady: () => this.markAuthorizationReady(),
+      authorizationStateLoggingOut: () =>
+        this.emitAuthStateChanged("logged_out", { sessionUser: null }),
+      authorizationStateClosing: () =>
+        this.emitAuthStateChanged("logged_out", { sessionUser: null }),
+      authorizationStateClosed: () =>
+        this.emitAuthStateChanged("logged_out", { sessionUser: null }),
+    };
+  }
+
   private async handleAuthorizationState(authorizationState: any) {
     if (!this.client) {
       return;
     }
 
-    switch (authorizationState?._) {
-      case "authorizationStateWaitTdlibParameters": {
-        if (!this.credentials) {
-          this.emitAuthStateChanged("wait_tdlib_parameters");
-          return;
-        }
-
-        this.emitAuthStateChanged("wait_tdlib_parameters");
-        if (this.tdlibParametersSubmitted) {
-          return;
-        }
-
-        this.tdlibParametersSubmitted = true;
-        try {
-          await this.client.invoke({
-            _: "setTdlibParameters",
-            use_test_dc: false,
-            database_directory: this.credentials.databaseDirectory,
-            files_directory: this.credentials.filesDirectory,
-            database_encryption_key: this.credentials.databaseEncryptionKey,
-            use_message_database: true,
-            use_secret_chats: false,
-            system_language_code: "en",
-            application_version: "1.0",
-            device_model: "Unknown device",
-            system_version: "Unknown",
-            api_id: this.credentials.apiId,
-            api_hash: this.credentials.apiHash,
-          });
-        } catch (error) {
-          this.tdlibParametersSubmitted = false;
-          console.error("TDLib rejected setTdlibParameters", {
-            error,
-            parameters: summarizeTdlibParameters(this.credentials),
-          });
-          throw error;
-        }
-        return;
-      }
-      case "authorizationStateWaitPhoneNumber":
-        this.emitAuthStateChanged("wait_phone_number");
-        if (this.credentials?.phoneNumber) {
-          await this.submitPhoneNumber(this.credentials.phoneNumber);
-        }
-        return;
-      case "authorizationStateWaitCode":
-        this.emitAuthStateChanged("wait_code");
-        return;
-      case "authorizationStateWaitPassword":
-        this.emitAuthStateChanged("wait_password");
-        return;
-      case "authorizationStateReady": {
-        const me = await this.getSessionUser();
-        this.emitAuthStateChanged("ready", { sessionUser: me });
-        return;
-      }
-      case "authorizationStateLoggingOut":
-      case "authorizationStateClosing":
-      case "authorizationStateClosed":
-        this.emitAuthStateChanged("logged_out", { sessionUser: null });
-        return;
-      default:
-        return;
-    }
+    const handlers = this.getAuthorizationStateHandlers();
+    const handler = handlers[authorizationState?._ as keyof typeof handlers];
+    await handler?.();
   }
 
   private handleFileUpdate(file: any) {
@@ -400,18 +453,42 @@ export class TelegramTdlibService {
     });
   }
 
-  async ensureStarted(credentials: TelegramTdlibCredentials) {
-    const credentialsChanged =
+  private credentialsChanged(credentials: TelegramTdlibCredentials) {
+    return Boolean(
       this.credentials &&
-      (this.credentials.apiId !== credentials.apiId ||
-        this.credentials.apiHash !== credentials.apiHash ||
-        this.credentials.databaseDirectory !== credentials.databaseDirectory ||
-        this.credentials.filesDirectory !== credentials.filesDirectory ||
-        this.credentials.databaseEncryptionKey !==
-          credentials.databaseEncryptionKey);
+        (this.credentials.apiId !== credentials.apiId ||
+          this.credentials.apiHash !== credentials.apiHash ||
+          this.credentials.databaseDirectory !== credentials.databaseDirectory ||
+          this.credentials.filesDirectory !== credentials.filesDirectory ||
+          this.credentials.databaseEncryptionKey !==
+            credentials.databaseEncryptionKey),
+    );
+  }
+
+  private async prepareTdlibDirectories(credentials: TelegramTdlibCredentials) {
+    await fs.mkdir(credentials.databaseDirectory, { recursive: true });
+    await fs.mkdir(credentials.filesDirectory, { recursive: true });
+  }
+
+  private async createClient() {
+    const { configure, createBareClient, tdjson } = await this.loadTdlibModules();
+    configureTdlibOnce(configure, tdjson);
+    return createBareClient() as TdClient;
+  }
+
+  private async initializeClient(client: TdClient) {
+    await this.attachClient(client);
+    const authorizationState = await client.invoke({
+      _: "getAuthorizationState",
+    });
+    await this.handleAuthorizationState(authorizationState);
+  }
+
+  async ensureStarted(credentials: TelegramTdlibCredentials) {
+    const shouldRestart = this.credentialsChanged(credentials);
     this.credentials = credentials;
 
-    if (credentialsChanged) {
+    if (shouldRestart) {
       await this.close();
     }
 
@@ -419,20 +496,12 @@ export class TelegramTdlibService {
       return;
     }
 
-    await fs.mkdir(credentials.databaseDirectory, { recursive: true });
-    await fs.mkdir(credentials.filesDirectory, { recursive: true });
+    await this.prepareTdlibDirectories(credentials);
 
-    const { configure, createBareClient, tdjson } = await this.loadTdlibModules();
-    configureTdlibOnce(configure, tdjson);
-
-    this.client = createBareClient() as TdClient;
+    this.client = await this.createClient();
     this.tdlibParametersSubmitted = false;
     try {
-      await this.attachClient(this.client);
-      const authorizationState = await this.client.invoke({
-        _: "getAuthorizationState",
-      });
-      await this.handleAuthorizationState(authorizationState);
+      await this.initializeClient(this.client);
     } catch (error) {
       await this.close();
       throw error;
@@ -501,17 +570,75 @@ export class TelegramTdlibService {
     await this.client.invoke({ _: "logOut" });
   }
 
+  private mapSessionUser(me: any): TelegramSessionUser {
+    const displayName = [me?.first_name, me?.last_name]
+      .filter(Boolean)
+      .join(" ");
+
+    return {
+      id: asNumber(me?.id),
+      username: me?.usernames?.editable_username ?? me?.username ?? null,
+      displayName: displayName || "Telegram User",
+    } satisfies TelegramSessionUser;
+  }
+
   async getSessionUser() {
     if (!this.client) {
       return null;
     }
 
-    const me = await this.client.invoke({ _: "getMe" });
-    return {
-      id: Number(me?.id ?? 0),
-      username: me?.usernames?.editable_username ?? me?.username ?? null,
-      displayName: [me?.first_name, me?.last_name].filter(Boolean).join(" ") || "Telegram User",
-    } satisfies TelegramSessionUser;
+    return this.mapSessionUser(await this.client.invoke({ _: "getMe" }));
+  }
+
+  private async getOwnedStickerSetPage(offsetStickerSetId: string) {
+    if (!this.client) {
+      throw new Error("TDLib client is not started.");
+    }
+
+    const response = await this.client.invoke({
+      _: "getOwnedStickerSets",
+      offset_sticker_set_id: offsetStickerSetId,
+      limit: OWNED_STICKER_SETS_PAGE_SIZE,
+    });
+    return Array.isArray(response?.sets) ? response.sets : [];
+  }
+
+  private getNextOwnedStickerSetOffset(chunk: any[]) {
+    if (chunk.length < OWNED_STICKER_SETS_PAGE_SIZE) {
+      return null;
+    }
+
+    const lastSetId = String(chunk.at(-1)?.id ?? "");
+    return /^[1-9]\d*$/.test(lastSetId) ? lastSetId : null;
+  }
+
+  private async listOwnedStickerSetSummaries() {
+    const sets: any[] = [];
+    let offsetStickerSetId: string | null = "0";
+
+    while (offsetStickerSetId !== null) {
+      const chunk = await this.getOwnedStickerSetPage(offsetStickerSetId);
+      if (chunk.length === 0) {
+        break;
+      }
+
+      sets.push(...chunk);
+      offsetStickerSetId = this.getNextOwnedStickerSetOffset(chunk);
+    }
+
+    return sets;
+  }
+
+  private async getFullStickerSet(set: any) {
+    if (!this.client) {
+      throw new Error("TDLib client is not started.");
+    }
+
+    const full = await this.client.invoke({
+      _: "getStickerSet",
+      set_id: set.id,
+    });
+    return mapStickerSet(full);
   }
 
   async getOwnedStickerSets() {
@@ -519,40 +646,11 @@ export class TelegramTdlibService {
       throw new Error("TDLib client is not started.");
     }
 
-    const sets: any[] = [];
-    let offsetStickerSetId = "0";
-
-    while (true) {
-      const response = await this.client.invoke({
-        _: "getOwnedStickerSets",
-        offset_sticker_set_id: offsetStickerSetId,
-        limit: OWNED_STICKER_SETS_PAGE_SIZE,
-      });
-      const chunk = Array.isArray(response?.sets) ? response.sets : [];
-      if (chunk.length === 0) {
-        break;
-      }
-
-      sets.push(...chunk);
-      if (chunk.length < OWNED_STICKER_SETS_PAGE_SIZE) {
-        break;
-      }
-
-      const lastSetId = String(chunk.at(-1)?.id ?? "");
-      if (!/^[1-9]\d*$/.test(lastSetId)) {
-        break;
-      }
-      offsetStickerSetId = lastSetId;
-    }
-
+    const sets = await this.listOwnedStickerSetSummaries();
     const fullSets: TelegramRemoteStickerSet[] = [];
 
     for (const set of sets) {
-      const full = await this.client.invoke({
-        _: "getStickerSet",
-        set_id: set.id,
-      });
-      fullSets.push(mapStickerSet(full));
+      fullSets.push(await this.getFullStickerSet(set));
     }
 
     return fullSets;
