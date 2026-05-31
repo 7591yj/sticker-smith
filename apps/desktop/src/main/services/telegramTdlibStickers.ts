@@ -2,7 +2,7 @@ import path from "node:path";
 
 import type { TelegramSessionUser } from "@sticker-smith/shared";
 import { OWNED_STICKER_SETS_PAGE_SIZE } from "../config/constants";
-import { mapStickerSet } from "./telegramTdlibMapping";
+import { mapStickerSet } from "./telegramTdlibStickerMapping";
 import { requireNonEmptyStickerSetShortName, requireTdlibClient } from "./telegramTdlibClientGuard";
 import type { TdClient, TelegramRemoteStickerSet } from "./telegramTdlibTypes";
 

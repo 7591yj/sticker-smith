@@ -1,47 +1,6 @@
-import type {
-  TelegramDownloadedFile,
-  TelegramRemoteSticker,
-  TelegramRemoteStickerSet,
-  TelegramTdlibCredentials,
-} from "./telegramTdlibTypes";
-
-export function summarizeTdlibParameters(credentials: TelegramTdlibCredentials) {
-  return {
-    apiId: credentials.apiId,
-    apiHashLength: credentials.apiHash.length,
-    databaseDirectory: credentials.databaseDirectory,
-    filesDirectory: credentials.filesDirectory,
-    databaseEncryptionKeyLength: credentials.databaseEncryptionKey.length,
-  };
-}
-
-export function asNumber(value: unknown, fallback = 0) {
-  return Number(value ?? fallback);
-}
-
-function asPresentString(value: unknown) {
-  return value ? String(value) : null;
-}
-
-function getObjectValue(source: any, key: string) {
-  return source?.[key];
-}
-
-export function mapFile(file: any): TelegramDownloadedFile {
-  const remote = getObjectValue(file, "remote");
-  const local = getObjectValue(file, "local");
-  const size = getObjectValue(file, "size") ?? getObjectValue(file, "expected_size");
-
-  return {
-    numericFileId: asNumber(getObjectValue(file, "id")),
-    fileId: getObjectValue(remote, "id") ?? null,
-    fileUniqueId: getObjectValue(remote, "unique_id") ?? null,
-    localPath: getObjectValue(local, "path") || null,
-    size: asNumber(size),
-    downloadedSize: asNumber(getObjectValue(local, "downloaded_size")),
-    isDownloaded: Boolean(getObjectValue(local, "is_downloading_completed")),
-  };
-}
+import type { TelegramRemoteSticker, TelegramRemoteStickerSet } from "./telegramTdlibTypes";
+import { mapFile } from "./telegramTdlibFiles";
+import { asNumber, asPresentString, getObjectValue } from "./telegramTdlibValues";
 
 function mapStickerFormat(format: any) {
   switch (format?._) {
@@ -73,14 +32,8 @@ function getStickerSetFormat(
 }
 
 function mapStickerEmojiList(emoji: unknown) {
-  if (Array.isArray(emoji)) {
-    return emoji;
-  }
-
-  if (typeof emoji !== "string" || emoji.length === 0) {
-    return [];
-  }
-
+  if (Array.isArray(emoji)) return emoji;
+  if (typeof emoji !== "string" || emoji.length === 0) return [];
   return emoji.trim().split(/\s+/);
 }
 

@@ -1,5 +1,5 @@
 import type { TelegramSessionUser } from "@sticker-smith/shared";
-import { asNumber } from "./telegramTdlibMapping";
+import { asNumber } from "./telegramTdlibValues";
 import type { TdClient } from "./telegramTdlibTypes";
 
 export function mapSessionUser(me: any): TelegramSessionUser {

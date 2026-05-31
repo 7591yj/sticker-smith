@@ -1,5 +1,5 @@
 import { FULL_FILE_DOWNLOAD_LIMIT } from "../config/constants";
-import { mapFile } from "./telegramTdlibMapping";
+import { mapFile } from "./telegramTdlibFiles";
 import type { PendingDownload, TdClient, TelegramDownloadedFile } from "./telegramTdlibTypes";
 
 export class TelegramTdlibDownloadManager {

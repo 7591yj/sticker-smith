@@ -1,5 +1,5 @@
 import type { TelegramSessionUser } from "@sticker-smith/shared";
-import { summarizeTdlibParameters } from "./telegramTdlibMapping";
+import { summarizeTdlibParameters } from "./telegramTdlibCredentials";
 import type { TdClient, TelegramTdlibCredentials } from "./telegramTdlibTypes";
 
 export class TelegramTdlibAuthController {
