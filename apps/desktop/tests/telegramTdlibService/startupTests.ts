@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { TelegramTdlibService } from "../../src/main/services/telegramTdlibService";
+import { TelegramTdlibService } from "../../src/main/services/telegram/tdlib/service";
 import {
   createStartupTestService,
   createTestService,
@@ -48,7 +48,7 @@ export function registerStartupTests() {
   it("configures tdlib only once across client restarts", async () => {
     vi.resetModules();
     const { TelegramTdlibService: FreshTelegramTdlibService } =
-      await import("../../src/main/services/telegramTdlibService");
+      await import("../../src/main/services/telegram/tdlib/service");
     let configureCount = 0;
     let closed = false;
     const service = createTestService(FreshTelegramTdlibService);

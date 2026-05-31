@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { TelegramTdlibService } from "../../src/main/services/telegramTdlibService";
+import { TelegramTdlibService } from "../../src/main/services/telegram/tdlib/service";
 import { createServiceWithClient } from "./helpers";
 
 export function registerQueryTests() {

@@ -1,4 +1,4 @@
-import type { TelegramTdlibService } from "../../src/main/services/telegramTdlibService";
+import type { TelegramTdlibService } from "../../src/main/services/telegram/tdlib/service";
 
 export type TdlibClientMock = {
   invoke: (request: Record<string, unknown>) => Promise<unknown>;

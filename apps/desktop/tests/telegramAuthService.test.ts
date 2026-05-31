@@ -7,7 +7,7 @@ import {
   normalizeTelegramPhoneNumber,
   normalizeTelegramStatus,
   parseTdlibParameters,
-} from "../src/main/services/telegramAuthService";
+} from "../src/main/services/telegram/auth/service";
 
 const VALID_API_HASH = "0123456789abcdef0123456789abcdef";
 

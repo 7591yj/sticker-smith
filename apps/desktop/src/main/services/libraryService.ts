@@ -24,7 +24,7 @@ import {
   slugify,
 } from "./libraryServiceHelpers";
 import { hydratePackDetails, PackRepository } from "./packRepository";
-import { TelegramMirrorStore } from "./telegramMirrorStore";
+import { TelegramMirrorStore } from "./telegram/mirror/store";
 import { nowIso } from "../utils/timeUtils";
 
 export class LibraryService {

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { resolvePackagedTdjsonPath } from "../../src/main/services/telegramTdlibService";
+import { resolvePackagedTdjsonPath } from "../../src/main/services/telegram/tdlib/service";
 
 export function registerPathTests() {
   it("rewrites packaged tdjson paths to app.asar.unpacked when present", async () => {

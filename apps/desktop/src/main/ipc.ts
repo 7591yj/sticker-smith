@@ -36,7 +36,7 @@ import { ConverterService } from "./services/converterService";
 import { LibraryService } from "./services/libraryService";
 import { SettingsService } from "./services/settingsService";
 import { ShellService } from "./services/shellService";
-import { TelegramService } from "./services/telegramService";
+import { TelegramService } from "./services/telegram/service";
 
 const settingsService = new SettingsService();
 const libraryService = new LibraryService(settingsService);

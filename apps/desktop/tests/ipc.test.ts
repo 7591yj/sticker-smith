@@ -107,7 +107,7 @@ vi.mock("../src/main/services/converterService", () => ({
   ConverterService: vi.fn().mockImplementation(() => hoisted.converterService),
 }));
 
-vi.mock("../src/main/services/telegramService", () => ({
+vi.mock("../src/main/services/telegram/service", () => ({
   TelegramService: vi.fn().mockImplementation(() => hoisted.telegramService),
 }));
 

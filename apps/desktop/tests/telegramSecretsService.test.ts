@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   normalizeKeytarModule,
   TelegramSecretsService,
-} from "../src/main/services/telegramSecretsService";
+} from "../src/main/services/telegram/secrets/service";
 
 class FakeSettingsService {
   constructor(private readonly root: string) {}
