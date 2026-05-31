@@ -1,6 +1,6 @@
 import type { StickerItem } from "@sticker-smith/shared";
 
-import { nowIso } from "../utils/timeUtils";
+import { nowIso } from "../../utils/timeUtils";
 
 type StoredSticker = Omit<StickerItem, "absolutePath">;
 

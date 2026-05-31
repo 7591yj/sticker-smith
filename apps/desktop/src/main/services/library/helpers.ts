@@ -5,8 +5,8 @@ import path from "node:path";
 import type { SourceMediaKind, StickerItem, StickerPackRecord } from "@sticker-smith/shared";
 import { supportedMediaKinds } from "@sticker-smith/shared";
 
-import { resolvePackPaths } from "../packRepository";
-import { markStickerFileReady } from "../stickerFileState";
+import { resolvePackPaths } from "../pack/repository";
+import { markStickerFileReady } from "../pack/stickerFileState";
 import { sha256ForFile } from "../../utils/fsUtils";
 import { nowIso } from "../../utils/timeUtils";
 

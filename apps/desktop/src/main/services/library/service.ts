@@ -10,7 +10,7 @@ import type {
 } from "@sticker-smith/shared";
 
 import type { SettingsService } from "../settingsService";
-import { compactStickerOrders } from "../packNormalizer";
+import { compactStickerOrders } from "../pack/normalizer";
 import {
   applyConversionResult,
   collectFiles,
@@ -23,7 +23,7 @@ import {
   setPackIconSticker,
   slugify,
 } from "./helpers";
-import { hydratePackDetails, PackRepository } from "../packRepository";
+import { hydratePackDetails, PackRepository } from "../pack/repository";
 import { TelegramMirrorStore } from "../telegram/mirror/store";
 import { nowIso } from "../../utils/timeUtils";
 

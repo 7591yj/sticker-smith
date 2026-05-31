@@ -5,7 +5,7 @@ import {
   compactStickerOrders,
   createDefaultTelegramSummary,
   sortPackRecord,
-} from "../src/main/services/packNormalizer";
+} from "../src/main/services/pack/normalizer";
 
 type RecordSticker = Omit<StickerItem, "absolutePath">;
 

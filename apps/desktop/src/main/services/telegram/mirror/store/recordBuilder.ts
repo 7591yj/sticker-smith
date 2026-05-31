@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { StickerPackRecord } from "@sticker-smith/shared";
-import { createDefaultTelegramSummary } from "../../../packNormalizer";
+import { createDefaultTelegramSummary } from "../../../pack/normalizer";
 import { nowIso } from "../../../../utils/timeUtils";
 import { stickerRelativePath } from "./stickerPaths";
 import type {

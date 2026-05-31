@@ -9,10 +9,10 @@ import type {
 } from "@sticker-smith/shared";
 import { stickerPackRecordSchema } from "@sticker-smith/shared";
 
-import type { SettingsService } from "./settingsService";
-import { sortPackRecord } from "./packNormalizer";
-import { pathExists } from "../utils/fsUtils";
-import { nowIso } from "../utils/timeUtils";
+import type { SettingsService } from "../settingsService";
+import { sortPackRecord } from "./normalizer";
+import { pathExists } from "../../utils/fsUtils";
+import { nowIso } from "../../utils/timeUtils";
 
 export function resolvePackPaths(rootPath: string) {
   return {

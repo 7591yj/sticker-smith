@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolvePackPaths } from "../../../packRepository";
+import { resolvePackPaths } from "../../../pack/repository";
 
 export async function syncTelegramThumbnailFile(
   rootPath: string,

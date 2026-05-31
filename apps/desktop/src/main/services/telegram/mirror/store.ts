@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { DownloadState, TelegramPackSummary } from "@sticker-smith/shared";
-import { compactStickerOrders } from "../../packNormalizer";
-import { PackRepository } from "../../packRepository";
+import { compactStickerOrders } from "../../pack/normalizer";
+import { PackRepository } from "../../pack/repository";
 import type { SettingsService } from "../../settingsService";
 import {
   updateTelegramMirrorMetadata as updateMirrorMetadata,

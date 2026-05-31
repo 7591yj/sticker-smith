@@ -1,5 +1,5 @@
 import type { DownloadState, TelegramPackSummary } from "@sticker-smith/shared";
-import { hydratePackDetails, type PackRepository } from "../../../packRepository";
+import { hydratePackDetails, type PackRepository } from "../../../pack/repository";
 import { syncTelegramThumbnailFile } from "./thumbnailFile";
 
 export async function updateTelegramMirrorMetadata(

@@ -5,8 +5,8 @@ import {
   hydratePackDetails,
   type PackRepository,
   resolvePackPaths,
-} from "../../../packRepository";
-import { markStickerFileReady } from "../../../stickerFileState";
+} from "../../../pack/repository";
+import { markStickerFileReady } from "../../../pack/stickerFileState";
 import { pathExists, sha256ForFile } from "../../../../utils/fsUtils";
 import { stickerRelativePath } from "./stickerPaths";
 import type { StickerRecord } from "./types";
