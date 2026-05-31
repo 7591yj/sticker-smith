@@ -103,7 +103,7 @@ vi.mock("../src/main/services/shellService", () => ({
   ShellService: vi.fn().mockImplementation(() => hoisted.shellService),
 }));
 
-vi.mock("../src/main/services/converterService", () => ({
+vi.mock("../src/main/services/converter/service", () => ({
   ConverterService: vi.fn().mockImplementation(() => hoisted.converterService),
 }));
 

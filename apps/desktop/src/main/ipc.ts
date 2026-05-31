@@ -32,7 +32,7 @@ import {
 } from "@sticker-smith/shared";
 import { mainProcessDialogStrings } from "./config/windowConfig";
 import { createBroadcastEmitter } from "./ipc/eventBus";
-import { ConverterService } from "./services/converterService";
+import { ConverterService } from "./services/converter/service";
 import { LibraryService } from "./services/libraryService";
 import { SettingsService } from "./services/settingsService";
 import { ShellService } from "./services/shellService";

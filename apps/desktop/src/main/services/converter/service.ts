@@ -9,11 +9,11 @@ import {
   type StickerPackDetails,
 } from "@sticker-smith/shared";
 
-import type { LibraryService } from "./libraryService";
-import { runConversionBackendProcess } from "./converter/backendProcess";
-import { resolveBackendCommand } from "./converter/backendResolver";
-import { buildConversionTasks } from "./converter/conversionTasks";
-import { CanonicalStickerPathRegistry } from "./converter/stickerPathRegistry";
+import type { LibraryService } from "../libraryService";
+import { runConversionBackendProcess } from "./backendProcess";
+import { resolveBackendCommand } from "./backendResolver";
+import { buildConversionTasks } from "./conversionTasks";
+import { CanonicalStickerPathRegistry } from "./stickerPathRegistry";
 
 export class ConverterService {
   private eventSink: ((event: ConversionJobEvent) => void) | null = null;
