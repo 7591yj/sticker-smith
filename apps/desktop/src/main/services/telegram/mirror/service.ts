@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { LibraryService } from "../../libraryService";
+import type { LibraryService } from "../../library/service";
 import { nowIso } from "../../../utils/timeUtils";
 import type {
   TelegramDownloadedFile,

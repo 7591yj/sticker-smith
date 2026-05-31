@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { TelegramEvent, TelegramState } from "@sticker-smith/shared";
 
-import type { LibraryService } from "../../libraryService";
+import type { LibraryService } from "../../library/service";
 import type { TelegramSecretsService } from "../secrets/service";
 import type { TelegramTdlibService } from "../tdlib/service";
 import {

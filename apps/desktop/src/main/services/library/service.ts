@@ -9,8 +9,8 @@ import type {
   StickerPackRecord,
 } from "@sticker-smith/shared";
 
-import type { SettingsService } from "./settingsService";
-import { compactStickerOrders } from "./packNormalizer";
+import type { SettingsService } from "../settingsService";
+import { compactStickerOrders } from "../packNormalizer";
 import {
   applyConversionResult,
   collectFiles,
@@ -22,10 +22,10 @@ import {
   reorderStickers,
   setPackIconSticker,
   slugify,
-} from "./libraryServiceHelpers";
-import { hydratePackDetails, PackRepository } from "./packRepository";
-import { TelegramMirrorStore } from "./telegram/mirror/store";
-import { nowIso } from "../utils/timeUtils";
+} from "./helpers";
+import { hydratePackDetails, PackRepository } from "../packRepository";
+import { TelegramMirrorStore } from "../telegram/mirror/store";
+import { nowIso } from "../../utils/timeUtils";
 
 export class LibraryService {
   private readonly repo: PackRepository;

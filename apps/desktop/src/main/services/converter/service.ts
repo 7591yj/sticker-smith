@@ -9,7 +9,7 @@ import {
   type StickerPackDetails,
 } from "@sticker-smith/shared";
 
-import type { LibraryService } from "../libraryService";
+import type { LibraryService } from "../library/service";
 import { runConversionBackendProcess } from "./backendProcess";
 import { resolveBackendCommand } from "./backendResolver";
 import { buildConversionTasks } from "./conversionTasks";

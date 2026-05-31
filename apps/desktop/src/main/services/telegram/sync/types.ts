@@ -1,5 +1,5 @@
 import type { TelegramEvent } from "@sticker-smith/shared";
-import type { LibraryService } from "../../libraryService";
+import type { LibraryService } from "../../library/service";
 import type { TelegramAuthService } from "../auth/service";
 import type { TelegramMirrorService } from "../mirror/service";
 

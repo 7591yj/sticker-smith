@@ -5,7 +5,7 @@ import type {
   UpdateTelegramPackInput,
 } from "@sticker-smith/shared";
 
-import type { LibraryService } from "../libraryService";
+import type { LibraryService } from "../library/service";
 import type { SettingsService } from "../settingsService";
 import {
   TelegramAuthService,

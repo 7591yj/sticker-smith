@@ -6,7 +6,7 @@ import {
   markTelegramMirrorStale,
   normalizeStickerRelativePath,
   setPackIconSticker,
-} from "../src/main/services/libraryServiceHelpers";
+} from "../src/main/services/library/helpers";
 
 type RecordSticker = StickerPackRecord["stickers"][number];
 

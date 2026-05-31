@@ -95,7 +95,7 @@ vi.mock("../src/main/services/settingsService", () => ({
   SettingsService: vi.fn().mockImplementation(() => hoisted.settingsService),
 }));
 
-vi.mock("../src/main/services/libraryService", () => ({
+vi.mock("../src/main/services/library/service", () => ({
   LibraryService: vi.fn().mockImplementation(() => hoisted.libraryService),
 }));
 
