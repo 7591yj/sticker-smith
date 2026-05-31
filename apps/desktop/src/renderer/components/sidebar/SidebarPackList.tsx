@@ -15,7 +15,7 @@ import type { MouseEvent } from "react";
 import { appTokens } from "../../../theme/appTokens";
 import { toFileUrl } from "../../utils/fileUrl";
 import { isVideoPath } from "../../utils/pathDisplay";
-import { secondaryLabelForPack } from "./sidebarModelUtils";
+import { secondaryLabelForPack } from "./sidebarPackSecondaryLabel";
 import type { SidebarPackFilter } from "./types";
 
 function packThumbnailMediaProps(name: string, thumbnailPath: string) {

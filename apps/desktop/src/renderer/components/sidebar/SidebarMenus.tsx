@@ -14,7 +14,7 @@ import {
   browserMenuPaperSx,
   browserMenuTitleSx,
 } from "../browserStyles";
-import { statusLabelForTelegram } from "./sidebarModelUtils";
+import { statusLabelForTelegram } from "./sidebarTelegramStatus";
 import type { PackContextMenuState, SidebarProps } from "./types";
 import type { SidebarModel } from "./useSidebarModel";
 

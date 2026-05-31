@@ -1,12 +1,8 @@
 import { useCallback, useState, type MouseEvent } from "react";
 import type { StickerPack } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
-import {
-  emptyTelegramStateLabel,
-  getSidebarLabels,
-  getSidebarPackGroups,
-  getVisiblePacks,
-} from "./sidebarModelUtils";
+import { emptyTelegramStateLabel, getSidebarLabels } from "./sidebarActionLabels";
+import { getSidebarPackGroups, getVisiblePacks } from "./sidebarPackGroups";
 import type {
   PackContextMenuState,
   SidebarPackFilter,
