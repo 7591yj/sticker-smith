@@ -69,6 +69,44 @@ function buildTelegramMetadata(
   };
 }
 
+function resolveStoredSizeBytes(existing?: StickerRecord) {
+  return existing?.sizeBytes ?? 0;
+}
+
+function resolveStoredSha256(existing?: StickerRecord) {
+  return existing?.sha256 ?? null;
+}
+
+function resolveStoredImportedAt(existing: StickerRecord | undefined, now: string) {
+  return existing?.importedAt ?? now;
+}
+
+function resolveStoredUpdatedAt(existing: StickerRecord | undefined, now: string) {
+  return existing?.updatedAt ?? now;
+}
+
+function resolveStoredDownloadState(
+  stickerInput: TelegramMirrorStickerInput,
+  existing?: StickerRecord,
+) {
+  return existing?.downloadState ?? stickerInput.downloadState;
+}
+
+function buildStoredStickerFields(
+  stickerInput: TelegramMirrorStickerInput,
+  existing: StickerRecord | undefined,
+  now: string,
+) {
+  return {
+    emojiList: stickerInput.emojiList,
+    sizeBytes: resolveStoredSizeBytes(existing),
+    sha256: resolveStoredSha256(existing),
+    importedAt: resolveStoredImportedAt(existing, now),
+    updatedAt: resolveStoredUpdatedAt(existing, now),
+    downloadState: resolveStoredDownloadState(stickerInput, existing),
+  };
+}
+
 function buildTelegramMirrorSticker(input: {
   stickerInput: TelegramMirrorStickerInput;
   existingByTelegramId: ExistingStickerByTelegramId;
@@ -89,12 +127,7 @@ function buildTelegramMirrorSticker(input: {
       stickerInput,
       existing,
     ),
-    emojiList: stickerInput.emojiList,
-    sizeBytes: existing?.sizeBytes ?? 0,
-    sha256: existing?.sha256 ?? null,
-    importedAt: existing?.importedAt ?? now,
-    updatedAt: existing?.updatedAt ?? now,
-    downloadState: existing?.downloadState ?? stickerInput.downloadState,
+    ...buildStoredStickerFields(stickerInput, existing, now),
     telegram: buildTelegramMetadata(stickerInput, existing, order),
   };
 }
