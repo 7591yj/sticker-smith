@@ -1,4 +1,4 @@
-import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
@@ -7,27 +7,13 @@ import { browserMetaChipSx } from "./browserStyles";
 import {
   BrowserGalleryCard,
   BrowserListRow,
+  type BrowserItemProps,
   type BrowserView,
   formatBytes,
 } from "./fileBrowser";
 
-export interface BrowserItemDescriptor {
+export interface BrowserItemDescriptor extends BrowserItemProps {
   key: string;
-  title: string;
-  label: string;
-  isPinned?: boolean;
-  selected?: boolean;
-  isDragOver?: boolean;
-  draggable?: boolean;
-  preview: ReactNode;
-  metadata: ReactNode;
-  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
-  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
-  onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
-  onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
-  onDragEnd?: (event: DragEvent<HTMLDivElement>) => void;
-  onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop?: (event: DragEvent<HTMLDivElement>) => void;
 }
 
 export function renderBrowserItem(view: BrowserView, item: BrowserItemDescriptor) {
@@ -40,7 +26,7 @@ export function formatOrderLabel(order: number) {
   return String(order + 1).padStart(3, "0");
 }
 
-export function formatDownloadSummary(sticker: StickerItem) {
+function formatDownloadSummary(sticker: StickerItem) {
   if (sticker.absolutePath) return "ready";
   switch (sticker.downloadState) {
     case "queued": return "queued";
@@ -62,7 +48,7 @@ export function buildStickerTitle(sticker: StickerItem) {
   ].filter(Boolean).join("\n");
 }
 
-export function formatEmojiSummary(sticker: StickerItem) {
+function formatEmojiSummary(sticker: StickerItem) {
   return sticker.emojiList.length > 0 ? sticker.emojiList.join(" ") : appTokens.copy.labels.noEmoji;
 }
 

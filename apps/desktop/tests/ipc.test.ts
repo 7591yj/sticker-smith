@@ -95,7 +95,7 @@ vi.mock("../src/main/services/settingsService", () => ({
   SettingsService: vi.fn().mockImplementation(() => hoisted.settingsService),
 }));
 
-vi.mock("../src/main/services/libraryService", () => ({
+vi.mock("../src/main/services/library/service", () => ({
   LibraryService: vi.fn().mockImplementation(() => hoisted.libraryService),
 }));
 
@@ -103,11 +103,11 @@ vi.mock("../src/main/services/shellService", () => ({
   ShellService: vi.fn().mockImplementation(() => hoisted.shellService),
 }));
 
-vi.mock("../src/main/services/converterService", () => ({
+vi.mock("../src/main/services/converter/service", () => ({
   ConverterService: vi.fn().mockImplementation(() => hoisted.converterService),
 }));
 
-vi.mock("../src/main/services/telegramService", () => ({
+vi.mock("../src/main/services/telegram/service", () => ({
   TelegramService: vi.fn().mockImplementation(() => hoisted.telegramService),
 }));
 

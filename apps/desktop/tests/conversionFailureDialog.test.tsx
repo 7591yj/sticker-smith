@@ -1,8 +1,7 @@
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversionJobEvent, StickerPackDetails } from "@sticker-smith/shared";
-import { App } from "../src/renderer/App";
+import { createDisconnectedTelegramState, renderApp } from "./helpers";
 
 describe("conversion failure dialog", () => {
   beforeEach(() => {
@@ -53,24 +52,7 @@ describe("conversion failure dialog", () => {
     Object.assign(window, {
       stickerSmith: {
         telegram: {
-          getState: vi.fn(async () => ({
-            backend: "tdlib",
-            status: "disconnected",
-            authStep: "wait_tdlib_parameters",
-            selectedMode: "user",
-            recommendedMode: "user",
-            message: "Telegram is not connected.",
-            tdlib: {
-              apiId: null,
-              apiHashConfigured: false,
-            },
-            user: {
-              phoneNumber: null,
-            },
-            sessionUser: null,
-            lastError: null,
-            updatedAt: "2026-03-12T00:00:00.000Z",
-          })),
+          getState: vi.fn(async () => createDisconnectedTelegramState()),
           subscribe: vi.fn(() => () => undefined),
         },
         packs: {
@@ -87,14 +69,7 @@ describe("conversion failure dialog", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     await act(async () => {
       listener?.({ type: "job_started", jobId: "job-1", taskCount: 1 });

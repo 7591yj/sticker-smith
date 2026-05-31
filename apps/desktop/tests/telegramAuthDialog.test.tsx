@@ -2,7 +2,10 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelegramState } from "@sticker-smith/shared";
-import { TelegramAuthDialog } from "../src/renderer/components/TelegramAuthDialog";
+import {
+  TelegramAuthDialog,
+  type TelegramAuthDialogProps,
+} from "../src/renderer/components/TelegramAuthDialog";
 
 function createTelegramState(
   overrides: Partial<TelegramState> = {},
@@ -44,16 +47,7 @@ describe("TelegramAuthDialog", () => {
 
   async function renderDialog(
     state: TelegramState,
-    overrides: Partial<{
-      onClose: () => void;
-      onSubmitTdlibParameters: (input: {
-        apiId: string;
-        apiHash: string;
-      }) => Promise<unknown>;
-      onSubmitPhoneNumber: (input: { phoneNumber: string }) => Promise<unknown>;
-      onSubmitCode: (input: { code: string }) => Promise<unknown>;
-      onSubmitPassword: (input: { password: string }) => Promise<unknown>;
-    }> = {},
+    overrides: Partial<TelegramAuthDialogProps> = {},
   ) {
     const container = document.createElement("div");
     document.body.appendChild(container);

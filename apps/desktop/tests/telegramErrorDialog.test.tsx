@@ -1,8 +1,25 @@
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelegramEvent } from "@sticker-smith/shared";
-import { App } from "../src/renderer/App";
+import { createConnectedTelegramState, renderApp } from "./helpers";
+
+async function renderWithTelegramMock(telegram: Record<string, unknown>) {
+  Object.assign(window, {
+    stickerSmith: {
+      telegram,
+      packs: {
+        list: vi.fn(async () => []),
+        get: vi.fn(),
+      },
+      conversion: {
+        subscribe: vi.fn(() => () => undefined),
+      },
+      settings: {},
+    },
+  });
+
+  return renderApp();
+}
 
 describe("telegram error dialog", () => {
   beforeEach(() => {
@@ -21,55 +38,13 @@ describe("telegram error dialog", () => {
   it("opens a dialog when telegram publish fails", async () => {
     let listener: ((event: TelegramEvent) => void) | null = null;
 
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => ({
-            backend: "tdlib",
-            status: "connected",
-            authStep: "ready",
-            selectedMode: "user",
-            recommendedMode: "user",
-            message: "Telegram is connected.",
-            tdlib: {
-              apiId: "12345",
-              apiHashConfigured: true,
-            },
-            user: {
-              phoneNumber: "+12025550123",
-            },
-            sessionUser: {
-              id: 1,
-              username: "stickersmith",
-              displayName: "Sticker Smith",
-            },
-            lastError: null,
-            updatedAt: "2026-03-12T00:00:00.000Z",
-          })),
-          subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
-            listener = nextListener;
-            return () => undefined;
-          }),
-          syncOwnedPacks: vi.fn(async () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
-    });
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => createConnectedTelegramState()),
+      subscribe: vi.fn((nextListener: (event: TelegramEvent) => void) => {
+        listener = nextListener;
+        return () => undefined;
+      }),
+      syncOwnedPacks: vi.fn(async () => undefined),
     });
 
     await act(async () => {
@@ -92,32 +67,11 @@ describe("telegram error dialog", () => {
   });
 
   it("opens a dialog when telegram startup fails", async () => {
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => {
-            throw new Error("Telegram secret storage is unavailable.");
-          }),
-          subscribe: vi.fn(() => () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
-    });
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => {
+        throw new Error("Telegram secret storage is unavailable.");
+      }),
+      subscribe: vi.fn(() => () => undefined),
     });
 
     expect(document.body.textContent).toContain("Telegram startup failed");
@@ -131,55 +85,13 @@ describe("telegram error dialog", () => {
   });
 
   it("opens a dialog when telegram logout fails", async () => {
-    Object.assign(window, {
-      stickerSmith: {
-        telegram: {
-          getState: vi.fn(async () => ({
-            backend: "tdlib",
-            status: "connected",
-            authStep: "ready",
-            selectedMode: "user",
-            recommendedMode: "user",
-            message: "Telegram is connected.",
-            tdlib: {
-              apiId: "12345",
-              apiHashConfigured: true,
-            },
-            user: {
-              phoneNumber: "+12025550123",
-            },
-            sessionUser: {
-              id: 1,
-              username: "stickersmith",
-              displayName: "Sticker Smith",
-            },
-            lastError: null,
-            updatedAt: "2026-03-12T00:00:00.000Z",
-          })),
-          logout: vi.fn(async () => {
-            throw new Error("The Telegram session could not be closed.");
-          }),
-          subscribe: vi.fn(() => () => undefined),
-          syncOwnedPacks: vi.fn(async () => undefined),
-        },
-        packs: {
-          list: vi.fn(async () => []),
-          get: vi.fn(),
-        },
-        conversion: {
-          subscribe: vi.fn(() => () => undefined),
-        },
-        settings: {},
-      },
-    });
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
+    const { root } = await renderWithTelegramMock({
+      getState: vi.fn(async () => createConnectedTelegramState()),
+      logout: vi.fn(async () => {
+        throw new Error("The Telegram session could not be closed.");
+      }),
+      subscribe: vi.fn(() => () => undefined),
+      syncOwnedPacks: vi.fn(async () => undefined),
     });
 
     const accountButton = [...document.querySelectorAll("button")].find(
@@ -216,28 +128,7 @@ describe("telegram error dialog", () => {
     Object.assign(window, {
       stickerSmith: {
         telegram: {
-          getState: vi.fn(async () => ({
-            backend: "tdlib",
-            status: "connected",
-            authStep: "ready",
-            selectedMode: "user",
-            recommendedMode: "user",
-            message: "Telegram is connected.",
-            tdlib: {
-              apiId: "12345",
-              apiHashConfigured: true,
-            },
-            user: {
-              phoneNumber: "+12025550123",
-            },
-            sessionUser: {
-              id: 1,
-              username: "stickersmith",
-              displayName: "Sticker Smith",
-            },
-            lastError: null,
-            updatedAt: "2026-03-12T00:00:00.000Z",
-          })),
+          getState: vi.fn(async () => createConnectedTelegramState()),
           updateTelegramPack: vi.fn(async () => {
             throw new Error("Telegram is not connected.");
           }),
@@ -300,14 +191,7 @@ describe("telegram error dialog", () => {
       },
     });
 
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
-    });
+    const { root } = await renderApp();
 
     const updateButton = [...document.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Update"),

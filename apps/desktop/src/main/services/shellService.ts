@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
-import type { LibraryService } from "./libraryService";
+import type { LibraryService } from "./library/service";
 import { isWithinDirectory } from "../utils/fsUtils";
 
 const execFileAsync = promisify(execFile);

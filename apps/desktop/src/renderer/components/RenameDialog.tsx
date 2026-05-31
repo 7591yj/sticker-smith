@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -16,14 +17,32 @@ interface Props {
   onClose: () => void;
 }
 
-export function RenameDialog({
+interface RenameDialogState {
+  value: string;
+  submitting: boolean;
+  errorMessage: string | null;
+  handleChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  handleSubmit: (event: FormEvent) => Promise<void>;
+}
+
+interface RenameDialogFieldsProps {
+  label?: string;
+  onClose: () => void;
+  state: RenameDialogState;
+}
+
+interface RenameDialogActionsProps {
+  submitting: boolean;
+  value: string;
+  onClose: () => void;
+}
+
+function useRenameDialogState({
   open,
-  title,
-  label,
   initialValue,
   onConfirm,
   onClose,
-}: Props) {
+}: Pick<Props, "open" | "initialValue" | "onConfirm" | "onClose">): RenameDialogState {
   const [value, setValue] = useState(initialValue);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -36,8 +55,13 @@ export function RenameDialog({
     }
   }, [open, initialValue]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setValue(event.target.value);
+    if (errorMessage) setErrorMessage(null);
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) {
       onClose();
@@ -56,9 +80,51 @@ export function RenameDialog({
     }
   };
 
+  return { value, submitting, errorMessage, handleChange, handleSubmit };
+}
+
+function RenameDialogFields({ label, onClose, state }: RenameDialogFieldsProps) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") onClose();
+  };
+
+  return (
+    <DialogContent sx={{ pt: "8px !important" }}>
+      <TextField
+        autoFocus
+        fullWidth
+        size="small"
+        label={label}
+        value={state.value}
+        onChange={state.handleChange}
+        error={Boolean(state.errorMessage)}
+        helperText={state.errorMessage ?? " "}
+        onKeyDown={handleKeyDown}
+      />
+    </DialogContent>
+  );
+}
+
+function RenameDialogActions({ submitting, value, onClose }: RenameDialogActionsProps) {
+  return (
+    <DialogActions sx={{ px: 3, pb: 2 }}>
+      <Button size="small" onClick={onClose} disabled={submitting}>
+        {appTokens.copy.actions.cancel}
+      </Button>
+      <Button size="small" type="submit" variant="contained" disabled={!value.trim() || submitting}>
+        {appTokens.copy.actions.confirm}
+      </Button>
+    </DialogActions>
+  );
+}
+
+export function RenameDialog(props: Props) {
+  const { open, title, label, onClose } = props;
+  const state = useRenameDialogState(props);
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={state.handleSubmit}>
         <DialogTitle
           sx={{
             fontSize: appTokens.typography.fontSizes.dialogTitle,
@@ -68,39 +134,8 @@ export function RenameDialog({
         >
           {title}
         </DialogTitle>
-        <DialogContent sx={{ pt: "8px !important" }}>
-          <TextField
-            autoFocus
-            fullWidth
-            size="small"
-            label={label}
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-              if (errorMessage) {
-                setErrorMessage(null);
-              }
-            }}
-            error={Boolean(errorMessage)}
-            helperText={errorMessage ?? " "}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
-            }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={onClose} disabled={submitting}>
-            {appTokens.copy.actions.cancel}
-          </Button>
-          <Button
-            size="small"
-            type="submit"
-            variant="contained"
-            disabled={!value.trim() || submitting}
-          >
-            {appTokens.copy.actions.confirm}
-          </Button>
-        </DialogActions>
+        <RenameDialogFields label={label} onClose={onClose} state={state} />
+        <RenameDialogActions submitting={state.submitting} value={state.value} onClose={onClose} />
       </form>
     </Dialog>
   );

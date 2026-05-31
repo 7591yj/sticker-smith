@@ -23,82 +23,149 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+type PreviewHeaders = Record<"accept-ranges" | "cache-control" | "content-type", string>;
+
+type ByteRange = { start: number; end: number };
+
 function registerPreviewProtocol() {
-  protocol.handle(PREVIEW_PROTOCOL, async (request) => {
-    const url = new URL(request.url);
-    const filePath = url.searchParams.get("path");
+  protocol.handle(PREVIEW_PROTOCOL, handlePreviewRequest);
+}
 
-    if (!filePath || !path.isAbsolute(filePath)) {
-      return new Response("Invalid preview path", { status: 400 });
+async function handlePreviewRequest(request: Request): Promise<Response> {
+  const filePath = getValidPreviewPath(request.url);
+
+  if (!filePath) {
+    return new Response("Invalid preview path", { status: 400 });
+  }
+
+  try {
+    const stats = await fs.stat(filePath);
+
+    if (!stats.isFile()) {
+      return new Response("Preview target is not a file", { status: 400 });
     }
 
-    try {
-      const stats = await fs.stat(filePath);
+    return createPreviewResponse(filePath, stats.size, request.headers.get("range"));
+  } catch (error) {
+    return createPreviewErrorResponse(error);
+  }
+}
 
-      if (!stats.isFile()) {
-        return new Response("Preview target is not a file", { status: 400 });
-      }
+function getValidPreviewPath(requestUrl: string): string | null {
+  const filePath = new URL(requestUrl).searchParams.get("path");
 
-      const contentType =
-        PREVIEW_MIME_TYPES[path.extname(filePath).toLowerCase()] ??
-        "application/octet-stream";
-      const baseHeaders = {
-        "accept-ranges": "bytes",
-        "cache-control": "no-store",
-        "content-type": contentType,
-      };
-      const rangeHeader = request.headers.get("range");
+  if (!filePath || !path.isAbsolute(filePath)) {
+    return null;
+  }
 
-      if (!rangeHeader) {
-        return new Response(
-          Readable.toWeb(createReadStream(filePath)) as BodyInit,
-          {
-            headers: {
-              ...baseHeaders,
-              "content-length": String(stats.size),
-            },
-          },
-        );
-      }
+  return filePath;
+}
 
-      const range = parseRangeHeader(rangeHeader, stats.size);
+function createPreviewResponse(
+  filePath: string,
+  fileSize: number,
+  rangeHeader: string | null,
+): Response {
+  const baseHeaders = getPreviewHeaders(filePath);
 
-      if (!range) {
-        return new Response(null, {
-          status: 416,
-          headers: {
-            ...baseHeaders,
-            "content-range": `bytes */${stats.size}`,
-          },
-        });
-      }
+  if (!rangeHeader) {
+    return createFullPreviewResponse(filePath, fileSize, baseHeaders);
+  }
 
-      const { start, end } = range;
-      return new Response(
-        Readable.toWeb(createReadStream(filePath, { start, end })) as BodyInit,
-        {
-          status: 206,
-          headers: {
-            ...baseHeaders,
-            "content-length": String(end - start + 1),
-            "content-range": `bytes ${start}-${end}/${stats.size}`,
-          },
-        },
-      );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return new Response("Preview file not found", { status: 404 });
-      }
+  return createRangePreviewResponse(filePath, fileSize, rangeHeader, baseHeaders);
+}
 
-      return new Response("Failed to load preview", { status: 500 });
-    }
+function getPreviewHeaders(filePath: string): PreviewHeaders {
+  return {
+    "accept-ranges": "bytes",
+    "cache-control": "no-store",
+    "content-type":
+      PREVIEW_MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+      "application/octet-stream",
+  };
+}
+
+function createFullPreviewResponse(
+  filePath: string,
+  fileSize: number,
+  baseHeaders: PreviewHeaders,
+): Response {
+  return new Response(Readable.toWeb(createReadStream(filePath)) as BodyInit, {
+    headers: {
+      ...baseHeaders,
+      "content-length": String(fileSize),
+    },
   });
+}
+
+function createRangePreviewResponse(
+  filePath: string,
+  fileSize: number,
+  rangeHeader: string,
+  baseHeaders: PreviewHeaders,
+): Response {
+  const range = parseRangeHeader(rangeHeader, fileSize);
+
+  if (!range) {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        ...baseHeaders,
+        "content-range": `bytes */${fileSize}`,
+      },
+    });
+  }
+
+  return createPartialPreviewResponse(filePath, fileSize, range, baseHeaders);
+}
+
+function createPartialPreviewResponse(
+  filePath: string,
+  fileSize: number,
+  range: ByteRange,
+  baseHeaders: PreviewHeaders,
+): Response {
+  const { start, end } = range;
+
+  return new Response(
+    Readable.toWeb(createReadStream(filePath, { start, end })) as BodyInit,
+    {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "content-length": String(end - start + 1),
+        "content-range": `bytes ${start}-${end}/${fileSize}`,
+      },
+    },
+  );
+}
+
+function createPreviewErrorResponse(error: unknown): Response {
+  if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    return new Response("Preview file not found", { status: 404 });
+  }
+
+  return new Response("Failed to load preview", { status: 500 });
 }
 
 function parseRangeHeader(
   rangeHeader: string,
   fileSize: number,
 ): { start: number; end: number } | null {
+  const parts = parseByteRangeParts(rangeHeader);
+
+  if (!parts) {
+    return null;
+  }
+
+  return parts.rawStart === ""
+    ? parseSuffixByteRange(parts.rawEnd, fileSize)
+    : parseExplicitByteRange(parts.rawStart, parts.rawEnd, fileSize);
+}
+
+function parseByteRangeParts(
+  rangeHeader: string,
+): { rawStart: string; rawEnd: string } | null {
   const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
 
   if (!match) {
@@ -106,37 +173,40 @@ function parseRangeHeader(
   }
 
   const [, rawStart, rawEnd] = match;
+  return rawStart === "" && rawEnd === "" ? null : { rawStart, rawEnd };
+}
 
-  if (rawStart === "" && rawEnd === "") {
+function parseSuffixByteRange(rawEnd: string, fileSize: number): ByteRange | null {
+  const suffixLength = Number(rawEnd);
+
+  if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
     return null;
   }
 
-  if (rawStart === "") {
-    const suffixLength = Number(rawEnd);
+  return { start: Math.max(fileSize - suffixLength, 0), end: fileSize - 1 };
+}
 
-    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
-      return null;
-    }
-
-    const start = Math.max(fileSize - suffixLength, 0);
-    return { start, end: fileSize - 1 };
-  }
-
+function parseExplicitByteRange(
+  rawStart: string,
+  rawEnd: string,
+  fileSize: number,
+): ByteRange | null {
   const start = Number(rawStart);
-  const requestedEnd =
-    rawEnd === "" ? fileSize - 1 : Math.min(Number(rawEnd), fileSize - 1);
+  const end = rawEnd === "" ? fileSize - 1 : Math.min(Number(rawEnd), fileSize - 1);
 
-  if (
-    !Number.isFinite(start) ||
-    !Number.isFinite(requestedEnd) ||
-    start < 0 ||
-    start > requestedEnd ||
-    start >= fileSize
-  ) {
-    return null;
+  return isValidExplicitByteRange(start, end, fileSize) ? { start, end } : null;
+}
+
+function isValidExplicitByteRange(start: number, end: number, fileSize: number): boolean {
+  if (!hasFiniteRangeBounds(start, end)) {
+    return false;
   }
 
-  return { start, end: requestedEnd };
+  return start >= 0 && start <= end && start < fileSize;
+}
+
+function hasFiniteRangeBounds(start: number, end: number): boolean {
+  return Number.isFinite(start) && Number.isFinite(end);
 }
 
 function getWindowTitleBarOptions(): Pick<

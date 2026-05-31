@@ -32,11 +32,11 @@ import {
 } from "@sticker-smith/shared";
 import { mainProcessDialogStrings } from "./config/windowConfig";
 import { createBroadcastEmitter } from "./ipc/eventBus";
-import { ConverterService } from "./services/converterService";
-import { LibraryService } from "./services/libraryService";
+import { ConverterService } from "./services/converter/service";
+import { LibraryService } from "./services/library/service";
 import { SettingsService } from "./services/settingsService";
 import { ShellService } from "./services/shellService";
-import { TelegramService } from "./services/telegramService";
+import { TelegramService } from "./services/telegram/service";
 
 const settingsService = new SettingsService();
 const libraryService = new LibraryService(settingsService);
@@ -64,11 +64,103 @@ function safeHandle<TArgs extends unknown[], TResult>(
   });
 }
 
-export function registerIpc() {
-  converterService.setEventSink(emitConversionEvent);
-  telegramService.subscribe(emitTelegramEvent);
+async function createPackFromDirectory() {
+  const directoryPath = (
+    await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    })
+  ).filePaths[0];
 
-  safeHandle("settings.getConfig", async () => settingsService.getConfig());
+  if (!directoryPath) {
+    return null;
+  }
+
+  const pack = await libraryService.createPack({
+    name: path.basename(directoryPath),
+  });
+  await libraryService.importDirectory(pack.id, directoryPath);
+  return libraryService.getPack(pack.id);
+}
+
+async function choosePackIcon(input: unknown) {
+  const payload = listStickersSchema.parse(input);
+  const selected = await dialog.showOpenDialog({
+    properties: ["openFile"],
+  });
+  const filePath = selected.filePaths[0];
+  if (!filePath) {
+    return null;
+  }
+
+  const imported = await libraryService.importFiles(payload.packId, [filePath]);
+  const asset = imported.imported[0];
+  if (!asset) {
+    throw new Error("Selected file could not be imported as an icon.");
+  }
+
+  await libraryService.setPackIcon({
+    packId: payload.packId,
+    stickerId: asset.id,
+  });
+  return converterService.convert({
+    packId: payload.packId,
+    stickerIds: [asset.id],
+  });
+}
+
+async function importStickerFiles(input: unknown) {
+  const payload = importFilesSchema.parse(input);
+  const filePaths =
+    payload.filePaths ??
+    (
+      await dialog.showOpenDialog({
+        properties: ["openFile", "multiSelections"],
+      })
+    ).filePaths;
+
+  return libraryService.importFiles(payload.packId, filePaths);
+}
+
+async function importStickerDirectory(input: unknown) {
+  const payload = importDirectorySchema.parse(input);
+  const directoryPath =
+    payload.directoryPath ??
+    (
+      await dialog.showOpenDialog({
+        properties: ["openDirectory"],
+      })
+    ).filePaths[0];
+
+  return directoryPath
+    ? libraryService.importDirectory(payload.packId, directoryPath)
+    : { imported: [], skipped: [] };
+}
+
+async function exportStickerFolder(event: IpcMainInvokeEvent, input: unknown) {
+  const payload = exportStickerFolderSchema.parse(input);
+  const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+  const dialogOptions: OpenDialogOptions = {
+    title: mainProcessDialogStrings.exportDialogTitle,
+    buttonLabel: mainProcessDialogStrings.exportFolderButtonLabel,
+    properties: ["openDirectory"],
+  };
+  const destinationRoot = (
+    ownerWindow
+      ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+  ).filePaths[0];
+
+  if (!destinationRoot) {
+    return null;
+  }
+
+  return shellService.exportStickerFolder({
+    packId: payload.packId,
+    destinationRoot,
+  });
+}
+
+function registerTelegramIpc() {
   safeHandle("telegram.getState", async () => telegramService.getState());
   safeHandle("telegram.submitTdlibParameters", async (_event, input: unknown) =>
     telegramService.submitTdlibParameters(
@@ -102,7 +194,9 @@ export function registerIpc() {
   safeHandle("telegram.updateTelegramPack", async (_event, input: unknown) =>
     telegramService.updateTelegramPack(updateTelegramPackSchema.parse(input)),
   );
+}
 
+function registerPackIpc() {
   safeHandle("packs.list", async () => libraryService.listPacks());
   safeHandle("packs.get", async (_event, input: { packId: string }) =>
     libraryService.getPack(input.packId),
@@ -110,23 +204,7 @@ export function registerIpc() {
   safeHandle("packs.create", async (_event, input: unknown) =>
     libraryService.createPack(createPackSchema.parse(input)),
   );
-  safeHandle("packs.createFromDirectory", async () => {
-    const directoryPath = (
-      await dialog.showOpenDialog({
-        properties: ["openDirectory"],
-      })
-    ).filePaths[0];
-
-    if (!directoryPath) {
-      return null;
-    }
-
-    const pack = await libraryService.createPack({
-      name: path.basename(directoryPath),
-    });
-    await libraryService.importDirectory(pack.id, directoryPath);
-    return libraryService.getPack(pack.id);
-  });
+  safeHandle("packs.createFromDirectory", createPackFromDirectory);
   safeHandle("packs.rename", async (_event, input: unknown) =>
     libraryService.renamePack(renamePackSchema.parse(input)),
   );
@@ -141,60 +219,18 @@ export function registerIpc() {
   safeHandle("packs.setIcon", async (_event, input: unknown) =>
     libraryService.setPackIcon(setPackIconSchema.parse(input)),
   );
-  safeHandle("packs.chooseIcon", async (_event, input: unknown) => {
-    const payload = listStickersSchema.parse(input);
-    const selected = await dialog.showOpenDialog({
-      properties: ["openFile"],
-    });
-    const filePath = selected.filePaths[0];
-    if (!filePath) {
-      return null;
-    }
-    const imported = await libraryService.importFiles(payload.packId, [
-      filePath,
-    ]);
-    const asset = imported.imported[0];
-    if (!asset) {
-      throw new Error("Selected file could not be imported as an icon.");
-    }
-    await libraryService.setPackIcon({
-      packId: payload.packId,
-      stickerId: asset.id,
-    });
-    return converterService.convert({
-      packId: payload.packId,
-      stickerIds: [asset.id],
-    });
-  });
+  safeHandle("packs.chooseIcon", async (_event, input: unknown) =>
+    choosePackIcon(input),
+  );
+}
 
-  safeHandle("stickers.importFiles", async (_event, input: unknown) => {
-    const payload = importFilesSchema.parse(input);
-    const filePaths =
-      payload.filePaths ??
-      (
-        await dialog.showOpenDialog({
-          properties: ["openFile", "multiSelections"],
-        })
-      ).filePaths;
-
-    return libraryService.importFiles(payload.packId, filePaths);
-  });
-
-  safeHandle("stickers.importDirectory", async (_event, input: unknown) => {
-    const payload = importDirectorySchema.parse(input);
-    const directoryPath =
-      payload.directoryPath ??
-      (
-        await dialog.showOpenDialog({
-          properties: ["openDirectory"],
-        })
-      ).filePaths[0];
-
-    return directoryPath
-      ? libraryService.importDirectory(payload.packId, directoryPath)
-      : { imported: [], skipped: [] };
-  });
-
+function registerStickerIpc() {
+  safeHandle("stickers.importFiles", async (_event, input: unknown) =>
+    importStickerFiles(input),
+  );
+  safeHandle("stickers.importDirectory", async (_event, input: unknown) =>
+    importStickerDirectory(input),
+  );
   safeHandle("stickers.rename", async (_event, input: unknown) =>
     libraryService.renameSticker(renameStickerSchema.parse(input)),
   );
@@ -219,35 +255,20 @@ export function registerIpc() {
   safeHandle("stickers.deleteMany", async (_event, input: unknown) =>
     libraryService.deleteManyStickers(deleteManyStickersSchema.parse(input)),
   );
-
   safeHandle("stickers.revealInFolder", async (_event, input: unknown) =>
     shellService.revealSticker(revealStickerSchema.parse(input)),
   );
-  safeHandle("stickers.exportFolder", async (event, input: unknown) => {
-    const payload = exportStickerFolderSchema.parse(input);
-    const ownerWindow =
-      BrowserWindow.fromWebContents(event.sender) ?? undefined;
-    const dialogOptions: OpenDialogOptions = {
-      title: mainProcessDialogStrings.exportDialogTitle,
-      buttonLabel: mainProcessDialogStrings.exportFolderButtonLabel,
-      properties: ["openDirectory"],
-    };
-    const destinationRoot = (
-      ownerWindow
-        ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
-        : await dialog.showOpenDialog(dialogOptions)
-    ).filePaths[0];
+  safeHandle("stickers.exportFolder", exportStickerFolder);
+}
 
-    if (!destinationRoot) {
-      return null;
-    }
+export function registerIpc() {
+  converterService.setEventSink(emitConversionEvent);
+  telegramService.subscribe(emitTelegramEvent);
 
-    return shellService.exportStickerFolder({
-      packId: payload.packId,
-      destinationRoot,
-    });
-  });
-
+  safeHandle("settings.getConfig", async () => settingsService.getConfig());
+  registerTelegramIpc();
+  registerPackIpc();
+  registerStickerIpc();
   safeHandle("conversion.convert", async (_event, input: unknown) =>
     converterService.convert(convertSchema.parse(input)),
   );

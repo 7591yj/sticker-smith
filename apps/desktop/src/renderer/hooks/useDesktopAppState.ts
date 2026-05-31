@@ -2,79 +2,52 @@ import { useConversionState } from "./useConversionState";
 import { usePackSelection } from "./usePackSelection";
 import { useTelegramState } from "./useTelegramState";
 
-export function useDesktopAppState() {
-  const {
-    details,
-    latestDetailsRef,
-    packs,
-    refreshDetails,
-    refreshDetailsSafely,
-    refreshPacks,
-    selectedPackId,
-    setDetails,
-    setSelectedPackId,
-  } = usePackSelection();
+type PackSelectionState = ReturnType<typeof usePackSelection>;
+type ConversionState = ReturnType<typeof useConversionState>;
+type TelegramState = ReturnType<typeof useTelegramState>;
 
-  const { conversionEvents, converting, dismissFailureDialog, failureDialog } =
-    useConversionState({ latestDetailsRef, refreshDetails });
+type DesktopStateParts = {
+  conversion: ConversionState;
+  packs: PackSelectionState;
+  telegram: TelegramState;
+};
 
-  const {
-    dismissTelegramErrorDialog,
-    downloadTelegramPackMedia,
-    logoutTelegram,
-    publishLocalPack,
-    resetTelegram,
-    submitTelegramCode,
-    submitTelegramPassword,
-    submitTelegramPhoneNumber,
-    submitTelegramTdlibParameters,
-    syncTelegramPacks,
-    telegramErrorDialog,
-    telegramPublishingPackIds,
-    telegramState,
-    telegramSyncInProgress,
-    telegramSyncRecommended,
-    telegramUpdatingPackIds,
-    updateTelegramPack,
-  } = useTelegramState({
-    latestDetailsRef,
-    refreshDetails,
-    refreshDetailsSafely,
-    refreshPacks,
-    setSelectedPackId,
+function useDesktopStateParts(): DesktopStateParts {
+  const packs = usePackSelection();
+  const conversion = useConversionState({
+    latestDetailsRef: packs.latestDetailsRef,
+    refreshDetails: packs.refreshDetails,
+  });
+  const telegram = useTelegramState({
+    latestDetailsRef: packs.latestDetailsRef,
+    refreshDetails: packs.refreshDetails,
+    refreshDetailsSafely: packs.refreshDetailsSafely,
+    refreshPacks: packs.refreshPacks,
+    setSelectedPackId: packs.setSelectedPackId,
   });
 
+  return { conversion, packs, telegram };
+}
+
+function isTelegramConnected({ telegramState }: TelegramState) {
+  return telegramState?.status === "connected" && telegramState.authStep === "ready";
+}
+
+function buildDesktopAppState({ conversion, packs, telegram }: DesktopStateParts) {
   return {
-    conversionEvents,
-    converting,
-    details,
-    dismissFailureDialog,
-    dismissTelegramErrorDialog,
-    downloadTelegramPackMedia,
-    failureDialog,
-    logoutTelegram,
-    packs,
-    publishLocalPack,
-    refreshDetails,
-    refreshPacks,
-    resetTelegram,
-    selectedPackId,
-    setDetails,
-    setSelectedPackId,
-    submitTelegramCode,
-    submitTelegramPassword,
-    submitTelegramPhoneNumber,
-    submitTelegramTdlibParameters,
-    syncTelegramPacks,
-    telegramConnected:
-      telegramState?.status === "connected" &&
-      telegramState.authStep === "ready",
-    telegramErrorDialog,
-    telegramPublishingPackIds,
-    telegramState,
-    telegramSyncInProgress,
-    telegramSyncRecommended,
-    telegramUpdatingPackIds,
-    updateTelegramPack,
+    ...conversion,
+    details: packs.details,
+    ...telegram,
+    packs: packs.packs,
+    refreshDetails: packs.refreshDetails,
+    refreshPacks: packs.refreshPacks,
+    selectedPackId: packs.selectedPackId,
+    setDetails: packs.setDetails,
+    setSelectedPackId: packs.setSelectedPackId,
+    telegramConnected: isTelegramConnected(telegram),
   };
+}
+
+export function useDesktopAppState() {
+  return buildDesktopAppState(useDesktopStateParts());
 }
