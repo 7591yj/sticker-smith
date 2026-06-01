@@ -18,13 +18,14 @@ export interface BrowserViewToggleProps {
 
 export interface BrowserItemProps {
   title: string;
-  label: string;
+  label: ReactNode;
   isPinned?: boolean;
   selected?: boolean;
   isDragOver?: boolean;
   draggable?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  overlay?: ReactNode;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;

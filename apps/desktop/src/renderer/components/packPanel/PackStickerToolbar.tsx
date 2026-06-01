@@ -28,13 +28,12 @@ export function PackStickerToolbar({
     <Box
       sx={{
         px: appTokens.layout.spacing.panelPaddingX,
-        py: 0.75,
+        pt: 1.25,
+        pb: 0.25,
         display: "flex",
         alignItems: "center",
         flexWrap: "wrap",
         gap: 1,
-        borderBottom: 1,
-        borderColor: "divider",
       }}
     >
       <Button
@@ -45,7 +44,11 @@ export function PackStickerToolbar({
         }
         onClick={onImportFiles}
         disabled={converting}
-        sx={panelSecondaryButtonSx}
+        sx={{
+          ...panelSecondaryButtonSx,
+          minHeight: 34,
+          borderRadius: appTokens.shape.radius.control,
+        }}
       >
         {appTokens.copy.actions.addFiles}
       </Button>
@@ -59,7 +62,11 @@ export function PackStickerToolbar({
         }
         onClick={onImportDir}
         disabled={converting}
-        sx={panelSecondaryButtonSx}
+        sx={{
+          ...panelSecondaryButtonSx,
+          minHeight: 34,
+          borderRadius: appTokens.shape.radius.control,
+        }}
       >
         {appTokens.copy.actions.addFolder}
       </Button>
@@ -89,7 +96,12 @@ export function PackStickerToolbar({
             />
           }
           onClick={onOpenStickers}
-          sx={{ ...panelSecondaryButtonSx, whiteSpace: "nowrap" }}
+          sx={{
+            ...panelSecondaryButtonSx,
+            minHeight: 34,
+            borderRadius: appTokens.shape.radius.control,
+            whiteSpace: "nowrap",
+          }}
         >
           {appTokens.copy.actions.openFolder}
         </Button>
@@ -103,7 +115,12 @@ export function PackStickerToolbar({
           }
           onClick={onExportStickers}
           disabled={stickerCount === 0}
-          sx={{ ...panelSecondaryButtonSx, whiteSpace: "nowrap" }}
+          sx={{
+            ...panelSecondaryButtonSx,
+            minHeight: 34,
+            borderRadius: appTokens.shape.radius.control,
+            whiteSpace: "nowrap",
+          }}
         >
           {appTokens.copy.actions.export}
         </Button>

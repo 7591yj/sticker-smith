@@ -2,13 +2,11 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import type { StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
-import type { BrowserView } from "../fileBrowser";
 import { RenameDialog } from "../RenameDialog";
 import { StickerList } from "../StickerList";
 import { getPackPanelDerivedState } from "./packPanelDerivedState";
 import { PackPanelHeader } from "./PackPanelHeader";
 import { PackPublishDialogController } from "./PackPublishDialogController";
-import { PackStickerToolbar } from "./PackStickerToolbar";
 import type { PackPanelProps } from "./types";
 import type { PackPanelActions } from "./usePackPanelActions";
 
@@ -55,6 +53,15 @@ function PackSyncErrorBanner({ message }: { message: string }) {
   );
 }
 
+function getUnsupportedTelegramNotice(details: StickerPackDetails) {
+  const { pack } = details;
+  if (pack.source !== "telegram" || pack.telegram?.syncState !== "unsupported") {
+    return null;
+  }
+  const format = pack.telegram.format;
+  return `Telegram pack "${pack.name}" uses ${format} stickers, and only video sticker packs are supported currently.`;
+}
+
 type PackPanelLoadedProps = Pick<
   PackPanelProps,
   | "converting"
@@ -75,8 +82,6 @@ type PackPanelLoadedProps = Pick<
   setPublishDialogOpen: (open: boolean) => void;
   publishSubmitting: boolean;
   setPublishSubmitting: (submitting: boolean) => void;
-  view: BrowserView;
-  setView: (view: BrowserView) => void;
 };
 
 export function PackPanelLoaded(props: PackPanelLoadedProps) {
@@ -118,8 +123,15 @@ export function PackPanelLoaded(props: PackPanelLoadedProps) {
         hasPendingTelegramMedia={derived.hasPendingTelegramMedia}
         telegramMediaBusy={derived.telegramMediaBusy}
         telegramMediaActionLabel={derived.telegramMediaActionLabel}
+        stickers={derived.stickers}
         onRename={() => props.setRenaming(true)}
         onDelete={actions.handleDelete}
+        converting={converting}
+        stickerCount={derived.stickers.length}
+        onImportFiles={actions.handleImportFiles}
+        onImportDir={actions.handleImportDir}
+        onOpenStickers={actions.handleOpenStickers}
+        onExportStickers={actions.handleExportStickers}
         onPublish={() => props.setPublishDialogOpen(true)}
         onUpdateTelegramPack={() =>
           void onUpdateTelegramPack({ packId: pack.id }).catch(() => undefined)
@@ -130,24 +142,23 @@ export function PackPanelLoaded(props: PackPanelLoadedProps) {
           )
         }
       />
-      {pack.telegram?.lastSyncError ? (
+      {pack.telegram?.lastSyncError && !derived.telegramUnsupported ? (
         <PackSyncErrorBanner message={pack.telegram.lastSyncError} />
       ) : null}
-      <PackStickerToolbar
-        stickerCount={derived.stickers.length}
-        converting={converting}
-        onImportFiles={actions.handleImportFiles}
-        onImportDir={actions.handleImportDir}
-        onOpenStickers={actions.handleOpenStickers}
-        onExportStickers={actions.handleExportStickers}
-      />
-      <Box sx={{ flex: 1, overflowY: "auto" }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <StickerList
           packId={pack.id}
           stickers={derived.stickers}
           iconStickerId={pack.iconStickerId}
-          view={props.view}
-          onViewChange={props.setView}
+          toolbarNotice={getUnsupportedTelegramNotice(details)}
           refreshDetails={() => props.refreshDetails(pack.id)}
         />
       </Box>
