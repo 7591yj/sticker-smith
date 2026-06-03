@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { StickerPackRecord } from "@sticker-smith/shared";
+import { hashEmojiList, type StickerPackRecord } from "@sticker-smith/shared";
 import {
   hydratePackDetails,
   type PackRepository,
@@ -22,7 +22,10 @@ async function markMirrorStickerFileReady(
   const stat = await fs.stat(absolutePath);
   sticker.sizeBytes = stat.size;
   sticker.sha256 ??= await sha256ForFile(absolutePath);
-  sticker.telegram && (sticker.telegram.baselineStickerHash ??= sticker.sha256);
+  if (sticker.telegram) {
+    sticker.telegram.baselineStickerHash ??= sticker.sha256;
+    sticker.telegram.baselineEmojiHash ??= hashEmojiList(sticker.emojiList);
+  }
   sticker.downloadState = "ready";
 }
 
@@ -64,6 +67,7 @@ export async function writeTelegramStickerFile(
     sourceFilePath: string;
     relativePath?: string;
     baselineStickerHash?: string | null;
+    baselineEmojiHash?: string | null;
   },
 ) {
   return repo.withPackMutationLock(input.packId, async () => {
@@ -85,6 +89,33 @@ export async function writeTelegramStickerFile(
     if (sticker.telegram) {
       sticker.telegram.baselineStickerHash =
         input.baselineStickerHash ?? sticker.sha256;
+      sticker.telegram.baselineEmojiHash =
+        input.baselineEmojiHash ?? hashEmojiList(sticker.emojiList);
+    }
+    await repo.writePackRecord(rootPath, record);
+    return hydratePackDetails(record, rootPath);
+  });
+}
+
+export async function updateStickerTelegramBaseline(
+  repo: PackRepository,
+  input: {
+    packId: string;
+    stickerId: string;
+    baselineStickerHash?: string | null;
+    baselineEmojiHash?: string | null;
+  },
+) {
+  return repo.withPackMutationLock(input.packId, async () => {
+    const { record, rootPath } = await repo.readPackRecordById(input.packId);
+    const sticker = requireSticker(record, input.stickerId);
+    if (sticker.telegram) {
+      if (input.baselineStickerHash !== undefined) {
+        sticker.telegram.baselineStickerHash = input.baselineStickerHash;
+      }
+      if (input.baselineEmojiHash !== undefined) {
+        sticker.telegram.baselineEmojiHash = input.baselineEmojiHash;
+      }
     }
     await repo.writePackRecord(rootPath, record);
     return hydratePackDetails(record, rootPath);

@@ -1,13 +1,15 @@
 import type { Dispatch, SetStateAction } from "react";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
 import CheckBoxIcon from "@mui/icons-material/CheckBox";
 import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CreateIcon from "@mui/icons-material/Create";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import SearchIcon from "@mui/icons-material/Search";
 import SortIcon from "@mui/icons-material/Sort";
 import TelegramIcon from "@mui/icons-material/Telegram";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -31,14 +33,19 @@ const filterOptions: Array<{
     icon: <FilterListIcon />,
   },
   {
-    value: "attention",
-    label: appTokens.copy.labels.stickerStatusAttention,
-    icon: <WarningAmberIcon />,
+    value: "draft",
+    label: appTokens.copy.labels.stickerStatusDraft,
+    icon: <CreateIcon />,
   },
   {
     value: "ready",
     label: appTokens.copy.labels.stickerStatusReady,
     icon: <CheckCircleOutlineIcon />,
+  },
+  {
+    value: "modified",
+    label: appTokens.copy.labels.stickerStatusModified,
+    icon: <ChangeCircleIcon />,
   },
   {
     value: "failed",

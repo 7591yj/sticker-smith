@@ -183,7 +183,8 @@ export class LibraryService {
   async getConversionContext(packId: string) { return this.getPack(packId); }
 
   async upsertTelegramMirror(input: Parameters<TelegramMirrorStore["upsertTelegramMirror"]>[0]) { return this.telegramMirrorStore.upsertTelegramMirror(input); }
-  async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
+  async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null; baselineEmojiHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
+  async updateStickerTelegramBaseline(input: { packId: string; stickerId: string; baselineStickerHash?: string | null; baselineEmojiHash?: string | null }) { return this.telegramMirrorStore.updateStickerTelegramBaseline(input); }
   async setTelegramStickerDownloadState(input: Parameters<TelegramMirrorStore["setTelegramStickerDownloadState"]>[0]) { return this.telegramMirrorStore.setTelegramStickerDownloadState(input); }
   async updateTelegramMirrorMetadata(input: Parameters<TelegramMirrorStore["updateTelegramMirrorMetadata"]>[0]) { return this.telegramMirrorStore.updateTelegramMirrorMetadata(input); }
   async syncTelegramThumbnail(input: Parameters<TelegramMirrorStore["syncTelegramThumbnail"]>[0]) { return this.telegramMirrorStore.syncTelegramThumbnail(input); }

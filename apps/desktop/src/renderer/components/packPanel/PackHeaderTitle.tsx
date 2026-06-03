@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CreateIcon from "@mui/icons-material/Create";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
-import TelegramIcon from "@mui/icons-material/Telegram";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem, StickerPack } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
@@ -15,7 +17,7 @@ import {
   formatTelegramSyncStateLabel,
   telegramSyncStateChipSx,
 } from "../../utils/telegramSyncState";
-import { isFailed, isReady, needsAttention } from "../stickerList/stickerUtils";
+import { getStickerStatus } from "../stickerList/stickerUtils";
 
 export function PackHeroThumbnail({ pack }: { pack: StickerPack }) {
   return (
@@ -143,36 +145,86 @@ function PackHeaderStats({ stickers }: { stickers: StickerItem[] }) {
         width: "100%",
         display: "flex",
         alignItems: "center",
-        gap: 0.75,
+        gap: 1,
         flexWrap: "wrap",
         mt: 1.25,
       }}
     >
-      <HeaderStatChip
-        icon={<CheckCircleOutlineIcon />}
-        label={appTokens.copy.labels.stickerStatusReady}
-        value={stats.ready}
-        color="success.main"
-      />
-      <HeaderStatChip
-        icon={<WarningAmberIcon />}
-        label={appTokens.copy.labels.stickerStatusAttention}
-        value={stats.attention}
-        color="warning.main"
-      />
-      <HeaderStatChip
-        icon={<ErrorOutlineIcon />}
-        label={appTokens.copy.labels.stickerStatusFailed}
-        value={stats.failed}
-        color="error.main"
-      />
-      <HeaderStatChip
-        icon={<TelegramIcon />}
-        label={appTokens.copy.labels.stickerStatusTelegram}
-        value={stats.telegram}
-        color="primary.main"
-      />
+      {stats.failed > 0 ? (
+        <StatusChipGroup>
+          <HeaderStatChip
+            icon={<ErrorOutlineIcon />}
+            label={appTokens.copy.labels.stickerStatusFailed}
+            value={stats.failed}
+            color="error.main"
+            description="Download or conversion failed"
+          />
+        </StatusChipGroup>
+      ) : null}
+      <StatusChipGroup>
+        <HeaderStatChip
+          icon={<CreateIcon />}
+          label={appTokens.copy.labels.stickerStatusDraft}
+          value={stats.draft}
+          color="warning.main"
+          description="Missing file or emoji"
+        />
+        <HeaderStatChip
+          icon={<CheckCircleOutlineIcon />}
+          label={appTokens.copy.labels.stickerStatusReady}
+          value={stats.ready}
+          color="success.main"
+          description="Complete locally, not published"
+        />
+      </StatusChipGroup>
+      <StatusGroupDivider />
+      <StatusChipGroup>
+        <HeaderStatChip
+          icon={<ChangeCircleIcon />}
+          label={appTokens.copy.labels.stickerStatusModified}
+          value={stats.modified}
+          color="warning.main"
+          description="Published with pending local edits"
+        />
+        <HeaderStatChip
+          icon={<CheckCircleIcon />}
+          label={appTokens.copy.labels.stickerStatusSynced}
+          value={stats.synced}
+          color="primary.main"
+          description="Published and clean"
+        />
+      </StatusChipGroup>
     </Box>
+  );
+}
+
+function StatusChipGroup({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 0.75,
+        flexWrap: "wrap",
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function StatusGroupDivider() {
+  return (
+    <Box
+      aria-hidden="true"
+      sx={{
+        alignSelf: "stretch",
+        width: "1px",
+        minHeight: 24,
+        bgcolor: "divider",
+        opacity: 0.55,
+      }}
+    />
   );
 }
 
@@ -181,13 +233,15 @@ function HeaderStatChip({
   label,
   value,
   color,
+  description,
 }: {
   icon: ReactNode;
   label: string;
   value: number;
   color: string;
+  description?: string;
 }) {
-  return (
+  const chip = (
     <Box
       sx={{
         height: 28,
@@ -195,7 +249,8 @@ function HeaderStatChip({
         border: 1,
         borderColor: "divider",
         borderRadius: appTokens.shape.radius.control,
-        bgcolor: "rgba(255,255,255,0.02)",
+        bgcolor: value > 0 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+        opacity: value > 0 ? 1 : 0.62,
         display: "flex",
         alignItems: "center",
         gap: 0.6,
@@ -227,16 +282,24 @@ function HeaderStatChip({
       </Typography>
     </Box>
   );
+
+  if (!description) return chip;
+  return <Tooltip title={description}>{chip}</Tooltip>;
 }
 
 function summarizeStickers(stickers: StickerItem[]) {
   return stickers.reduce(
-    (summary, sticker) => ({
-      ready: summary.ready + (isReady(sticker) ? 1 : 0),
-      attention: summary.attention + (needsAttention(sticker) ? 1 : 0),
-      failed: summary.failed + (isFailed(sticker) ? 1 : 0),
-      telegram: summary.telegram + (sticker.telegram ? 1 : 0),
-    }),
-    { ready: 0, attention: 0, failed: 0, telegram: 0 },
+    (summary, sticker) => {
+      const status = getStickerStatus(sticker);
+      return {
+        total: summary.total + 1,
+        draft: summary.draft + (status === "draft" ? 1 : 0),
+        ready: summary.ready + (status === "ready" ? 1 : 0),
+        synced: summary.synced + (status === "synced" ? 1 : 0),
+        modified: summary.modified + (status === "modified" ? 1 : 0),
+        failed: summary.failed + (status === "failed" ? 1 : 0),
+      };
+    },
+    { total: 0, draft: 0, ready: 0, synced: 0, modified: 0, failed: 0 },
   );
 }

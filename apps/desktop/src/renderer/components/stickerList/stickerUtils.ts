@@ -1,4 +1,4 @@
-import type { StickerItem } from "@sticker-smith/shared";
+import { hashEmojiList, type StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
 import { formatCountLabel } from "../browserStyles";
 import { sortItemsWithPinnedFirst } from "../fileBrowser";
@@ -64,10 +64,12 @@ function compareStickers(
 
 export function matchesFilter(sticker: StickerItem, filter: StickerFilter) {
   switch (filter) {
-    case "attention":
-      return needsAttention(sticker);
+    case "draft":
+      return isDraft(sticker);
     case "ready":
-      return isReady(sticker);
+      return getStickerStatus(sticker) === "ready";
+    case "modified":
+      return getStickerStatus(sticker) === "modified";
     case "failed":
       return isFailed(sticker);
     case "telegram":
@@ -81,13 +83,14 @@ export function summarizeFilterCounts(stickers: StickerItem[]): FilterCounts {
   return stickers.reduce<FilterCounts>(
     (summary, sticker) => {
       summary.all += 1;
-      if (needsAttention(sticker)) summary.attention += 1;
-      if (isReady(sticker)) summary.ready += 1;
+      if (isDraft(sticker)) summary.draft += 1;
+      if (getStickerStatus(sticker) === "ready") summary.ready += 1;
+      if (getStickerStatus(sticker) === "modified") summary.modified += 1;
       if (isFailed(sticker)) summary.failed += 1;
       if (sticker.telegram) summary.telegram += 1;
       return summary;
     },
-    { all: 0, attention: 0, ready: 0, failed: 0, telegram: 0 },
+    { all: 0, draft: 0, ready: 0, modified: 0, failed: 0, telegram: 0 },
   );
 }
 
@@ -102,49 +105,91 @@ export function formatResultCountLabel(
     : `${visibleCount} of ${formatCountLabel(totalCount, "sticker")}`;
 }
 
-export function getStickerStatus(sticker: StickerItem): {
-  label: string;
-  color: "success" | "warning" | "error";
-} {
-  if (isFailed(sticker))
-    return { label: appTokens.copy.labels.stickerStatusFailed, color: "error" };
-  if (needsAttention(sticker))
-    return {
-      label: appTokens.copy.labels.stickerStatusAttention,
-      color: "warning",
-    };
-  return { label: appTokens.copy.labels.stickerStatusReady, color: "success" };
+export type StickerStatus = "draft" | "ready" | "synced" | "modified" | "failed";
+
+export function getStickerStatus(sticker: StickerItem): StickerStatus {
+  if (isFailed(sticker)) return "failed";
+  if (isDraft(sticker)) return "draft";
+  if (isModified(sticker)) return "modified";
+  if (isSynced(sticker)) return "synced";
+  return "ready";
+}
+
+export function getStickerStatusLabel(sticker: StickerItem): string {
+  const status = getStickerStatus(sticker);
+  switch (status) {
+    case "draft":
+      return appTokens.copy.labels.stickerStatusDraft;
+    case "ready":
+      return appTokens.copy.labels.stickerStatusReady;
+    case "synced":
+      return appTokens.copy.labels.stickerStatusSynced;
+    case "modified":
+      return appTokens.copy.labels.stickerStatusModified;
+    case "failed":
+      return appTokens.copy.labels.stickerStatusFailed;
+  }
+}
+
+export function getStickerStatusColor(
+  sticker: StickerItem,
+): "primary" | "success" | "warning" | "error" {
+  const status = getStickerStatus(sticker);
+  switch (status) {
+    case "failed":
+      return "error";
+    case "draft":
+    case "modified":
+      return "warning";
+    case "synced":
+      return "primary";
+    case "ready":
+      return "success";
+  }
 }
 
 export function summarizeStickerStatuses(stickers: StickerItem[]) {
   return stickers.reduce(
     (summary, sticker) => {
-      if (isFailed(sticker)) summary.failed += 1;
-      else if (needsAttention(sticker)) summary.attention += 1;
-      else summary.ready += 1;
+      summary[getStickerStatus(sticker)] += 1;
       return summary;
     },
-    { ready: 0, attention: 0, failed: 0 },
+    { draft: 0, ready: 0, synced: 0, modified: 0, failed: 0 },
   );
 }
 
 export function isReady(sticker: StickerItem) {
-  return (
-    Boolean(sticker.absolutePath) &&
-    sticker.emojiList.length > 0 &&
-    !isFailed(sticker)
-  );
-}
-
-export function needsAttention(sticker: StickerItem) {
-  return (
-    !isFailed(sticker) &&
-    (!sticker.absolutePath || sticker.emojiList.length === 0)
-  );
+  return getStickerStatus(sticker) === "ready";
 }
 
 export function isFailed(sticker: StickerItem) {
   return sticker.downloadState === "failed";
+}
+
+export function isDraft(sticker: StickerItem) {
+  return !isFailed(sticker) && (!sticker.absolutePath || sticker.emojiList.length === 0);
+}
+
+function getBaselineEmojiHash(sticker: StickerItem) {
+  return sticker.telegram?.baselineEmojiHash ?? hashEmojiList(sticker.emojiList);
+}
+
+function isModified(sticker: StickerItem) {
+  if (!sticker.telegram) return false;
+  return (
+    sticker.sha256 !== sticker.telegram.baselineStickerHash ||
+    hashEmojiList(sticker.emojiList) !== getBaselineEmojiHash(sticker) ||
+    sticker.order !== sticker.telegram.position
+  );
+}
+
+function isSynced(sticker: StickerItem) {
+  if (!sticker.telegram) return false;
+  return (
+    sticker.sha256 === sticker.telegram.baselineStickerHash &&
+    hashEmojiList(sticker.emojiList) === getBaselineEmojiHash(sticker) &&
+    sticker.order === sticker.telegram.position
+  );
 }
 
 export function getContextStickers(
