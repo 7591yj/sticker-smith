@@ -53,6 +53,7 @@ export class TelegramMirrorService {
               fileUniqueId: sticker.fileUniqueId,
               position: sticker.position,
               baselineStickerHash: null,
+              baselineEmojiHash: null,
             },
           }))
         : [],

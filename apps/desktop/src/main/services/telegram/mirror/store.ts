@@ -11,6 +11,7 @@ import { buildMirrorRecord } from "./store/recordBuilder";
 import {
   reconcileTelegramMirrorStickers,
   setTelegramStickerDownloadState as setStickerDownloadState,
+  updateStickerTelegramBaseline as updateStickerBaseline,
   writeTelegramStickerFile as writeStickerFile,
 } from "./store/stickerFileState";
 import { syncTelegramThumbnailFile } from "./store/thumbnailFile";
@@ -80,6 +81,7 @@ export class TelegramMirrorStore {
     sourceFilePath: string;
     relativePath?: string;
     baselineStickerHash?: string | null;
+    baselineEmojiHash?: string | null;
   }) {
     return writeStickerFile(this.repo, input);
   }
@@ -90,6 +92,15 @@ export class TelegramMirrorStore {
     downloadState: DownloadState;
   }) {
     return setStickerDownloadState(this.repo, input);
+  }
+
+  async updateStickerTelegramBaseline(input: {
+    packId: string;
+    stickerId: string;
+    baselineStickerHash?: string | null;
+    baselineEmojiHash?: string | null;
+  }) {
+    return updateStickerBaseline(this.repo, input);
   }
 
   async updateTelegramMirrorMetadata(input: {

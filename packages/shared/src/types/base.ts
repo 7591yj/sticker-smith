@@ -65,6 +65,7 @@ export interface TelegramStickerMetadata {
   fileUniqueId: string | null;
   position: number;
   baselineStickerHash: string | null;
+  baselineEmojiHash?: string | null;
 }
 
 export interface StickerPack {

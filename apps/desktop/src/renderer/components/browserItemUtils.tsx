@@ -1,13 +1,20 @@
 import type { ReactNode } from "react";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CreateIcon from "@mui/icons-material/Create";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
+import {
+  getStickerStatus,
+  getStickerStatusColor,
+  type StickerStatus,
+} from "./stickerList/stickerUtils";
 import {
   BrowserGalleryCard,
   BrowserListRow,
@@ -32,6 +39,31 @@ export function formatOrderLabel(order: number) {
   return `#${order + 1}`;
 }
 
+const statusIconComponents = {
+  draft: CreateIcon,
+  ready: CheckCircleOutlineIcon,
+  synced: CheckCircleIcon,
+  modified: ChangeCircleIcon,
+  failed: ErrorOutlineIcon,
+} satisfies Record<StickerStatus, typeof CreateIcon>;
+
+const statusColorTokens = {
+  error: "error.main",
+  warning: "warning.main",
+  primary: "primary.main",
+  success: "success.main",
+} as const;
+
+function getStatusTooltipTitle(status: StickerStatus) {
+  return {
+    draft: appTokens.copy.labels.stickerStatusDraft,
+    ready: appTokens.copy.labels.stickerStatusReady,
+    synced: appTokens.copy.labels.stickerStatusSynced,
+    modified: appTokens.copy.labels.stickerStatusModified,
+    failed: appTokens.copy.labels.stickerStatusFailed,
+  }[status];
+}
+
 export function StickerStatusIcon({
   sticker,
   color,
@@ -41,30 +73,13 @@ export function StickerStatusIcon({
   color?: string;
   size?: number;
 }) {
-  const failed = sticker.downloadState === "failed";
-  const attention =
-    !failed && (!sticker.absolutePath || sticker.emojiList.length === 0);
-  const iconColor =
-    color ??
-    (failed ? "error.main" : attention ? "warning.main" : "success.main");
-  const sx = { fontSize: size, color: iconColor };
-  if (failed) {
-    return (
-      <Tooltip title="Failed">
-        <ErrorOutlineIcon sx={sx} />
-      </Tooltip>
-    );
-  }
-  if (attention) {
-    return (
-      <Tooltip title="Needs attention">
-        <WarningAmberIcon sx={sx} />
-      </Tooltip>
-    );
-  }
+  const status = getStickerStatus(sticker);
+  const Icon = statusIconComponents[status];
+  const iconColor = color ?? statusColorTokens[getStickerStatusColor(sticker)];
+
   return (
-    <Tooltip title="Ready">
-      <CheckCircleOutlineIcon sx={sx} />
+    <Tooltip title={getStatusTooltipTitle(status)}>
+      <Icon sx={{ fontSize: size, color: iconColor }} />
     </Tooltip>
   );
 }

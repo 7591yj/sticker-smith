@@ -9,8 +9,9 @@ export type StickerContextMenuState = {
 
 export type StickerFilter =
   | "all"
-  | "attention"
+  | "draft"
   | "ready"
+  | "modified"
   | "failed"
   | "telegram";
 export type StickerSort = "index" | "emoji" | "size";
