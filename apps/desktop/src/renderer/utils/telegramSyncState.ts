@@ -20,28 +20,28 @@ export function telegramSyncStateChipSx(syncState: TelegramPackSyncState) {
   switch (syncState) {
     case "idle":
       return {
-        bgcolor: "success.dark",
-        color: "success.contrastText",
+        bgcolor: appTokens.colors.status.ready.background,
+        color: appTokens.colors.status.ready.contrast,
       };
     case "syncing":
       return {
-        bgcolor: "info.dark",
-        color: "info.contrastText",
+        bgcolor: appTokens.colors.status.synced.background,
+        color: appTokens.colors.status.synced.contrast,
       };
     case "stale":
       return {
-        bgcolor: "warning.dark",
-        color: "warning.contrastText",
+        bgcolor: appTokens.colors.status.modified.background,
+        color: appTokens.colors.status.modified.contrast,
       };
     case "error":
       return {
-        bgcolor: "error.dark",
-        color: "error.contrastText",
+        bgcolor: appTokens.colors.status.failed.background,
+        color: appTokens.colors.status.failed.contrast,
       };
     case "unsupported":
       return {
-        bgcolor: "grey.700",
-        color: "text.primary",
+        bgcolor: appTokens.colors.status.draft.background,
+        color: appTokens.colors.status.draft.contrast,
       };
   }
 }

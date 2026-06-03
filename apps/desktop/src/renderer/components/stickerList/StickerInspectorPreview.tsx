@@ -12,7 +12,6 @@ import { appTokens } from "../../../theme/appTokens";
 import { FilePreview } from "../fileBrowser";
 import {
   getStickerStatus,
-  getStickerStatusColor,
   getStickerStatusLabel,
   summarizeStickerStatuses,
   type StickerStatus,
@@ -200,14 +199,18 @@ function StatusChip({ sticker }: { sticker: StickerItem }) {
       size="small"
       icon={statusChipIcons[status]}
       label={getStickerStatusLabel(sticker)}
-      color={getStickerStatusColor(sticker)}
       variant="filled"
       sx={{
         height: appTokens.sizes.chip.compactHeight,
         fontSize: appTokens.typography.fontSizes.assetKind,
         textTransform: "uppercase",
         letterSpacing: appTokens.typography.letterSpacing.chip,
+        bgcolor: appTokens.colors.background.surface,
+        backgroundImage: `linear-gradient(${appTokens.colors.status[status].background}, ${appTokens.colors.status[status].background})`,
+        border: `1px solid ${appTokens.colors.status[status].border}`,
+        color: appTokens.colors.status[status].contrast,
         "& .MuiChip-icon": {
+          color: appTokens.colors.status[status].main,
           fontSize: 15,
           ml: 0.75,
         },

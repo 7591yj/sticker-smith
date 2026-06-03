@@ -26,36 +26,43 @@ const filterOptions: Array<{
   value: StickerFilter;
   label: string;
   icon: React.ReactElement;
+  color: string;
 }> = [
   {
     value: "all",
     label: appTokens.copy.labels.stickerStatusAll,
     icon: <FilterListIcon />,
+    color: appTokens.colors.text.secondary,
   },
   {
     value: "draft",
     label: appTokens.copy.labels.stickerStatusDraft,
     icon: <CreateIcon />,
+    color: appTokens.colors.status.draft.main,
   },
   {
     value: "ready",
     label: appTokens.copy.labels.stickerStatusReady,
     icon: <CheckCircleOutlineIcon />,
+    color: appTokens.colors.status.ready.main,
   },
   {
     value: "modified",
     label: appTokens.copy.labels.stickerStatusModified,
     icon: <ChangeCircleIcon />,
+    color: appTokens.colors.status.modified.main,
   },
   {
     value: "failed",
     label: appTokens.copy.labels.stickerStatusFailed,
     icon: <ErrorOutlineIcon />,
+    color: appTokens.colors.status.failed.main,
   },
   {
     value: "telegram",
     label: appTokens.copy.labels.stickerStatusTelegram,
     icon: <TelegramIcon />,
+    color: appTokens.colors.status.synced.main,
   },
 ];
 
@@ -69,15 +76,15 @@ export function StickerToolbarNotice({ message }: { message: string }) {
         px: 1.25,
         py: 0.75,
         border: 1,
-        borderColor: "warning.dark",
+        borderColor: appTokens.colors.status.modified.border,
         borderRadius: appTokens.shape.radius.control,
-        bgcolor: "rgba(251, 191, 36, 0.08)",
+        bgcolor: appTokens.colors.status.modified.background,
       }}
     >
       <Typography
         variant="caption"
-        color="warning.light"
         sx={{
+          color: appTokens.colors.status.modified.contrast,
           fontSize: appTokens.typography.fontSizes.caption,
           lineHeight: 1.35,
         }}
@@ -238,7 +245,7 @@ export function StickerToolbar({
                   component="span"
                   sx={{
                     display: "flex",
-                    color: "text.primary",
+                    color: option.color,
                     "& svg": { fontSize: appTokens.sizes.icon.action },
                   }}
                 >

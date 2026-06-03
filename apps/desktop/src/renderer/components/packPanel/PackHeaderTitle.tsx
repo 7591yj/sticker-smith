@@ -17,7 +17,10 @@ import {
   formatTelegramSyncStateLabel,
   telegramSyncStateChipSx,
 } from "../../utils/telegramSyncState";
-import { getStickerStatus } from "../stickerList/stickerUtils";
+import {
+  getStickerStatus,
+  type StickerStatus,
+} from "../stickerList/stickerUtils";
 
 export function PackHeroThumbnail({ pack }: { pack: StickerPack }) {
   return (
@@ -156,7 +159,7 @@ function PackHeaderStats({ stickers }: { stickers: StickerItem[] }) {
             icon={<ErrorOutlineIcon />}
             label={appTokens.copy.labels.stickerStatusFailed}
             value={stats.failed}
-            color="error.main"
+            status="failed"
             description="Download or conversion failed"
           />
         </StatusChipGroup>
@@ -166,14 +169,14 @@ function PackHeaderStats({ stickers }: { stickers: StickerItem[] }) {
           icon={<CreateIcon />}
           label={appTokens.copy.labels.stickerStatusDraft}
           value={stats.draft}
-          color="warning.main"
+          status="draft"
           description="Missing file or emoji"
         />
         <HeaderStatChip
           icon={<CheckCircleOutlineIcon />}
           label={appTokens.copy.labels.stickerStatusReady}
           value={stats.ready}
-          color="success.main"
+          status="ready"
           description="Complete locally, not published"
         />
       </StatusChipGroup>
@@ -183,14 +186,14 @@ function PackHeaderStats({ stickers }: { stickers: StickerItem[] }) {
           icon={<ChangeCircleIcon />}
           label={appTokens.copy.labels.stickerStatusModified}
           value={stats.modified}
-          color="warning.main"
+          status="modified"
           description="Published with pending local edits"
         />
         <HeaderStatChip
           icon={<CheckCircleIcon />}
           label={appTokens.copy.labels.stickerStatusSynced}
           value={stats.synced}
-          color="primary.main"
+          status="synced"
           description="Published and clean"
         />
       </StatusChipGroup>
@@ -232,24 +235,30 @@ function HeaderStatChip({
   icon,
   label,
   value,
-  color,
+  status,
   description,
 }: {
   icon: ReactNode;
   label: string;
   value: number;
-  color: string;
+  status: StickerStatus;
   description?: string;
 }) {
+  const statusColor = appTokens.colors.status[status];
   const chip = (
     <Box
       sx={{
         height: 28,
         px: 1,
         border: 1,
-        borderColor: "divider",
+        borderColor: value > 0 ? statusColor.border : "divider",
         borderRadius: appTokens.shape.radius.control,
-        bgcolor: value > 0 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+        bgcolor: value > 0
+          ? appTokens.colors.background.surface
+          : "rgba(255,255,255,0.02)",
+        backgroundImage: value > 0
+          ? `linear-gradient(${statusColor.background}, ${statusColor.background})`
+          : "none",
         opacity: value > 0 ? 1 : 0.62,
         display: "flex",
         alignItems: "center",
@@ -257,7 +266,7 @@ function HeaderStatChip({
         color: "text.secondary",
       }}
     >
-      <Box sx={{ color, display: "flex", "& svg": { fontSize: 15 } }}>
+      <Box sx={{ color: statusColor.main, display: "flex", "& svg": { fontSize: 15 } }}>
         {icon}
       </Box>
       <Typography

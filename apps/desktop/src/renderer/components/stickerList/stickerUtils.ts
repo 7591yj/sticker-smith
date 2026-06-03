@@ -131,21 +131,8 @@ export function getStickerStatusLabel(sticker: StickerItem): string {
   }
 }
 
-export function getStickerStatusColor(
-  sticker: StickerItem,
-): "primary" | "success" | "warning" | "error" {
-  const status = getStickerStatus(sticker);
-  switch (status) {
-    case "failed":
-      return "error";
-    case "draft":
-    case "modified":
-      return "warning";
-    case "synced":
-      return "primary";
-    case "ready":
-      return "success";
-  }
+export function getStickerStatusColor(sticker: StickerItem): StickerStatus {
+  return getStickerStatus(sticker);
 }
 
 export function summarizeStickerStatuses(stickers: StickerItem[]) {

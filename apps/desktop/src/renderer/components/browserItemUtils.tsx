@@ -48,11 +48,12 @@ const statusIconComponents = {
 } satisfies Record<StickerStatus, typeof CreateIcon>;
 
 const statusColorTokens = {
-  error: "error.main",
-  warning: "warning.main",
-  primary: "primary.main",
-  success: "success.main",
-} as const;
+  draft: appTokens.colors.status.draft.main,
+  ready: appTokens.colors.status.ready.main,
+  synced: appTokens.colors.status.synced.main,
+  modified: appTokens.colors.status.modified.main,
+  failed: appTokens.colors.status.failed.main,
+} satisfies Record<StickerStatus, string>;
 
 function getStatusTooltipTitle(status: StickerStatus) {
   return {

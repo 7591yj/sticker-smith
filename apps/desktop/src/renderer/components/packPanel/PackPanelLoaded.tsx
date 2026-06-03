@@ -39,8 +39,8 @@ function PackSyncErrorBanner({ message }: { message: string }) {
         py: appTokens.layout.spacing.panelPaddingY,
         borderBottom: 1,
         borderColor: "divider",
-        bgcolor: "error.dark",
-        color: "error.contrastText",
+        bgcolor: appTokens.colors.status.failed.background,
+        color: appTokens.colors.status.failed.contrast,
       }}
     >
       <Typography
