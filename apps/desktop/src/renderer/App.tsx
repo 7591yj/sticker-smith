@@ -6,6 +6,7 @@ import { ConversionFailureDialog } from "./components/ConversionFailureDialog";
 import { ConversionStatus } from "./components/ConversionStatus";
 import { PackPanel } from "./components/PackPanel";
 import { Sidebar } from "./components/Sidebar";
+import { SyncWarningDialog } from "./components/SyncWarningDialog";
 import { TelegramErrorDialog } from "./components/TelegramErrorDialog";
 import { useDesktopAppState } from "./hooks/useDesktopAppState";
 import { appTheme } from "./theme";
@@ -87,9 +88,11 @@ function ResizeHandle({
 function AppSidebar({
   appState,
   width,
+  onSyncTelegramPacks,
 }: {
   appState: DesktopAppState;
   width: number;
+  onSyncTelegramPacks: () => Promise<unknown>;
 }) {
   return (
     <Sidebar
@@ -106,7 +109,7 @@ function AppSidebar({
       onSubmitTelegramPassword={appState.submitTelegramPassword}
       onLogoutTelegram={appState.logoutTelegram}
       onResetTelegram={appState.resetTelegram}
-      onSyncTelegramPacks={appState.syncTelegramPacks}
+      onSyncTelegramPacks={onSyncTelegramPacks}
       refreshPacks={appState.refreshPacks}
       setSelectedPackId={appState.setSelectedPackId}
     />
@@ -163,11 +166,27 @@ function isPackActionInProgress(
   return details?.pack.source === source ? packIds.includes(details.pack.id) : false;
 }
 
-function AppDialogs({ appState }: { appState: DesktopAppState }) {
+function AppDialogs({
+  appState,
+  syncWarning,
+  onConfirmSync,
+  onDismissSyncWarning,
+}: {
+  appState: DesktopAppState;
+  syncWarning: { packs: { packId: string; name: string }[] } | null;
+  onConfirmSync: () => void;
+  onDismissSyncWarning: () => void;
+}) {
   return (
     <>
       <AppConversionFailureDialog appState={appState} />
       <AppTelegramErrorDialog appState={appState} />
+      <SyncWarningDialog
+        open={syncWarning !== null}
+        packs={syncWarning?.packs ?? []}
+        onConfirm={onConfirmSync}
+        onCancel={onDismissSyncWarning}
+      />
     </>
   );
 }
@@ -207,6 +226,27 @@ function AppTelegramErrorDialog({ appState }: { appState: DesktopAppState }) {
 export function App() {
   const appState = useDesktopAppState();
   const { handleSidebarResizeStart, sidebarWidth } = useResizableSidebarWidth();
+  const [syncWarning, setSyncWarning] = useState<{
+    packs: { packId: string; name: string }[];
+  } | null>(null);
+
+  const handleSyncTelegramPacks = useCallback(async () => {
+    const pending = await window.stickerSmith.telegram.getPacksWithPendingEdits();
+    if (pending.length > 0) {
+      setSyncWarning({ packs: pending });
+      return;
+    }
+    await appState.syncTelegramPacks();
+  }, [appState.syncTelegramPacks]);
+
+  const handleConfirmSync = useCallback(() => {
+    setSyncWarning(null);
+    void appState.syncTelegramPacks().catch(() => undefined);
+  }, [appState.syncTelegramPacks]);
+
+  const handleDismissSyncWarning = useCallback(() => {
+    setSyncWarning(null);
+  }, []);
 
   return (
     <ThemeProvider theme={appTheme}>
@@ -219,11 +259,20 @@ export function App() {
           bgcolor: "background.default",
         }}
       >
-        <AppSidebar appState={appState} width={sidebarWidth} />
+        <AppSidebar
+          appState={appState}
+          width={sidebarWidth}
+          onSyncTelegramPacks={handleSyncTelegramPacks}
+        />
         <ResizeHandle onResizeStart={handleSidebarResizeStart} />
         <MainPanel appState={appState} />
       </Box>
-      <AppDialogs appState={appState} />
+      <AppDialogs
+        appState={appState}
+        syncWarning={syncWarning}
+        onConfirmSync={handleConfirmSync}
+        onDismissSyncWarning={handleDismissSyncWarning}
+      />
     </ThemeProvider>
   );
 }

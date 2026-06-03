@@ -112,6 +112,7 @@ function createBridge(options: {
       logout: vi.fn(),
       reset: vi.fn(),
       syncOwnedPacks: vi.fn(async () => undefined),
+      getPacksWithPendingEdits: vi.fn(async () => []),
       publishLocalPack: vi.fn(async () => undefined),
       updateTelegramPack: vi.fn(async () => undefined),
       downloadPackMedia: vi.fn(async () => undefined),

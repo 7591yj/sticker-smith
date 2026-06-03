@@ -228,6 +228,21 @@ export class PackRepository {
     return hydratePackDetails(record, rootPath);
   }
 
+  async listPackRecords(): Promise<{ record: StickerPackRecord; rootPath: string }[]> {
+    await this.ensureReady();
+    const entries = await fs.readdir(this.getPacksRoot(), { withFileTypes: true });
+    const results = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const rootPath = path.join(this.getPacksRoot(), entry.name);
+          const record = await this.tryReadPackRecordFromEntry(entry.name, rootPath);
+          return record ? { record, rootPath } : null;
+        }),
+    );
+    return results.filter((r): r is { record: StickerPackRecord; rootPath: string } => r !== null);
+  }
+
   async findPackByTelegramStickerSetId(stickerSetId: string) {
     return this.findPackRecord((record) => record.telegram?.stickerSetId === stickerSetId);
   }

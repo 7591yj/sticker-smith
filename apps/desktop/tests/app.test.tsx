@@ -22,6 +22,7 @@ vi.stubGlobal("window", {
         lastError: null,
         updatedAt: "2026-03-12T00:00:00.000Z",
       })),
+      getPacksWithPendingEdits: vi.fn(async () => []),
       subscribe: vi.fn(() => () => undefined),
     },
     packs: { list: vi.fn(), get: vi.fn() },

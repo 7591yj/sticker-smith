@@ -130,6 +130,10 @@ export class TelegramService {
     return this.syncService.syncOwnedPacks();
   }
 
+  async getPacksWithPendingEdits(): Promise<{ packId: string; name: string }[]> {
+    return this.libraryService.getTelegramPacksWithPendingEdits();
+  }
+
   async downloadPackMedia(input: { packId: string; force?: boolean }) {
     return this.syncService.downloadPackMedia(input);
   }

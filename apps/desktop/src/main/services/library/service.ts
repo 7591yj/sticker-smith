@@ -8,6 +8,7 @@ import type {
   StickerPackDetails,
   StickerPackRecord,
 } from "@sticker-smith/shared";
+import { hashEmojiList } from "@sticker-smith/shared";
 
 import type { SettingsService } from "../settingsService";
 import { compactStickerOrders } from "../pack/normalizer";
@@ -52,6 +53,33 @@ export class LibraryService {
   async listPacks(): Promise<StickerPack[]> { return this.repo.listPacks(); }
   async getPack(packId: string): Promise<StickerPackDetails> { return this.repo.getPack(packId); }
   async findPackByTelegramStickerSetId(stickerSetId: string) { return this.repo.findPackByTelegramStickerSetId(stickerSetId); }
+
+  async getTelegramPacksWithPendingEdits(): Promise<{ packId: string; name: string }[]> {
+    const packs = await this.repo.listPackRecords();
+    const result: { packId: string; name: string }[] = [];
+
+    for (const { record } of packs) {
+      if (!record.telegram) continue;
+
+      const hasPending = record.stickers.some((sticker) => {
+        if (sticker.downloadState === "failed") return false;
+        if (sticker.downloadState === "missing") return true;
+        if (sticker.emojiList.length === 0) return true;
+        if (!sticker.telegram) return false;
+        const baselineEmojiHash = sticker.telegram.baselineEmojiHash ?? hashEmojiList(sticker.emojiList);
+        if (sticker.sha256 !== sticker.telegram.baselineStickerHash) return true;
+        if (hashEmojiList(sticker.emojiList) !== baselineEmojiHash) return true;
+        if (sticker.order !== sticker.telegram.position) return true;
+        return false;
+      });
+
+      if (hasPending) {
+        result.push({ packId: record.id, name: record.name });
+      }
+    }
+
+    return result;
+  }
 
   async createPack(input: { name: string }): Promise<StickerPack> {
     await this.repo.ensureReady();

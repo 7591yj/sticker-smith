@@ -42,6 +42,8 @@ export const appCopy = {
     renamePack: "Rename Pack",
     telegramPublish: "Telegram Publish",
     telegramSetup: "Telegram Setup",
+    syncWarningTitle: "Unsaved changes will be lost",
+    syncWarningDescription: "Syncing will overwrite local edits in the following packs:",
     packName: "Pack name",
   },
   emptyStates: {

@@ -183,6 +183,9 @@ function registerTelegramIpc() {
   safeHandle("telegram.syncOwnedPacks", async () =>
     telegramService.syncOwnedPacks(),
   );
+  safeHandle("telegram.getPacksWithPendingEdits", async () =>
+    telegramService.getPacksWithPendingEdits(),
+  );
   safeHandle("telegram.downloadPackMedia", async (_event, input: unknown) =>
     telegramService.downloadPackMedia(
       downloadTelegramPackMediaSchema.parse(input),
