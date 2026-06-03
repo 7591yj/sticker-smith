@@ -15,6 +15,7 @@ export const appCopy = {
     delete: "Delete",
     downloadMedia: "Download Media",
     downloadingMedia: "Downloading…",
+    import: "Import",
     editEmojis: "Edit Emojis",
     export: "Export",
     logout: "Logout",
@@ -37,7 +38,7 @@ export const appCopy = {
   dialogs: {
     conversionFailed: "Some files could not be added",
     editEmojis: "Edit Emojis",
-    editSelectedEmojis: "Edit Selected Emojis",
+    editSelectedEmojis: "Edit Emojis for Selection",
     newPack: "New Pack",
     renamePack: "Rename Pack",
     telegramPublish: "Telegram Publish",

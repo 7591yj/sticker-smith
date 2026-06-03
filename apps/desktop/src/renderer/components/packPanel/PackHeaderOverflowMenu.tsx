@@ -3,7 +3,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
-import MenuIcon from "@mui/icons-material/Menu";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
@@ -44,10 +44,10 @@ export function PackHeaderOverflowMenu({
 
   return (
     <>
-      <Tooltip title="More pack actions">
+      <Tooltip title="Pack options">
         <IconButton
           size="small"
-          aria-label="More pack actions"
+          aria-label="Pack options"
           aria-haspopup="menu"
           aria-expanded={anchorEl ? "true" : undefined}
           onClick={handleOpen}
@@ -57,7 +57,7 @@ export function PackHeaderOverflowMenu({
             "&:hover": { opacity: 1, bgcolor: "action.hover" },
           }}
         >
-          <MenuIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
+          <MoreVertIcon sx={{ fontSize: appTokens.sizes.icon.panelAction }} />
         </IconButton>
       </Tooltip>
       <Menu

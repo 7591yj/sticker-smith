@@ -1,13 +1,11 @@
-import AddIcon from "@mui/icons-material/Add";
-import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DownloadIcon from "@mui/icons-material/Download";
 import PublishIcon from "@mui/icons-material/Publish";
 import Box from "@mui/material/Box";
-import Divider from "@mui/material/Divider";
 import type { StickerItem, StickerPack } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
 import { actionIconSx } from "../browserStyles";
 import { HeaderActionButton } from "./PackHeaderActionButton";
+import { PackHeaderImportMenu } from "./PackHeaderImportMenu";
 import { PackHeaderOverflowMenu } from "./PackHeaderOverflowMenu";
 import { PackHeaderTitle, PackHeroThumbnail } from "./PackHeaderTitle";
 import {
@@ -113,30 +111,15 @@ export function PackPanelHeader({
           alignItems: "center",
           justifyContent: "flex-end",
           gap: 1,
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
+          flexShrink: 0,
         }}
       >
-        <HeaderActionButton
-          label={appTokens.copy.actions.addFiles}
-          tooltip="Add sticker files to this pack"
-          icon={<AddIcon sx={actionIconSx(appTokens.sizes.icon.action)} />}
+        <PackHeaderImportMenu
           disabled={converting}
-          onClick={onImportFiles}
-          variant="outlined"
+          onImportFiles={onImportFiles}
+          onImportDir={onImportDir}
         />
-        <HeaderActionButton
-          label={appTokens.copy.actions.addFolder}
-          tooltip="Add every supported sticker file from a folder"
-          icon={
-            <CreateNewFolderIcon
-              sx={actionIconSx(appTokens.sizes.icon.action)}
-            />
-          }
-          disabled={converting}
-          onClick={onImportDir}
-          variant="outlined"
-        />
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
         {primaryTelegramAction}
         {pack.source === "telegram" && hasPendingTelegramMedia ? (
           <HeaderActionButton
