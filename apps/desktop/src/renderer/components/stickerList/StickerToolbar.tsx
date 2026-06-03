@@ -122,7 +122,7 @@ export function StickerToolbar({
     ? appTokens.copy.actions.clearSelection
     : appTokens.copy.actions.selectAll;
   const resultLabel = hasSelection
-    ? `${selectedStickerIds.length} selected sticker${selectedStickerIds.length === 1 ? "" : "s"}`
+    ? `${selectedStickerIds.length} selected sticker${selectedStickerIds.length === 1 ? "" : "s"} \u30FB ${totalCount} sticker${totalCount === 1 ? "" : "s"}`
     : formatResultCountLabel(visibleCount, totalCount, filter, query);
 
   const toggleSelection = () => {
