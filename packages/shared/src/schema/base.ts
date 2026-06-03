@@ -68,6 +68,7 @@ export const telegramStickerMetadataSchema = z
     fileUniqueId: z.string().nullable(),
     position: z.number().int().nonnegative(),
     baselineStickerHash: z.string().min(1).nullable(),
+    baselineEmojiHash: z.string().min(1).nullable().optional(),
   })
   .strict();
 

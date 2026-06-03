@@ -1,0 +1,217 @@
+import type { ReactNode } from "react";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CreateIcon from "@mui/icons-material/Create";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import Box from "@mui/material/Box";
+import Chip from "@mui/material/Chip";
+import Typography from "@mui/material/Typography";
+import type { StickerItem } from "@sticker-smith/shared";
+import { appTokens } from "../../../theme/appTokens";
+import { FilePreview } from "../fileBrowser";
+import {
+  getStickerStatus,
+  getStickerStatusColor,
+  getStickerStatusLabel,
+  summarizeStickerStatuses,
+  type StickerStatus,
+} from "./stickerUtils";
+
+export function SingleStickerPreview({
+  sticker,
+  title,
+}: {
+  sticker: StickerItem;
+  title: string;
+}) {
+  return (
+    <>
+      <FilePreview
+        absolutePath={sticker.absolutePath}
+        relativePath={sticker.relativePath}
+      />
+      <Box
+        sx={{
+          position: "absolute",
+          top: 8,
+          left: 8,
+          right: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <PreviewLabel>{title}</PreviewLabel>
+        <StatusChip sticker={sticker} />
+      </Box>
+    </>
+  );
+}
+
+export function MultiStickerPreview({
+  stickers,
+  title,
+}: {
+  stickers: StickerItem[];
+  title: string;
+}) {
+  const previewStickers = stickers.slice(0, 4);
+  const overflowCount = Math.max(0, stickers.length - previewStickers.length);
+  const statusSummary = summarizeStickerStatuses(stickers);
+
+  return (
+    <>
+      <Box
+        sx={{
+          width: "100%",
+          height: "100%",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gridTemplateRows: "repeat(2, minmax(0, 1fr))",
+          gap: 0.5,
+          p: 0.5,
+          bgcolor: "background.default",
+        }}
+      >
+        {previewStickers.map((sticker) => (
+          <Box
+            key={sticker.id}
+            sx={{
+              position: "relative",
+              minWidth: 0,
+              minHeight: 0,
+              overflow: "hidden",
+              borderRadius: appTokens.shape.radius.small,
+              bgcolor: "background.paper",
+            }}
+          >
+            <FilePreview
+              absolutePath={sticker.absolutePath}
+              relativePath={sticker.relativePath}
+            />
+          </Box>
+        ))}
+      </Box>
+      <Box
+        sx={{
+          position: "absolute",
+          inset: 8,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          gap: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+          <PreviewLabel>{title}</PreviewLabel>
+          {overflowCount > 0 ? (
+            <PreviewLabel>+{overflowCount}</PreviewLabel>
+          ) : null}
+        </Box>
+        <Box
+          sx={{
+            alignSelf: "flex-start",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 0.5,
+          }}
+        >
+          {statusSummary.ready > 0 ? (
+            <SummaryChip label={`${statusSummary.ready} ready`} />
+          ) : null}
+          {statusSummary.draft > 0 ? (
+            <SummaryChip
+              label={`${statusSummary.draft} ${appTokens.copy.labels.stickerStatusDraft.toLowerCase()}`}
+            />
+          ) : null}
+          {statusSummary.modified > 0 ? (
+            <SummaryChip
+              label={`${statusSummary.modified} ${appTokens.copy.labels.stickerStatusModified.toLowerCase()}`}
+            />
+          ) : null}
+          {statusSummary.synced > 0 ? (
+            <SummaryChip label={`${statusSummary.synced} synced`} />
+          ) : null}
+          {statusSummary.failed > 0 ? (
+            <SummaryChip label={`${statusSummary.failed} failed`} />
+          ) : null}
+        </Box>
+      </Box>
+    </>
+  );
+}
+
+function PreviewLabel({ children }: { children: ReactNode }) {
+  return (
+    <Typography
+      variant="subtitle2"
+      sx={{
+        px: 0.75,
+        py: 0.35,
+        borderRadius: appTokens.shape.radius.small,
+        bgcolor: appTokens.colors.overlay.mediaLabel,
+        color: appTokens.colors.text.inverseMuted,
+        fontSize: appTokens.typography.fontSizes.caption,
+        fontFamily: appTokens.typography.monoFontFamily,
+        lineHeight: 1.2,
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+function SummaryChip({ label }: { label: string }) {
+  return (
+    <Typography
+      variant="caption"
+      sx={{
+        px: 0.75,
+        py: 0.25,
+        borderRadius: appTokens.shape.radius.small,
+        bgcolor: appTokens.colors.overlay.mediaLabel,
+        color: appTokens.colors.text.inverseMuted,
+        fontSize: appTokens.typography.fontSizes.assetKind,
+        lineHeight: 1.2,
+      }}
+    >
+      {label}
+    </Typography>
+  );
+}
+
+const statusChipIcons = {
+  draft: <CreateIcon />,
+  ready: <CheckCircleOutlineIcon />,
+  synced: <CheckCircleIcon />,
+  modified: <ChangeCircleIcon />,
+  failed: <ErrorOutlineIcon />,
+} satisfies Record<StickerStatus, ReactNode>;
+
+function StatusChip({ sticker }: { sticker: StickerItem }) {
+  const status = getStickerStatus(sticker);
+
+  return (
+    <Chip
+      size="small"
+      icon={statusChipIcons[status]}
+      label={getStickerStatusLabel(sticker)}
+      color={getStickerStatusColor(sticker)}
+      variant="filled"
+      sx={{
+        height: appTokens.sizes.chip.compactHeight,
+        fontSize: appTokens.typography.fontSizes.assetKind,
+        textTransform: "uppercase",
+        letterSpacing: appTokens.typography.letterSpacing.chip,
+        "& .MuiChip-icon": {
+          fontSize: 15,
+          ml: 0.75,
+        },
+      }}
+    />
+  );
+}

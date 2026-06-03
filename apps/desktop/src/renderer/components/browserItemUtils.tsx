@@ -1,39 +1,87 @@
 import type { ReactNode } from "react";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CreateIcon from "@mui/icons-material/Create";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import { browserMetaChipSx } from "./browserStyles";
+import {
+  getStickerStatus,
+  getStickerStatusColor,
+  type StickerStatus,
+} from "./stickerList/stickerUtils";
 import {
   BrowserGalleryCard,
   BrowserListRow,
   type BrowserItemProps,
   type BrowserView,
-  formatBytes,
 } from "./fileBrowser";
 
 export interface BrowserItemDescriptor extends BrowserItemProps {
   key: string;
 }
 
-export function renderBrowserItem(view: BrowserView, item: BrowserItemDescriptor) {
+export function renderBrowserItem(
+  view: BrowserView,
+  item: BrowserItemDescriptor,
+) {
   const Component = view === "list" ? BrowserListRow : BrowserGalleryCard;
   const { key, ...props } = item;
   return <Component {...props} key={key} />;
 }
 
 export function formatOrderLabel(order: number) {
-  return String(order + 1).padStart(3, "0");
+  return `#${order + 1}`;
 }
 
-function formatDownloadSummary(sticker: StickerItem) {
-  if (sticker.absolutePath) return "ready";
-  switch (sticker.downloadState) {
-    case "queued": return "queued";
-    case "downloading": return "downloading";
-    case "failed": return "failed";
-    default: return "missing";
-  }
+const statusIconComponents = {
+  draft: CreateIcon,
+  ready: CheckCircleOutlineIcon,
+  synced: CheckCircleIcon,
+  modified: ChangeCircleIcon,
+  failed: ErrorOutlineIcon,
+} satisfies Record<StickerStatus, typeof CreateIcon>;
+
+const statusColorTokens = {
+  error: "error.main",
+  warning: "warning.main",
+  primary: "primary.main",
+  success: "success.main",
+} as const;
+
+function getStatusTooltipTitle(status: StickerStatus) {
+  return {
+    draft: appTokens.copy.labels.stickerStatusDraft,
+    ready: appTokens.copy.labels.stickerStatusReady,
+    synced: appTokens.copy.labels.stickerStatusSynced,
+    modified: appTokens.copy.labels.stickerStatusModified,
+    failed: appTokens.copy.labels.stickerStatusFailed,
+  }[status];
+}
+
+export function StickerStatusIcon({
+  sticker,
+  color,
+  size = 14,
+}: {
+  sticker: StickerItem;
+  color?: string;
+  size?: number;
+}) {
+  const status = getStickerStatus(sticker);
+  const Icon = statusIconComponents[status];
+  const iconColor = color ?? statusColorTokens[getStickerStatusColor(sticker)];
+
+  return (
+    <Tooltip title={getStatusTooltipTitle(status)}>
+      <Icon sx={{ fontSize: size, color: iconColor }} />
+    </Tooltip>
+  );
 }
 
 export function formatStickerLabel(sticker: StickerItem) {
@@ -45,28 +93,64 @@ export function buildStickerTitle(sticker: StickerItem) {
     formatStickerLabel(sticker),
     sticker.originalFileName ? `Original: ${sticker.originalFileName}` : null,
     `Stored: webm/${sticker.relativePath}`,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildStickerOverlay(sticker: StickerItem) {
+  return (
+    <Box
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 0.5,
+        bgcolor: "background.paper",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: "5px",
+        px: 0.35,
+        py: 0.2,
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: appTokens.typography.fontSizes.assetLabel,
+          fontFamily: appTokens.typography.monoFontFamily,
+          letterSpacing: appTokens.typography.letterSpacing.chip,
+          color: "text.secondary",
+          lineHeight: 1,
+        }}
+      >
+        {formatOrderLabel(sticker.order)}
+      </Typography>
+      <StickerStatusIcon sticker={sticker} size={11} />
+    </Box>
+  );
 }
 
 function formatEmojiSummary(sticker: StickerItem) {
-  return sticker.emojiList.length > 0 ? sticker.emojiList.join(" ") : appTokens.copy.labels.noEmoji;
+  if (sticker.emojiList.length === 0) return appTokens.copy.labels.noEmoji;
+  const head = sticker.emojiList.slice(0, 3).join(" ");
+  const tail = sticker.emojiList.length - 3;
+  return tail > 0 ? `${head} +${tail}` : head;
 }
 
 export function buildStickerMetadata(sticker: StickerItem) {
-  return <>
-    <Chip label="sticker" size="small" sx={browserMetaChipSx} />
-    {sticker.telegram ? <Chip label={formatDownloadSummary(sticker)} size="small" sx={browserMetaChipSx} /> : null}
-    <Chip label={formatEmojiSummary(sticker)} size="small" sx={emojiMetaChipSx(sticker.emojiList.length === 0)} />
-    <Typography variant="caption" color="text.secondary" sx={{ fontSize: appTokens.typography.fontSizes.secondaryCaption }}>
-      {formatBytes(sticker.sizeBytes)}
-    </Typography>
-  </>;
+  return (
+    <Chip
+      label={formatEmojiSummary(sticker)}
+      size="small"
+      sx={emojiMetaChipSx(sticker.emojiList.length === 0)}
+    />
+  );
 }
 
-const emojiMetaChipSx = (missingEmoji: boolean) => ({
-  height: appTokens.sizes.chip.compactHeight,
-  fontSize: appTokens.typography.fontSizes.assetKind,
-  letterSpacing: appTokens.typography.letterSpacing.chip,
-  color: missingEmoji ? "error.main" : "text.secondary",
-  borderColor: missingEmoji ? "error.main" : "divider",
-}) as const;
+const emojiMetaChipSx = (missingEmoji: boolean) =>
+  ({
+    height: appTokens.sizes.chip.compactHeight,
+    fontSize: appTokens.typography.fontSizes.assetKind,
+    letterSpacing: appTokens.typography.letterSpacing.chip,
+    color: missingEmoji ? "error.main" : "text.secondary",
+    borderColor: missingEmoji ? "error.main" : "divider",
+  }) as const;

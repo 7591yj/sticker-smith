@@ -24,8 +24,8 @@ function getPrimaryActionLabel(
 ) {
   if (pack.source === "telegram") {
     return telegramUpdating
-      ? appTokens.copy.actions.updating
-      : appTokens.copy.actions.update;
+      ? appTokens.copy.actions.pushing
+      : appTokens.copy.actions.push;
   }
   return telegramPublishing
     ? appTokens.copy.actions.uploading

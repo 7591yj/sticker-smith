@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { BrowserView } from "./fileBrowser";
 import { EmptyPackPanel, PackPanelLoaded } from "./packPanel/PackPanelLoaded";
 import type { PackPanelProps } from "./packPanel/types";
 import { usePackPanelActions } from "./packPanel/usePackPanelActions";
@@ -21,7 +20,6 @@ export function PackPanel({
   const [renaming, setRenaming] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [publishSubmitting, setPublishSubmitting] = useState(false);
-  const [view, setView] = useState<BrowserView>("list");
   const packId = details?.pack.id ?? null;
   const actions = usePackPanelActions({
     details,
@@ -54,8 +52,6 @@ export function PackPanel({
       setPublishDialogOpen={setPublishDialogOpen}
       publishSubmitting={publishSubmitting}
       setPublishSubmitting={setPublishSubmitting}
-      view={view}
-      setView={setView}
     />
   );
 }

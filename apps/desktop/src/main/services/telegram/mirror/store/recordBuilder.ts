@@ -54,6 +54,17 @@ function resolveMirrorStickerBaselineHash(
   );
 }
 
+function resolveMirrorStickerBaselineEmojiHash(
+  stickerInput: TelegramMirrorStickerInput,
+  existing?: StickerRecord,
+) {
+  return (
+    existing?.telegram?.baselineEmojiHash ??
+    stickerInput.telegram.baselineEmojiHash ??
+    null
+  );
+}
+
 function buildTelegramMetadata(
   stickerInput: TelegramMirrorStickerInput,
   existing: StickerRecord | undefined,
@@ -62,6 +73,10 @@ function buildTelegramMetadata(
   return {
     ...stickerInput.telegram,
     baselineStickerHash: resolveMirrorStickerBaselineHash(
+      stickerInput,
+      existing,
+    ),
+    baselineEmojiHash: resolveMirrorStickerBaselineEmojiHash(
       stickerInput,
       existing,
     ),
