@@ -83,14 +83,14 @@ function renderPackPanelMarkup(details: StickerPackDetails, overrides = {}) {
 }
 
 describe("PackPanel", () => {
-  it("renders the sticker folder and export actions", () => {
+  it("renders header actions with pack options in the overflow menu", () => {
     const markup = renderPackPanelMarkup(createDetails());
 
-    expect(markup).toContain("Open Folder");
-    expect(markup).toContain("Export");
+    expect(markup).toContain('aria-label="Pack options"');
+    expect(markup).not.toContain("Open Folder");
+    expect(markup).not.toContain("Export");
     expect(markup).toContain("Upload");
-    expect(markup).toContain('aria-label="Delete pack"');
-    expect(markup).toContain('aria-label="List view"');
+    expect(markup).toContain('aria-label="Select All"');
     expect(markup).toContain("disabled");
   });
 
@@ -98,12 +98,10 @@ describe("PackPanel", () => {
     const markup = renderPackPanelMarkup(createTelegramDetails({ stickerSetId: "100", shortName: "sample_pack", title: "Sample Pack", format: "video", syncState: "error", lastSyncError: "The selected Telegram sticker set is no longer owned by the current account." }));
 
     expect(markup).toContain("The selected Telegram sticker set is no longer owned by the current account.");
-    expect(markup).toContain("Update");
+    expect(markup).toContain("Push");
     expect(markup).toContain("Sync error");
     expect(markup).toContain("sample_pack");
-    expect(markup).toContain(
-      'aria-label="Deleting Telegram sticker sets is not supported yet"',
-    );
+    expect(markup).toContain('aria-label="Pack options"');
     expect(markup).toContain("disabled");
   });
 
@@ -146,12 +144,12 @@ describe("PackPanel", () => {
 
     expect(markup).toContain("Unsupported");
     expect(markup).toContain(
-      'Telegram pack &quot;Static Pack&quot; uses static stickers, and only video sticker packs are supported currently.',
+      'Telegram pack &quot;Sample Pack&quot; uses static stickers, and only video sticker packs are supported currently.',
     );
     expect(markup).toContain("disabled");
   });
 
-  it("renders uploading and updating labels for telegram actions in flight", () => {
+  it("renders uploading and pushing labels for telegram actions in flight", () => {
     const uploadingMarkup = renderPackPanelMarkup(createDetails(), { telegramPublishing: true });
 
     const updatingMarkup = renderPackPanelMarkup(
@@ -160,6 +158,6 @@ describe("PackPanel", () => {
     );
 
     expect(uploadingMarkup).toContain("Uploading…");
-    expect(updatingMarkup).toContain("Updating…");
+    expect(updatingMarkup).toContain("Pushing…");
   });
 });

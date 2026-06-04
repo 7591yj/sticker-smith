@@ -193,13 +193,13 @@ describe("telegram error dialog", () => {
 
     const { root } = await renderApp();
 
-    const updateButton = [...document.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Update"),
+    const pushButton = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Push"),
     );
-    expect(updateButton).toBeDefined();
+    expect(pushButton).toBeDefined();
 
     await act(async () => {
-      updateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      pushButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 

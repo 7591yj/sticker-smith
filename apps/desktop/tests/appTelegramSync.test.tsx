@@ -179,7 +179,7 @@ describe("app telegram pack refresh", () => {
     });
   });
 
-  it("shows uploading and updating action labels from telegram events", async () => {
+  it("shows uploading and pushing action labels from telegram events", async () => {
     const { root, emit } = await renderWithTelegramPacks([
       createPack({ id: "local-pack", name: "Local Pack", slug: "local-pack", rootPath: "/tmp/local-pack" }),
       createTelegramPack({ telegram: createTelegramMetadata({ syncState: "stale" }) }),
@@ -201,7 +201,7 @@ describe("app telegram pack refresh", () => {
       stickerSetId: "100",
     });
 
-    expect(document.body.textContent).toContain("Update");
+    expect(document.body.textContent).toContain("Push");
 
     await emit({
       type: "update_started",
@@ -209,7 +209,7 @@ describe("app telegram pack refresh", () => {
       stickerSetId: "100",
     });
 
-    expect(document.body.textContent).toContain("Updating…");
+    expect(document.body.textContent).toContain("Pushing…");
 
     await act(async () => {
       root.unmount();
