@@ -1,19 +1,10 @@
 import type { DragEvent, MouseEvent, ReactNode } from "react";
 
-export type BrowserView = "gallery" | "list";
-
 export interface PreviewProps {
   absolutePath: string | null;
   relativePath: string;
   kind?: string;
   placeholderLabel?: string;
-}
-
-export interface BrowserViewToggleProps {
-  ariaLabel: string;
-  view: BrowserView;
-  onChange: (nextView: BrowserView) => void;
-  compact?: boolean;
 }
 
 export interface BrowserItemProps {

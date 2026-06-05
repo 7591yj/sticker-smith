@@ -159,7 +159,6 @@ export const appTokens = {
       thumbnail: 20,
       fallbackIcon: 16,
       fileTypeIcon: 28,
-      listRow: 56,
       gridMinWidth: 96,
       aspectRatio: "1 / 1",
       badge: 16,

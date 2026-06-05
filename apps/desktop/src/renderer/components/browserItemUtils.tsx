@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
@@ -15,25 +14,6 @@ import {
   getStickerStatusColor,
   type StickerStatus,
 } from "./stickerList/stickerUtils";
-import {
-  BrowserGalleryCard,
-  BrowserListRow,
-  type BrowserItemProps,
-  type BrowserView,
-} from "./fileBrowser";
-
-export interface BrowserItemDescriptor extends BrowserItemProps {
-  key: string;
-}
-
-export function renderBrowserItem(
-  view: BrowserView,
-  item: BrowserItemDescriptor,
-) {
-  const Component = view === "list" ? BrowserListRow : BrowserGalleryCard;
-  const { key, ...props } = item;
-  return <Component {...props} key={key} />;
-}
 
 export function formatOrderLabel(order: number) {
   return `#${order + 1}`;
