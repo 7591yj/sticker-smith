@@ -61,11 +61,7 @@ export function StickerList({
     () => visibleStickers.map((sticker) => sticker.id),
     [visibleStickers],
   );
-  const selection = useStickerSelection(
-    packId,
-    data.stickerIds,
-    visibleStickerIds,
-  );
+  const selection = useStickerSelection(packId, visibleStickerIds);
   const selectedStickers = useMemo(
     () =>
       selection.selectedStickerIds

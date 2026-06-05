@@ -32,5 +32,4 @@ export interface StickerSelectionState {
 export interface StickerDataState {
   sortedStickers: StickerItem[];
   stickerById: ReadonlyMap<string, StickerItem>;
-  stickerIds: string[];
 }

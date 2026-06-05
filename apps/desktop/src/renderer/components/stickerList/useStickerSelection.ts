@@ -20,16 +20,11 @@ export function useStickerData(
     () => new Map(stickers.map((sticker) => [sticker.id, sticker])),
     [stickers],
   );
-  const stickerIds = useMemo(
-    () => sortedStickers.map((sticker) => sticker.id),
-    [sortedStickers],
-  );
-  return { sortedStickers, stickerById, stickerIds };
+  return { sortedStickers, stickerById };
 }
 
 export function useStickerSelection(
   packId: string,
-  selectableStickerIds: string[],
   visibleStickerIds: string[],
 ): StickerSelectionState {
   const [selectedStickerIds, setSelectedStickerIds] = useState<string[]>([]);
@@ -43,14 +38,14 @@ export function useStickerSelection(
   }, [packId]);
 
   useEffect(() => {
-    const selectableIds = new Set(selectableStickerIds);
+    const visibleIds = new Set(visibleStickerIds);
     setSelectedStickerIds((current) =>
-      current.filter((id) => selectableIds.has(id)),
+      current.filter((id) => visibleIds.has(id)),
     );
     setSelectionAnchorId((current) =>
-      current && selectableIds.has(current) ? current : null,
+      current && visibleIds.has(current) ? current : null,
     );
-  }, [selectableStickerIds]);
+  }, [visibleStickerIds]);
 
   const selectOnly = useCallback((stickerId: string) => {
     setSelectedStickerIds([stickerId]);
