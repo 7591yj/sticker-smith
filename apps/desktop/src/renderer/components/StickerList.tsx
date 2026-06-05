@@ -16,6 +16,7 @@ import {
   useStickerData,
   useStickerSelection,
 } from "./stickerList/useStickerSelection";
+import { useStickerKeyboardShortcuts } from "./stickerList/useStickerKeyboardShortcuts";
 import {
   filterAndSortStickers,
   getContextStickers,
@@ -79,6 +80,13 @@ export function StickerList({
   const contextStickers = getContextStickers(contextMenu, data.stickerById);
 
   useEffect(() => setContextMenu(null), [packId]);
+
+  useStickerKeyboardShortcuts({
+    selectedStickerIds: selection.selectedStickerIds,
+    visibleStickerIds,
+    setSelectedStickerIds: selection.setSelectedStickerIds,
+    setSelectionAnchorId: selection.setSelectionAnchorId,
+  });
 
   const handleContextMenu = useStickerContextMenu(
     selection.selectedStickerIds,
