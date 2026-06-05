@@ -7,13 +7,7 @@ export type StickerContextMenuState = {
   stickerIds: string[];
 } | null;
 
-export type StickerFilter =
-  | "all"
-  | "draft"
-  | "ready"
-  | "modified"
-  | "failed"
-  | "telegram";
+export type StickerFilter = "all" | "draft" | "ready" | "synced" | "modified" | "failed";
 export type StickerSort = "index" | "emoji" | "size";
 export type FilterCounts = Record<StickerFilter, number>;
 

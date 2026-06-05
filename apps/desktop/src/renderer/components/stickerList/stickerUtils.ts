@@ -1,5 +1,4 @@
 import { hashEmojiList, type StickerItem } from "@sticker-smith/shared";
-import { appTokens } from "../../../theme/appTokens";
 import { formatCountLabel } from "../browserStyles";
 import { sortItemsWithPinnedFirst } from "../fileBrowser";
 import { formatOrderLabel } from "../browserItemUtils";
@@ -68,12 +67,12 @@ export function matchesFilter(sticker: StickerItem, filter: StickerFilter) {
       return isDraft(sticker);
     case "ready":
       return getStickerStatus(sticker) === "ready";
+    case "synced":
+      return getStickerStatus(sticker) === "synced";
     case "modified":
       return getStickerStatus(sticker) === "modified";
     case "failed":
       return isFailed(sticker);
-    case "telegram":
-      return Boolean(sticker.telegram);
     default:
       return true;
   }
@@ -85,12 +84,12 @@ export function summarizeFilterCounts(stickers: StickerItem[]): FilterCounts {
       summary.all += 1;
       if (isDraft(sticker)) summary.draft += 1;
       if (getStickerStatus(sticker) === "ready") summary.ready += 1;
+      if (getStickerStatus(sticker) === "synced") summary.synced += 1;
       if (getStickerStatus(sticker) === "modified") summary.modified += 1;
       if (isFailed(sticker)) summary.failed += 1;
-      if (sticker.telegram) summary.telegram += 1;
       return summary;
     },
-    { all: 0, draft: 0, ready: 0, modified: 0, failed: 0, telegram: 0 },
+    { all: 0, draft: 0, ready: 0, synced: 0, modified: 0, failed: 0 },
   );
 }
 
@@ -115,25 +114,6 @@ export function getStickerStatus(sticker: StickerItem): StickerStatus {
   return "ready";
 }
 
-export function getStickerStatusLabel(sticker: StickerItem): string {
-  const status = getStickerStatus(sticker);
-  switch (status) {
-    case "draft":
-      return appTokens.copy.labels.stickerStatusDraft;
-    case "ready":
-      return appTokens.copy.labels.stickerStatusReady;
-    case "synced":
-      return appTokens.copy.labels.stickerStatusSynced;
-    case "modified":
-      return appTokens.copy.labels.stickerStatusModified;
-    case "failed":
-      return appTokens.copy.labels.stickerStatusFailed;
-  }
-}
-
-export function getStickerStatusColor(sticker: StickerItem): StickerStatus {
-  return getStickerStatus(sticker);
-}
 
 export function summarizeStickerStatuses(stickers: StickerItem[]) {
   return stickers.reduce(

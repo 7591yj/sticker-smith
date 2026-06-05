@@ -1,21 +1,12 @@
 import type { ReactNode } from "react";
-import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import CreateIcon from "@mui/icons-material/Create";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
 import { FilePreview } from "../fileBrowser";
-import {
-  getStickerStatus,
-  getStickerStatusLabel,
-  summarizeStickerStatuses,
-  type StickerStatus,
-} from "./stickerUtils";
+import { stickerStatusMeta } from "./stickerStatusMeta";
+import { getStickerStatus, summarizeStickerStatuses } from "./stickerUtils";
 
 export function SingleStickerPreview({
   sticker,
@@ -120,23 +111,21 @@ export function MultiStickerPreview({
           }}
         >
           {statusSummary.ready > 0 ? (
-            <SummaryChip label={`${statusSummary.ready} ready`} />
+            <SummaryChip label={formatStatusCount("ready", statusSummary.ready)} />
           ) : null}
           {statusSummary.draft > 0 ? (
-            <SummaryChip
-              label={`${statusSummary.draft} ${appTokens.copy.labels.stickerStatusDraft.toLowerCase()}`}
-            />
+            <SummaryChip label={formatStatusCount("draft", statusSummary.draft)} />
           ) : null}
           {statusSummary.modified > 0 ? (
             <SummaryChip
-              label={`${statusSummary.modified} ${appTokens.copy.labels.stickerStatusModified.toLowerCase()}`}
+              label={formatStatusCount("modified", statusSummary.modified)}
             />
           ) : null}
           {statusSummary.synced > 0 ? (
-            <SummaryChip label={`${statusSummary.synced} synced`} />
+            <SummaryChip label={formatStatusCount("synced", statusSummary.synced)} />
           ) : null}
           {statusSummary.failed > 0 ? (
-            <SummaryChip label={`${statusSummary.failed} failed`} />
+            <SummaryChip label={formatStatusCount("failed", statusSummary.failed)} />
           ) : null}
         </Box>
       </Box>
@@ -183,22 +172,19 @@ function SummaryChip({ label }: { label: string }) {
   );
 }
 
-const statusChipIcons = {
-  draft: <CreateIcon />,
-  ready: <CheckCircleOutlineIcon />,
-  synced: <CheckCircleIcon />,
-  modified: <ChangeCircleIcon />,
-  failed: <ErrorOutlineIcon />,
-} satisfies Record<StickerStatus, ReactNode>;
+function formatStatusCount(status: keyof typeof stickerStatusMeta, count: number) {
+  return `${count} ${stickerStatusMeta[status].label.toLowerCase()}`;
+}
 
 function StatusChip({ sticker }: { sticker: StickerItem }) {
   const status = getStickerStatus(sticker);
+  const { Icon, label } = stickerStatusMeta[status];
 
   return (
     <Chip
       size="small"
-      icon={statusChipIcons[status]}
-      label={getStickerStatusLabel(sticker)}
+      icon={<Icon />}
+      label={label}
       variant="filled"
       sx={{
         height: appTokens.sizes.chip.compactHeight,

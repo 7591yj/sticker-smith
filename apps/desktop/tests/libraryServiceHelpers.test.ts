@@ -6,6 +6,7 @@ import {
   markTelegramMirrorStale,
   normalizeStickerRelativePath,
   setPackIconSticker,
+  telegramPackHasPendingEdits,
 } from "../src/main/services/library/helpers";
 
 type RecordSticker = StickerPackRecord["stickers"][number];
@@ -80,6 +81,12 @@ describe("libraryServiceHelpers", () => {
     markTelegramMirrorStale(unsupported);
     expect(unsupported.telegram?.syncState).toBe("unsupported");
     expect(unsupported.telegram?.lastSyncError).toBe("previous error");
+  });
+
+  it("treats stale Telegram mirrors as pending even after deleted stickers disappear", () => {
+    const pack = record({ telegram: telegram({ syncState: "stale" }), stickers: [] });
+
+    expect(telegramPackHasPendingEdits(pack)).toBe(true);
   });
 
   it("sets pack icon and Telegram thumbnail path", () => {

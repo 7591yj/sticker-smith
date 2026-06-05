@@ -34,6 +34,7 @@ export type PackPanelHeaderProps = {
   onImportFiles: () => void;
   onImportDir: () => void;
   onOpenStickers: () => void;
+  onChooseIcon: () => void;
   onExportStickers: () => void;
   onPublish: () => void;
   onUpdateTelegramPack: () => void;
@@ -60,6 +61,7 @@ export function PackPanelHeader({
   onImportFiles,
   onImportDir,
   onOpenStickers,
+  onChooseIcon,
   onExportStickers,
   onPublish,
   onUpdateTelegramPack,
@@ -143,6 +145,7 @@ export function PackPanelHeader({
           onRename={onRename}
           onDelete={onDelete}
           onOpenStickers={onOpenStickers}
+          onChooseIcon={onChooseIcon}
           onExportStickers={onExportStickers}
         />
       </Box>

@@ -112,7 +112,17 @@ function usePackManagementActions({
     [details, refreshPacks, refreshDetails, setRenaming],
   );
 
-  return { handleDelete, handleRename };
+  const handleChooseIcon = useCallback(async () => {
+    if (!details) return;
+    const nextDetails = await window.stickerSmith.packs.chooseIcon({
+      packId: details.pack.id,
+    });
+    if (!nextDetails) return;
+    setDetails(nextDetails);
+    await refreshPacks();
+  }, [details, refreshPacks, setDetails]);
+
+  return { handleDelete, handleRename, handleChooseIcon };
 }
 
 export function usePackPanelActions({

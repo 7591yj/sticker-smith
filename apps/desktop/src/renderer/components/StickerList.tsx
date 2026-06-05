@@ -4,6 +4,7 @@ import type { StickerItem, StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 import { EmojiPickerDialog } from "./EmojiPickerDialog";
 import { StickerBrowser } from "./stickerList/StickerBrowser";
+import { DeleteStickersDialog } from "./stickerList/DeleteStickersDialog";
 import { StickerContextMenu } from "./stickerList/StickerContextMenu";
 import { StickerInspector } from "./stickerList/StickerInspector";
 import {
@@ -35,6 +36,7 @@ interface Props {
   iconStickerId: string | null;
   toolbarNotice?: string | null;
   refreshDetails: () => Promise<StickerPackDetails>;
+  refreshPacks: () => Promise<unknown>;
 }
 
 export function StickerList({
@@ -43,12 +45,16 @@ export function StickerList({
   iconStickerId,
   toolbarNotice,
   refreshDetails,
+  refreshPacks,
 }: Props) {
   const data = useStickerData(stickers, iconStickerId);
   const [contextMenu, setContextMenu] = useState<StickerContextMenuState>(null);
   const [emojiEditStickerIds, setEmojiEditStickerIds] = useState<
     string[] | null
   >(null);
+  const [deleteStickerIds, setDeleteStickerIds] = useState<string[] | null>(
+    null,
+  );
   const [filter, setFilter] = useState<StickerFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<StickerSort>("index");
@@ -97,6 +103,16 @@ export function StickerList({
     selection,
     setEmojiEditStickerIds,
   });
+  const handleDeleteConfirm = useCallback(
+    async (stickerIds: string[]) => {
+      await window.stickerSmith.stickers.deleteMany({ packId, stickerIds });
+      selection.setSelectedStickerIds([]);
+      selection.setSelectionAnchorId(null);
+      setDeleteStickerIds(null);
+      await Promise.all([refreshDetails(), refreshPacks()]);
+    },
+    [packId, refreshDetails, refreshPacks, selection],
+  );
 
   return (
     <>
@@ -163,6 +179,7 @@ export function StickerList({
                 setEmojiEditStickerIds(selection.selectedStickerIds);
               }
             }}
+            onDelete={() => setDeleteStickerIds(selection.selectedStickerIds)}
           />
         </Box>
       </Box>
@@ -170,7 +187,13 @@ export function StickerList({
         contextMenu={contextMenu}
         contextStickers={contextStickers}
         onClose={handleCloseContextMenu}
+        onDeleteStickers={setDeleteStickerIds}
         setEmojiEditStickerIds={setEmojiEditStickerIds}
+      />
+      <DeleteStickersDialog
+        stickerIds={deleteStickerIds}
+        onClose={() => setDeleteStickerIds(null)}
+        onConfirm={handleDeleteConfirm}
       />
       {emojiEditStickerIds ? (
         <EmojiPickerDialog

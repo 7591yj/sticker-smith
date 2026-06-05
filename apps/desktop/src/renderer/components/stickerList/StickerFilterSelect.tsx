@@ -1,60 +1,17 @@
-import type { ReactElement } from "react";
-import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import CreateIcon from "@mui/icons-material/Create";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
 import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import { appTokens } from "../../../theme/appTokens";
+import { stickerFilterMeta } from "./stickerStatusMeta";
 import type { FilterCounts, StickerFilter } from "./types";
 
-type StickerFilterOption = {
-  value: StickerFilter;
-  label: string;
-  icon: ReactElement;
-  color: string;
-};
-
-const stickerFilterOptions: StickerFilterOption[] = [
-  {
-    value: "all",
-    label: appTokens.copy.labels.stickerStatusAll,
-    icon: <FilterListIcon />,
-    color: appTokens.colors.text.secondary,
-  },
-  {
-    value: "draft",
-    label: appTokens.copy.labels.stickerStatusDraft,
-    icon: <CreateIcon />,
-    color: appTokens.colors.status.draft.main,
-  },
-  {
-    value: "ready",
-    label: appTokens.copy.labels.stickerStatusReady,
-    icon: <CheckCircleOutlineIcon />,
-    color: appTokens.colors.status.ready.main,
-  },
-  {
-    value: "modified",
-    label: appTokens.copy.labels.stickerStatusModified,
-    icon: <ChangeCircleIcon />,
-    color: appTokens.colors.status.modified.main,
-  },
-  {
-    value: "failed",
-    label: appTokens.copy.labels.stickerStatusFailed,
-    icon: <ErrorOutlineIcon />,
-    color: appTokens.colors.status.failed.main,
-  },
-  {
-    value: "telegram",
-    label: appTokens.copy.labels.stickerStatusTelegram,
-    icon: <TelegramIcon />,
-    color: appTokens.colors.status.synced.main,
-  },
+const stickerFilterOptions: StickerFilter[] = [
+  "all",
+  "draft",
+  "ready",
+  "synced",
+  "modified",
+  "failed",
 ];
 
 export function StickerFilterSelect({
@@ -85,37 +42,41 @@ export function StickerFilterSelect({
         },
       }}
     >
-      {stickerFilterOptions.map((option) => (
-        <MenuItem key={option.value} value={option.value}>
-          <Box
-            component="span"
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              width: "100%",
-              minWidth: 0,
-            }}
-          >
+      {stickerFilterOptions.map((value) => {
+        const option = stickerFilterMeta[value];
+        const Icon = option.Icon;
+        return (
+          <MenuItem key={value} value={value}>
             <Box
               component="span"
               sx={{
                 display: "flex",
-                color: option.color,
-                "& svg": { fontSize: appTokens.sizes.icon.action },
+                alignItems: "center",
+                gap: 1,
+                width: "100%",
+                minWidth: 0,
               }}
             >
-              {option.icon}
+              <Box
+                component="span"
+                sx={{
+                  display: "flex",
+                  color: option.color,
+                  "& svg": { fontSize: appTokens.sizes.icon.action },
+                }}
+              >
+                <Icon />
+              </Box>
+              <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
+                {option.label}
+              </Box>
+              <Box component="span" sx={{ color: "text.secondary" }}>
+                {filterCounts[value]}
+              </Box>
             </Box>
-            <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
-              {option.label}
-            </Box>
-            <Box component="span" sx={{ color: "text.secondary" }}>
-              {filterCounts[option.value]}
-            </Box>
-          </Box>
-        </MenuItem>
-      ))}
+          </MenuItem>
+        );
+      })}
     </TextField>
   );
 }

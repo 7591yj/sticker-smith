@@ -49,20 +49,6 @@ function usePackContextHandlers({
     },
     [contextMenu, handleCloseMenu],
   );
-  const handleChooseIcon = useCallback(
-    async () =>
-      runContextPackAction(async (pack) => {
-        if (pack.thumbnailPath) {
-          const confirmed = window.confirm(
-            "Replace this pack's existing icon? The pack will need a Telegram update after the new icon is converted.",
-          );
-          if (!confirmed) return;
-        }
-        await window.stickerSmith.packs.chooseIcon({ packId: pack.id });
-        await refreshPacks();
-      }),
-    [refreshPacks, runContextPackAction],
-  );
   const handleDelete = useCallback(
     async () =>
       runContextPackAction(async (pack) => {
@@ -91,7 +77,6 @@ function usePackContextHandlers({
     handleContextMenu,
     handleCloseMenu,
     handleRenameOpen,
-    handleChooseIcon,
     handleDelete,
     handleOpenStickers,
     handleExportStickers,

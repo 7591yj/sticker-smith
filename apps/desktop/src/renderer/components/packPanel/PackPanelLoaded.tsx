@@ -131,6 +131,7 @@ export function PackPanelLoaded(props: PackPanelLoadedProps) {
         onImportFiles={actions.handleImportFiles}
         onImportDir={actions.handleImportDir}
         onOpenStickers={actions.handleOpenStickers}
+        onChooseIcon={actions.handleChooseIcon}
         onExportStickers={actions.handleExportStickers}
         onPublish={() => props.setPublishDialogOpen(true)}
         onUpdateTelegramPack={() =>
@@ -160,6 +161,7 @@ export function PackPanelLoaded(props: PackPanelLoadedProps) {
           iconStickerId={pack.iconStickerId}
           toolbarNotice={getUnsupportedTelegramNotice(details)}
           refreshDetails={() => props.refreshDetails(pack.id)}
+          refreshPacks={props.refreshPacks}
         />
       </Box>
       <RenameDialog

@@ -8,8 +8,6 @@ import type {
   StickerPackDetails,
   StickerPackRecord,
 } from "@sticker-smith/shared";
-import { hashEmojiList } from "@sticker-smith/shared";
-
 import type { SettingsService } from "../settingsService";
 import { compactStickerOrders } from "../pack/normalizer";
 import {
@@ -23,6 +21,7 @@ import {
   reorderStickers,
   setPackIconSticker,
   slugify,
+  telegramPackHasPendingEdits,
 } from "./helpers";
 import { hydratePackDetails, PackRepository } from "../pack/repository";
 import { TelegramMirrorStore } from "../telegram/mirror/store";
@@ -61,19 +60,7 @@ export class LibraryService {
     for (const { record } of packs) {
       if (!record.telegram) continue;
 
-      const hasPending = record.stickers.some((sticker) => {
-        if (sticker.downloadState === "failed") return false;
-        if (sticker.downloadState === "missing") return true;
-        if (sticker.emojiList.length === 0) return true;
-        if (!sticker.telegram) return false;
-        const baselineEmojiHash = sticker.telegram.baselineEmojiHash ?? hashEmojiList(sticker.emojiList);
-        if (sticker.sha256 !== sticker.telegram.baselineStickerHash) return true;
-        if (hashEmojiList(sticker.emojiList) !== baselineEmojiHash) return true;
-        if (sticker.order !== sticker.telegram.position) return true;
-        return false;
-      });
-
-      if (hasPending) {
+      if (telegramPackHasPendingEdits(record)) {
         result.push({ packId: record.id, name: record.name });
       }
     }

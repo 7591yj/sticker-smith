@@ -1,6 +1,9 @@
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
@@ -11,12 +14,36 @@ import {
   SingleStickerPreview,
 } from "./StickerInspectorPreview";
 
+const inspectorActionButtonSx = {
+  height: 34,
+  minHeight: 34,
+  borderRadius: appTokens.shape.radius.control,
+  textTransform: "none",
+} as const;
+
+const inspectorDeleteButtonSx = {
+  ...inspectorActionButtonSx,
+  width: 34,
+  minWidth: 34,
+  color: "error.main",
+  border: 1,
+  borderColor: "error.main",
+  p: 0,
+  "&:hover": {
+    borderColor: "error.main",
+    bgcolor: "error.main",
+    color: "error.contrastText",
+  },
+} as const;
+
 export function StickerInspector({
   selectedStickers,
   onEditEmoji,
+  onDelete,
 }: {
   selectedStickers: StickerItem[];
   onEditEmoji: () => void;
+  onDelete: () => void;
 }) {
   const selectedSticker =
     selectedStickers.length === 1 ? selectedStickers[0] : null;
@@ -71,29 +98,57 @@ export function StickerInspector({
       {selectedSticker ? (
         <>
           <InspectorRows sticker={selectedSticker} />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={
+                <InsertEmoticonIcon
+                  sx={{ fontSize: appTokens.sizes.icon.compactAction }}
+                />
+              }
+              onClick={onEditEmoji}
+              sx={{ ...inspectorActionButtonSx, flex: 1 }}
+            >
+              {appTokens.copy.actions.editEmojis}
+            </Button>
+            <Tooltip title={appTokens.copy.actions.delete}>
+              <IconButton
+                size="small"
+                aria-label={appTokens.copy.actions.delete}
+                onClick={onDelete}
+                sx={inspectorDeleteButtonSx}
+              >
+                <DeleteOutlineIcon
+                  sx={{ fontSize: appTokens.sizes.icon.compactAction }}
+                />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </>
+      ) : selectedStickers.length > 1 ? (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Button
             size="small"
             variant="outlined"
-            startIcon={
-              <InsertEmoticonIcon
+            onClick={onEditEmoji}
+            sx={{ ...inspectorActionButtonSx, flex: 1 }}
+          >
+            {appTokens.copy.dialogs.editSelectedEmojis}
+          </Button>
+          <Tooltip title={appTokens.copy.actions.delete}>
+            <IconButton
+              size="small"
+              aria-label={appTokens.copy.actions.delete}
+              onClick={onDelete}
+              sx={inspectorDeleteButtonSx}
+            >
+              <DeleteOutlineIcon
                 sx={{ fontSize: appTokens.sizes.icon.compactAction }}
               />
-            }
-            onClick={onEditEmoji}
-            sx={{ textTransform: "none" }}
-          >
-            {appTokens.copy.actions.editEmojis}
-          </Button>
-        </>
-      ) : selectedStickers.length > 1 ? (
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={onEditEmoji}
-          sx={{ textTransform: "none" }}
-        >
-          {appTokens.copy.dialogs.editSelectedEmojis}
-        </Button>
+            </IconButton>
+          </Tooltip>
+        </Box>
       ) : null}
     </Box>
   );

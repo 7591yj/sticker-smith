@@ -1,50 +1,16 @@
 import type { MouseEvent } from "react";
-import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import CreateIcon from "@mui/icons-material/Create";
 import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
-import {
-  getStickerStatus,
-  getStickerStatusColor,
-  type StickerStatus,
-} from "./stickerList/stickerUtils";
+import { stickerStatusMeta } from "./stickerList/stickerStatusMeta";
+import { getStickerStatus } from "./stickerList/stickerUtils";
 
 export function formatOrderLabel(order: number) {
   return `#${order + 1}`;
-}
-
-const statusIconComponents = {
-  draft: CreateIcon,
-  ready: CheckCircleOutlineIcon,
-  synced: CheckCircleIcon,
-  modified: ChangeCircleIcon,
-  failed: ErrorOutlineIcon,
-} satisfies Record<StickerStatus, typeof CreateIcon>;
-
-const statusColorTokens = {
-  draft: appTokens.colors.status.draft.main,
-  ready: appTokens.colors.status.ready.main,
-  synced: appTokens.colors.status.synced.main,
-  modified: appTokens.colors.status.modified.main,
-  failed: appTokens.colors.status.failed.main,
-} satisfies Record<StickerStatus, string>;
-
-function getStatusTooltipTitle(status: StickerStatus) {
-  return {
-    draft: appTokens.copy.labels.stickerStatusDraft,
-    ready: appTokens.copy.labels.stickerStatusReady,
-    synced: appTokens.copy.labels.stickerStatusSynced,
-    modified: appTokens.copy.labels.stickerStatusModified,
-    failed: appTokens.copy.labels.stickerStatusFailed,
-  }[status];
 }
 
 export function StickerStatusIcon({
@@ -57,11 +23,11 @@ export function StickerStatusIcon({
   size?: number;
 }) {
   const status = getStickerStatus(sticker);
-  const Icon = statusIconComponents[status];
-  const iconColor = color ?? statusColorTokens[getStickerStatusColor(sticker)];
+  const { Icon, label, color: statusColor } = stickerStatusMeta[status];
+  const iconColor = color ?? statusColor;
 
   return (
-    <Tooltip title={getStatusTooltipTitle(status)}>
+    <Tooltip title={label}>
       <Icon sx={{ fontSize: size, color: iconColor }} />
     </Tooltip>
   );

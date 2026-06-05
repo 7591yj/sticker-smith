@@ -4,6 +4,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PhotoIcon from "@mui/icons-material/Photo";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
@@ -20,6 +21,7 @@ export function PackHeaderOverflowMenu({
   onRename,
   onDelete,
   onOpenStickers,
+  onChooseIcon,
   onExportStickers,
 }: {
   pack: StickerPack;
@@ -27,6 +29,7 @@ export function PackHeaderOverflowMenu({
   onRename: () => void;
   onDelete: () => void;
   onOpenStickers: () => void;
+  onChooseIcon: () => void;
   onExportStickers: () => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -97,6 +100,12 @@ export function PackHeaderOverflowMenu({
             <EditIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
           </ListItemIcon>
           <ListItemText>{appTokens.copy.actions.rename}</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction(onChooseIcon)} dense>
+          <ListItemIcon>
+            <PhotoIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
+          </ListItemIcon>
+          <ListItemText>{appTokens.copy.actions.changeIcon}</ListItemText>
         </MenuItem>
         <Tooltip title={deleteTooltip} placement="left">
           <span>

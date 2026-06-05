@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { SourceMediaKind, StickerItem, StickerPackRecord } from "@sticker-smith/shared";
-import { supportedMediaKinds } from "@sticker-smith/shared";
+import { hashEmojiList, supportedMediaKinds } from "@sticker-smith/shared";
 
 import { resolvePackPaths } from "../pack/repository";
 import { markStickerFileReady } from "../pack/stickerFileState";
@@ -150,6 +150,24 @@ export async function applyConversionResult(
   });
   if (result.mode === "icon") record.iconStickerId = sticker.id;
   markTelegramMirrorStale(record);
+}
+
+export function telegramPackHasPendingEdits(record: StickerPackRecord) {
+  if (!record.telegram || record.telegram.syncState === "unsupported") return false;
+  if (record.telegram.syncState === "stale") return true;
+
+  return record.stickers.some((sticker) => {
+    if (sticker.downloadState === "failed") return false;
+    if (sticker.downloadState === "missing") return true;
+    if (sticker.emojiList.length === 0) return true;
+    if (!sticker.telegram) return false;
+    const baselineEmojiHash =
+      sticker.telegram.baselineEmojiHash ?? hashEmojiList(sticker.emojiList);
+    if (sticker.sha256 !== sticker.telegram.baselineStickerHash) return true;
+    if (hashEmojiList(sticker.emojiList) !== baselineEmojiHash) return true;
+    if (sticker.order !== sticker.telegram.position) return true;
+    return false;
+  });
 }
 
 export function removeStickers(record: StickerPackRecord, stickerIds: string[]) {

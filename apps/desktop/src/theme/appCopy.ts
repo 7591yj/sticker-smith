@@ -8,6 +8,7 @@ export const appCopy = {
     clear: "Clear",
     clearSelection: "Clear Selection",
     close: "Close",
+    changeIcon: "Change icon",
     connectTelegram: "Connect Telegram",
     manageTelegram: "Manage Telegram",
     copyFolderHere: "Copy Folder Here",
