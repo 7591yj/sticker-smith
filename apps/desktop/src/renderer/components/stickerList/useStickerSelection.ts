@@ -67,14 +67,19 @@ export function useStickerSelection(
       )
         return;
 
-      setSelectedStickerIds((current) =>
-        current.includes(stickerId)
-          ? current.filter((id) => id !== stickerId)
-          : [...current, stickerId],
-      );
-      setSelectionAnchorId(stickerId);
+      if (event.metaKey || event.ctrlKey) {
+        setSelectedStickerIds((current) =>
+          current.includes(stickerId)
+            ? current.filter((id) => id !== stickerId)
+            : [...current, stickerId],
+        );
+        setSelectionAnchorId(stickerId);
+        return;
+      }
+
+      selectOnly(stickerId);
     },
-    [selectionAnchorId, visibleStickerIds],
+    [selectOnly, selectionAnchorId, visibleStickerIds],
   );
 
   return {
