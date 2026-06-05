@@ -8,7 +8,6 @@ import type {
   StickerPackDetails,
   StickerPackRecord,
 } from "@sticker-smith/shared";
-
 import type { SettingsService } from "../settingsService";
 import { compactStickerOrders } from "../pack/normalizer";
 import {
@@ -22,6 +21,7 @@ import {
   reorderStickers,
   setPackIconSticker,
   slugify,
+  telegramPackHasPendingEdits,
 } from "./helpers";
 import { hydratePackDetails, PackRepository } from "../pack/repository";
 import { TelegramMirrorStore } from "../telegram/mirror/store";
@@ -52,6 +52,21 @@ export class LibraryService {
   async listPacks(): Promise<StickerPack[]> { return this.repo.listPacks(); }
   async getPack(packId: string): Promise<StickerPackDetails> { return this.repo.getPack(packId); }
   async findPackByTelegramStickerSetId(stickerSetId: string) { return this.repo.findPackByTelegramStickerSetId(stickerSetId); }
+
+  async getTelegramPacksWithPendingEdits(): Promise<{ packId: string; name: string }[]> {
+    const packs = await this.repo.listPackRecords();
+    const result: { packId: string; name: string }[] = [];
+
+    for (const { record } of packs) {
+      if (!record.telegram) continue;
+
+      if (telegramPackHasPendingEdits(record)) {
+        result.push({ packId: record.id, name: record.name });
+      }
+    }
+
+    return result;
+  }
 
   async createPack(input: { name: string }): Promise<StickerPack> {
     await this.repo.ensureReady();
@@ -183,7 +198,8 @@ export class LibraryService {
   async getConversionContext(packId: string) { return this.getPack(packId); }
 
   async upsertTelegramMirror(input: Parameters<TelegramMirrorStore["upsertTelegramMirror"]>[0]) { return this.telegramMirrorStore.upsertTelegramMirror(input); }
-  async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
+  async writeTelegramStickerFile(input: { packId: string; stickerId: string; sourceFilePath: string; relativePath?: string; baselineStickerHash?: string | null; baselineEmojiHash?: string | null }) { return this.telegramMirrorStore.writeTelegramStickerFile(input); }
+  async updateStickerTelegramBaseline(input: { packId: string; stickerId: string; baselineStickerHash?: string | null; baselineEmojiHash?: string | null }) { return this.telegramMirrorStore.updateStickerTelegramBaseline(input); }
   async setTelegramStickerDownloadState(input: Parameters<TelegramMirrorStore["setTelegramStickerDownloadState"]>[0]) { return this.telegramMirrorStore.setTelegramStickerDownloadState(input); }
   async updateTelegramMirrorMetadata(input: Parameters<TelegramMirrorStore["updateTelegramMirrorMetadata"]>[0]) { return this.telegramMirrorStore.updateTelegramMirrorMetadata(input); }
   async syncTelegramThumbnail(input: Parameters<TelegramMirrorStore["syncTelegramThumbnail"]>[0]) { return this.telegramMirrorStore.syncTelegramThumbnail(input); }

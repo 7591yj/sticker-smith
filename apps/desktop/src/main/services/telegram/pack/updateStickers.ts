@@ -37,7 +37,7 @@ export function assertTelegramMirrorHasStickers(
 ) {
   if (stickerStickers.length === 0) {
     throw new Error(
-      "Telegram mirrors must keep at least one sticker. Deleting the entire remote sticker set is not supported by Update.",
+      "Telegram packs must keep at least one sticker. Deleting the entire sticker set is not supported by Update.",
     );
   }
 }

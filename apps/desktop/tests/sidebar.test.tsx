@@ -129,7 +129,7 @@ describe("Sidebar", () => {
     expect(markup).not.toContain("Local Pack");
     expect(markup).toContain("Telegram Pack");
     expect(markup).toContain('aria-label="Telegram account"');
-    expect(markup).toContain('aria-label="Resync"');
+    expect(markup).toContain('aria-label="Refresh"');
     expect(markup).not.toContain("Short name not set");
     expect(markup).toContain("telegram_pack");
     expect(markup).toContain("Needs update");

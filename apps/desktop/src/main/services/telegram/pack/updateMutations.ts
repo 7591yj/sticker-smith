@@ -1,4 +1,4 @@
-import type { StickerPackDetails } from "@sticker-smith/shared";
+import { hashEmojiList, type StickerPackDetails } from "@sticker-smith/shared";
 
 import { findSticker } from "../../../utils/stickerQueries";
 import type {
@@ -148,6 +148,12 @@ export class TelegramPackUpdateMutations {
     }
 
     if (await this.replaceTelegramStickerIfChanged(input, telegramSticker, output, remoteFileId)) {
+      await this.options.libraryService.updateStickerTelegramBaseline({
+        packId: input.details.pack.id,
+        stickerId: sticker.id,
+        baselineStickerHash: output!.sha256,
+        baselineEmojiHash: hashEmojiList(sticker.emojiList),
+      });
       return;
     }
 
@@ -192,6 +198,12 @@ export class TelegramPackUpdateMutations {
       stickerSetId: details.pack.telegram!.stickerSetId,
       fileId: remoteFileId,
       emojis: sticker.emojiList,
+    });
+
+    await this.options.libraryService.updateStickerTelegramBaseline({
+      packId: details.pack.id,
+      stickerId: sticker.id,
+      baselineEmojiHash: hashEmojiList(sticker.emojiList),
     });
   }
 }

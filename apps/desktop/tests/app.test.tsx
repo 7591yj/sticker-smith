@@ -22,6 +22,7 @@ vi.stubGlobal("window", {
         lastError: null,
         updatedAt: "2026-03-12T00:00:00.000Z",
       })),
+      getPacksWithPendingEdits: vi.fn(async () => []),
       subscribe: vi.fn(() => () => undefined),
     },
     packs: { list: vi.fn(), get: vi.fn() },
@@ -39,7 +40,7 @@ describe("desktop app", () => {
     expect(markup).toContain("Sticker Smith");
     expect(markup).toContain("Local");
     expect(markup).toContain("Telegram");
-    expect(markup).toContain("Connect Telegram to load remote sticker packs.");
+    expect(markup).toContain("Connect Telegram to load Telegram sticker packs.");
     expect(markup).toContain("Select a pack or create a new one.");
   });
 });

@@ -1,7 +1,5 @@
 import type { DragEvent, MouseEvent, ReactNode } from "react";
 
-export type BrowserView = "gallery" | "list";
-
 export interface PreviewProps {
   absolutePath: string | null;
   relativePath: string;
@@ -9,22 +7,16 @@ export interface PreviewProps {
   placeholderLabel?: string;
 }
 
-export interface BrowserViewToggleProps {
-  ariaLabel: string;
-  view: BrowserView;
-  onChange: (nextView: BrowserView) => void;
-  compact?: boolean;
-}
-
 export interface BrowserItemProps {
   title: string;
-  label: string;
+  label: ReactNode;
   isPinned?: boolean;
   selected?: boolean;
   isDragOver?: boolean;
   draggable?: boolean;
   preview: ReactNode;
   metadata: ReactNode;
+  overlay?: ReactNode;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;

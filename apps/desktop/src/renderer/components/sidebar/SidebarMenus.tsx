@@ -3,7 +3,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import IosShareIcon from "@mui/icons-material/IosShare";
 import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
-import PhotoIcon from "@mui/icons-material/Photo";
 import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -23,7 +22,6 @@ function PackContextMenu({
   onClose,
   onRename,
   onOpenStickers,
-  onChooseIcon,
   onExportStickers,
   onDelete,
 }: {
@@ -31,7 +29,6 @@ function PackContextMenu({
   onClose: () => void;
   onRename: () => void;
   onOpenStickers: () => void;
-  onChooseIcon: () => void;
   onExportStickers: () => void;
   onDelete: () => void;
 }) {
@@ -60,10 +57,6 @@ function PackContextMenu({
       <MenuItem onClick={onOpenStickers} dense>
         <FolderOpenIcon sx={browserMenuIconSx} />
         {appTokens.copy.actions.openFolder}
-      </MenuItem>
-      <MenuItem onClick={onChooseIcon} dense>
-        <PhotoIcon sx={browserMenuIconSx} />
-        Change icon
       </MenuItem>
       <MenuItem onClick={onExportStickers} dense>
         <IosShareIcon sx={browserMenuIconSx} />
@@ -163,7 +156,6 @@ export function SidebarMenus({
         onClose={model.handleCloseMenu}
         onRename={model.handleRenameOpen}
         onOpenStickers={model.handleOpenStickers}
-        onChooseIcon={model.handleChooseIcon}
         onExportStickers={model.handleExportStickers}
         onDelete={model.handleDelete}
       />

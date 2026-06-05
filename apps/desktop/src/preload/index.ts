@@ -51,6 +51,8 @@ const stickerSmith: StickerSmithApi = {
     reset: (): Promise<TelegramState> => ipcRenderer.invoke("telegram.reset"),
     syncOwnedPacks: (): Promise<void> =>
       ipcRenderer.invoke("telegram.syncOwnedPacks"),
+    getPacksWithPendingEdits: (): Promise<{ packId: string; name: string }[]> =>
+      ipcRenderer.invoke("telegram.getPacksWithPendingEdits"),
     downloadPackMedia: (input: { packId: string }): Promise<void> =>
       ipcRenderer.invoke("telegram.downloadPackMedia", input),
     publishLocalPack: (input: PublishLocalPackInput): Promise<void> =>

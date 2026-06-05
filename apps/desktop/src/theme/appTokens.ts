@@ -78,6 +78,38 @@ export const appTokens = {
       mediaLabel: "rgba(0,0,0,0.55)",
     },
     error: "#f87171",
+    status: {
+      draft: {
+        main: "oklch(0.88 0.03 255)",
+        background: "oklch(0.70 0.04 255 / 0.16)",
+        border: "oklch(0.70 0.04 255 / 0.28)",
+        contrast: "oklch(0.88 0.03 255)",
+      },
+      ready: {
+        main: "oklch(0.72 0.14 150)",
+        background: "oklch(0.72 0.14 150 / 0.16)",
+        border: "oklch(0.72 0.14 150 / 0.30)",
+        contrast: "oklch(0.89 0.07 150)",
+      },
+      synced: {
+        main: "primary.main",
+        background: "rgba(96, 165, 250, 0.14)",
+        border: "rgba(96, 165, 250, 0.32)",
+        contrast: "#bfdbfe",
+      },
+      modified: {
+        main: "warning.main",
+        background: "rgba(251, 191, 36, 0.14)",
+        border: "rgba(251, 191, 36, 0.34)",
+        contrast: "#fde68a",
+      },
+      failed: {
+        main: "oklch(0.72 0.16 25)",
+        background: "oklch(0.72 0.16 25 / 0.17)",
+        border: "oklch(0.72 0.16 25 / 0.34)",
+        contrast: "oklch(0.89 0.08 25)",
+      },
+    },
   },
   typography: {
     fontFamily: APP_FONT_FAMILY,
@@ -127,7 +159,6 @@ export const appTokens = {
       thumbnail: 20,
       fallbackIcon: 16,
       fileTypeIcon: 28,
-      listRow: 56,
       gridMinWidth: 96,
       aspectRatio: "1 / 1",
       badge: 16,
