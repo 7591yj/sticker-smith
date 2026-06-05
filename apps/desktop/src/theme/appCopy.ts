@@ -56,6 +56,7 @@ export const appCopy = {
   labels: {
     baseName: "Base name",
     emojiList: "Emoji list",
+    editEmojisHint: "Edit emojis",
     exportDialogTitle: "Export",
     importFolderAsNewPack: "Import folder as new pack",
     localPacks: "Local",

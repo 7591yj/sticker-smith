@@ -77,7 +77,11 @@ export function StickerBrowser({
                   relativePath={sticker.relativePath}
                 />
               }
-              metadata={buildStickerMetadata(sticker)}
+              metadata={buildStickerMetadata(sticker, (event) => {
+                event.stopPropagation();
+                selectOnly(sticker.id);
+                setEmojiEditStickerIds([sticker.id]);
+              })}
             />
           ))}
         </Box>

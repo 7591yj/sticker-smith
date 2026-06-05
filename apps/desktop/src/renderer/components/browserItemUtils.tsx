@@ -1,7 +1,9 @@
+import type { MouseEvent } from "react";
 import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CreateIcon from "@mui/icons-material/Create";
+import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -117,11 +119,18 @@ function formatEmojiSummary(sticker: StickerItem) {
   return tail > 0 ? `${head} +${tail}` : head;
 }
 
-export function buildStickerMetadata(sticker: StickerItem) {
+export function buildStickerMetadata(
+  sticker: StickerItem,
+  onEditEmojis?: (event: MouseEvent<HTMLDivElement>) => void,
+) {
   return (
     <Chip
+      icon={<AddReactionOutlinedIcon />}
       label={formatEmojiSummary(sticker)}
       size="small"
+      title={appTokens.copy.labels.editEmojisHint}
+      clickable={Boolean(onEditEmojis)}
+      onClick={onEditEmojis}
       sx={emojiMetaChipSx(sticker.emojiList.length === 0)}
     />
   );
@@ -134,4 +143,9 @@ const emojiMetaChipSx = (missingEmoji: boolean) =>
     letterSpacing: appTokens.typography.letterSpacing.chip,
     color: missingEmoji ? "error.main" : "text.secondary",
     borderColor: missingEmoji ? "error.main" : "divider",
+    "& .MuiChip-icon": {
+      ml: 0.55,
+      mr: -0.2,
+      fontSize: 12,
+    },
   }) as const;
