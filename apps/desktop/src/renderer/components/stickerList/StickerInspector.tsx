@@ -1,8 +1,10 @@
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
+import { useEffect, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
@@ -38,13 +40,18 @@ const inspectorDeleteButtonSx = {
 
 export function StickerInspector({
   selectedStickers,
+  totalStickers,
   onEditEmoji,
   onDelete,
+  onMoveToIndex,
 }: {
   selectedStickers: StickerItem[];
+  totalStickers: number;
   onEditEmoji: () => void;
   onDelete: () => void;
+  onMoveToIndex: (sticker: StickerItem, index: number) => void;
 }) {
+  const [indexValue, setIndexValue] = useState("");
   const selectedSticker =
     selectedStickers.length === 1 ? selectedStickers[0] : null;
   const title = selectedSticker
@@ -52,6 +59,25 @@ export function StickerInspector({
     : selectedStickers.length > 1
       ? `${selectedStickers.length} selected`
       : "No selection";
+
+  useEffect(() => {
+    setIndexValue(selectedSticker ? String(selectedSticker.order + 1) : "");
+  }, [selectedSticker]);
+
+  const commitIndex = () => {
+    if (!selectedSticker) return;
+    const nextIndex = Number.parseInt(indexValue, 10);
+    if (
+      Number.isNaN(nextIndex) ||
+      nextIndex < 1 ||
+      nextIndex > totalStickers ||
+      nextIndex === selectedSticker.order + 1
+    ) {
+      setIndexValue(String(selectedSticker.order + 1));
+      return;
+    }
+    onMoveToIndex(selectedSticker, nextIndex - 1);
+  };
 
   return (
     <Box
@@ -79,7 +105,7 @@ export function StickerInspector({
         }}
       >
         {selectedSticker ? (
-          <SingleStickerPreview sticker={selectedSticker} title={title} />
+          <SingleStickerPreview sticker={selectedSticker} />
         ) : selectedStickers.length > 1 ? (
           <MultiStickerPreview stickers={selectedStickers} title={title} />
         ) : (
@@ -97,6 +123,27 @@ export function StickerInspector({
       </Box>
       {selectedSticker ? (
         <>
+          <TextField
+            size="small"
+            label="Index"
+            type="number"
+            value={indexValue}
+            onChange={(event) => setIndexValue(event.target.value)}
+            onBlur={commitIndex}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                setIndexValue(String(selectedSticker.order + 1));
+                event.currentTarget.blur();
+              }
+            }}
+            slotProps={{
+              htmlInput: { min: 1, max: totalStickers, step: 1 },
+            }}
+            helperText={`1 to ${totalStickers}`}
+          />
           <InspectorRows sticker={selectedSticker} />
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Button

@@ -10,10 +10,8 @@ import { getStickerStatus, summarizeStickerStatuses } from "./stickerUtils";
 
 export function SingleStickerPreview({
   sticker,
-  title,
 }: {
   sticker: StickerItem;
-  title: string;
 }) {
   return (
     <>
@@ -29,12 +27,11 @@ export function SingleStickerPreview({
           right: 8,
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           gap: 1,
           pointerEvents: "none",
         }}
       >
-        <PreviewLabel>{title}</PreviewLabel>
         <StatusChip sticker={sticker} />
       </Box>
     </>

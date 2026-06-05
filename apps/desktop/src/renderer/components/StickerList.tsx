@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import Box from "@mui/material/Box";
 import type { StickerItem, StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
@@ -58,6 +58,12 @@ export function StickerList({
   const [filter, setFilter] = useState<StickerFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<StickerSort>("index");
+  const [draggingStickerId, setDraggingStickerId] = useState<string | null>(
+    null,
+  );
+  const [dragOverStickerId, setDragOverStickerId] = useState<string | null>(
+    null,
+  );
 
   const visibleStickers = useMemo(
     () => filterAndSortStickers(data.sortedStickers, filter, query, sort),
@@ -80,6 +86,7 @@ export function StickerList({
     [data.sortedStickers],
   );
   const contextStickers = getContextStickers(contextMenu, data.stickerById);
+  const canReorderVisibleStickers = sort === "index" && filter === "all" && query.trim() === "";
 
   useEffect(() => setContextMenu(null), [packId]);
 
@@ -112,6 +119,102 @@ export function StickerList({
       await Promise.all([refreshDetails(), refreshPacks()]);
     },
     [packId, refreshDetails, refreshPacks, selection],
+  );
+
+  const reorderStickerBefore = useCallback(
+    async (sticker: StickerItem, beforeStickerId: string | null) => {
+      if (beforeStickerId === sticker.id) return;
+      await window.stickerSmith.stickers.reorder({
+        packId,
+        stickerId: sticker.id,
+        beforeStickerId,
+      });
+      await Promise.all([refreshDetails(), refreshPacks()]);
+    },
+    [packId, refreshDetails, refreshPacks],
+  );
+
+  const handleMoveToIndex = useCallback(
+    async (sticker: StickerItem, nextIndex: number) => {
+      const ordered = [...data.sortedStickers];
+      const currentIndex = ordered.findIndex((item) => item.id === sticker.id);
+      if (currentIndex === -1 || currentIndex === nextIndex) return;
+      ordered.splice(currentIndex, 1);
+      const beforeStickerId = ordered[nextIndex]?.id ?? null;
+      await reorderStickerBefore(sticker, beforeStickerId);
+    },
+    [data.sortedStickers, reorderStickerBefore],
+  );
+
+  const handleDragStart = useCallback(
+    (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => {
+      if (!canReorderVisibleStickers) return;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", sticker.id);
+      setDraggingStickerId(sticker.id);
+      selection.selectOnly(sticker.id);
+    },
+    [canReorderVisibleStickers, selection],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingStickerId(null);
+    setDragOverStickerId(null);
+  }, []);
+
+  const handleDragOverSticker = useCallback(
+    (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => {
+      if (!canReorderVisibleStickers || !draggingStickerId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDragOverStickerId(sticker.id);
+    },
+    [canReorderVisibleStickers, draggingStickerId],
+  );
+
+  const handleDropSticker = useCallback(
+    async (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => {
+      event.preventDefault();
+      const draggedStickerId =
+        event.dataTransfer.getData("text/plain") || draggingStickerId;
+      const draggedSticker = draggedStickerId
+        ? data.stickerById.get(draggedStickerId)
+        : undefined;
+      handleDragEnd();
+      if (
+        !canReorderVisibleStickers ||
+        !draggedSticker ||
+        draggedSticker.id === sticker.id
+      ) {
+        return;
+      }
+      const targetIndex = data.sortedStickers.findIndex(
+        (item) => item.id === sticker.id,
+      );
+      const isAfterTarget =
+        event.clientY > event.currentTarget.getBoundingClientRect().top +
+          event.currentTarget.getBoundingClientRect().height / 2;
+      const orderedWithoutDragged = data.sortedStickers.filter(
+        (item) => item.id !== draggedSticker.id,
+      );
+      const targetIndexWithoutDragged = orderedWithoutDragged.findIndex(
+        (item) => item.id === sticker.id,
+      );
+      const beforeStickerId = isAfterTarget
+        ? (orderedWithoutDragged[targetIndexWithoutDragged + 1]?.id ?? null)
+        : targetIndex >= 0
+          ? sticker.id
+          : null;
+      await reorderStickerBefore(draggedSticker, beforeStickerId);
+    },
+    [
+      canReorderVisibleStickers,
+      data.sortedStickers,
+      data.stickerById,
+      draggingStickerId,
+      handleDragEnd,
+      reorderStickerBefore,
+    ],
   );
 
   return (
@@ -170,16 +273,25 @@ export function StickerList({
             selectOnly={selection.selectOnly}
             onStickerClick={selection.handleStickerClick}
             onContextMenu={handleContextMenu}
+            draggingStickerId={draggingStickerId}
+            dragOverStickerId={dragOverStickerId}
+            canReorder={canReorderVisibleStickers}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOverSticker={handleDragOverSticker}
+            onDropSticker={handleDropSticker}
             setEmojiEditStickerIds={setEmojiEditStickerIds}
           />
           <StickerInspector
             selectedStickers={selectedStickers}
+            totalStickers={data.sortedStickers.length}
             onEditEmoji={() => {
               if (selection.selectedStickerIds.length > 0) {
                 setEmojiEditStickerIds(selection.selectedStickerIds);
               }
             }}
             onDelete={() => setDeleteStickerIds(selection.selectedStickerIds)}
+            onMoveToIndex={handleMoveToIndex}
           />
         </Box>
       </Box>

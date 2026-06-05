@@ -1,4 +1,4 @@
-import type { Dispatch, MouseEvent, SetStateAction } from "react";
+import type { Dispatch, DragEvent, MouseEvent, SetStateAction } from "react";
 import type { StickerItem } from "@sticker-smith/shared";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -28,6 +28,13 @@ export function StickerBrowser({
   selectOnly,
   onStickerClick,
   onContextMenu,
+  draggingStickerId,
+  dragOverStickerId,
+  canReorder,
+  onDragStart,
+  onDragEnd,
+  onDragOverSticker,
+  onDropSticker,
   setEmojiEditStickerIds,
 }: {
   stickers: StickerItem[];
@@ -39,6 +46,13 @@ export function StickerBrowser({
     sticker: StickerItem,
   ) => void;
   onContextMenu: (event: MouseEvent, sticker: StickerItem) => void;
+  draggingStickerId: string | null;
+  dragOverStickerId: string | null;
+  canReorder: boolean;
+  onDragStart: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
+  onDragEnd: () => void;
+  onDragOverSticker: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
+  onDropSticker: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
   setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
 }) {
   return (
@@ -65,6 +79,12 @@ export function StickerBrowser({
               overlay={buildStickerOverlay(sticker)}
               isPinned={sticker.id === iconStickerId}
               selected={selectedStickerIds.includes(sticker.id)}
+              draggable={canReorder}
+              isDragOver={dragOverStickerId === sticker.id && draggingStickerId !== sticker.id}
+              onDragStart={(event) => onDragStart(event, sticker)}
+              onDragEnd={onDragEnd}
+              onDragOver={(event) => onDragOverSticker(event, sticker)}
+              onDrop={(event) => onDropSticker(event, sticker)}
               onClick={(event) => onStickerClick(event, sticker)}
               onDoubleClick={() => {
                 selectOnly(sticker.id);

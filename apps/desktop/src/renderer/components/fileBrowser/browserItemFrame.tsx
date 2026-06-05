@@ -36,7 +36,7 @@ function browserItemShadow(input: BrowserItemStateInput) {
 }
 
 function browserItemActiveSx(input: BrowserItemStateInput) {
-  return input.draggable ? { cursor: "grabbing" } : undefined;
+  return input.draggable ? { cursor: "default" } : undefined;
 }
 
 function browserItemStateSx(input: BrowserItemStateInput) {
@@ -45,7 +45,7 @@ function browserItemStateSx(input: BrowserItemStateInput) {
     border: "1px solid",
     borderColor: browserItemBorderColor(input),
     bgcolor: input.selected ? "action.selected" : "action.hover",
-    cursor: input.draggable ? "grab" : "default",
+    cursor: "default",
     userSelect: "none",
     WebkitUserSelect: "none",
     transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",

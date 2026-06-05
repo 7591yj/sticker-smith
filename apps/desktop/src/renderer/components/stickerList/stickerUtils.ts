@@ -2,13 +2,8 @@ import type { StickerItem } from "@sticker-smith/shared";
 import { formatCountLabel } from "../browserStyles";
 import { sortItemsWithPinnedFirst } from "../fileBrowser/utils";
 import { formatOrderLabel } from "../stickerOrder";
-import {
-  getStickerStatus,
-  isDraft,
-  isFailed,
-  isReady,
-  type StickerStatus,
-} from "./stickerStatus";
+import { getStickerStatus, type StickerStatus } from "./stickerStatus";
+import { isDraft, isFailed, isReady } from "./stickerStatusPredicates";
 import type {
   FilterCounts,
   StickerContextMenuState,
@@ -121,7 +116,8 @@ export function summarizeStickerStatuses(stickers: StickerItem[]) {
   );
 }
 
-export { getStickerStatus, isDraft, isFailed, isReady };
+export { getStickerStatus };
+export { isDraft, isFailed, isReady } from "./stickerStatusPredicates";
 export type { StickerStatus };
 
 export function getContextStickers(
