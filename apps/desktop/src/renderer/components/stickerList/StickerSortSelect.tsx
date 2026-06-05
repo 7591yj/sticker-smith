@@ -6,7 +6,7 @@ import { appTokens } from "../../../theme/appTokens";
 import type { StickerSort } from "./types";
 
 const stickerSortOptions: Array<{ value: StickerSort; label: string }> = [
-  { value: "index", label: "Index" },
+  { value: "index", label: "Order" },
   { value: "emoji", label: "Emoji" },
   { value: "size", label: "Size" },
 ];

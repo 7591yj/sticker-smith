@@ -34,7 +34,7 @@ export async function resolveTelegramMirrorShortName(
 ) {
   const telegramShortName = input.telegram.shortName || input.remoteSet.shortName;
   if (!telegramShortName) {
-    throw new Error("Telegram mirror short name is missing. Resync the pack and try again.");
+    throw new Error("This pack is missing its Telegram short name. Refresh the pack and try again.");
   }
 
   if (input.telegram.shortName !== telegramShortName) {

@@ -194,7 +194,7 @@ describe("telegram error dialog", () => {
     const { root } = await renderApp();
 
     const pushButton = [...document.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Push"),
+      button.textContent?.includes("Update"),
     );
     expect(pushButton).toBeDefined();
 

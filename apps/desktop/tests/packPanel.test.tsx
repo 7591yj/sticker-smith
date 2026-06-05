@@ -98,7 +98,7 @@ describe("PackPanel", () => {
     const markup = renderPackPanelMarkup(createTelegramDetails({ stickerSetId: "100", shortName: "sample_pack", title: "Sample Pack", format: "video", syncState: "error", lastSyncError: "The selected Telegram sticker set is no longer owned by the current account." }));
 
     expect(markup).toContain("The selected Telegram sticker set is no longer owned by the current account.");
-    expect(markup).toContain("Push");
+    expect(markup).toContain("Update");
     expect(markup).toContain("Sync error");
     expect(markup).toContain("sample_pack");
     expect(markup).toContain('aria-label="Pack options"');
@@ -128,7 +128,7 @@ describe("PackPanel", () => {
     );
 
     expect(markup).toContain("Syncing");
-    expect(markup).toContain("Telegram is already syncing this mirror");
+    expect(markup).toContain("Telegram is already updating this pack");
   });
 
   it("renders unsupported non-video telegram mirrors as disabled", () => {
@@ -149,7 +149,7 @@ describe("PackPanel", () => {
     expect(markup).toContain("disabled");
   });
 
-  it("renders uploading and pushing labels for telegram actions in flight", () => {
+  it("renders uploading and updating labels for telegram actions in flight", () => {
     const uploadingMarkup = renderPackPanelMarkup(createDetails(), { telegramPublishing: true });
 
     const updatingMarkup = renderPackPanelMarkup(
@@ -158,6 +158,6 @@ describe("PackPanel", () => {
     );
 
     expect(uploadingMarkup).toContain("Uploading…");
-    expect(updatingMarkup).toContain("Pushing…");
+    expect(updatingMarkup).toContain("Updating…");
   });
 });

@@ -10,8 +10,8 @@ export function packMirrorTooltip(
   telegramMirrorBusy: boolean,
 ) {
   if (telegramUnsupported) return unsupportedTelegramTooltip;
-  if (telegramMirrorBusy) return "Telegram is already syncing this mirror";
-  return "Push local mirror changes to Telegram";
+  if (telegramMirrorBusy) return "Telegram is already updating this pack";
+  return "Update this pack on Telegram";
 }
 
 export function packMediaTooltip(
@@ -22,7 +22,7 @@ export function packMediaTooltip(
 ) {
   if (telegramUnsupported) return unsupportedTelegramTooltip;
   if (telegramMirrorBusy || telegramMediaBusy) {
-    return "Telegram media download is already in progress for this mirror";
+    return "Telegram files are already downloading for this pack";
   }
-  return "Download missing Telegram sticker media for this mirror";
+  return "Download missing Telegram sticker files for this pack";
 }
