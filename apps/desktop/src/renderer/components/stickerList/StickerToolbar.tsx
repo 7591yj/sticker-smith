@@ -1,70 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
-import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
-import CheckBoxIcon from "@mui/icons-material/CheckBox";
-import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import CreateIcon from "@mui/icons-material/Create";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import SearchIcon from "@mui/icons-material/Search";
-import SortIcon from "@mui/icons-material/Sort";
-import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
-import IconButton from "@mui/material/IconButton";
-import InputAdornment from "@mui/material/InputAdornment";
-import MenuItem from "@mui/material/MenuItem";
-import TextField from "@mui/material/TextField";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { appTokens } from "../../../theme/appTokens";
-import { browserCountLabelSx } from "../browserStyles";
+import { StickerFilterSelect } from "./StickerFilterSelect";
+import { StickerSearchField } from "./StickerSearchField";
+import { StickerSelectionSummary } from "./StickerSelectionSummary";
+import { StickerSortSelect } from "./StickerSortSelect";
 import { formatResultCountLabel } from "./stickerUtils";
 import type { FilterCounts, StickerFilter, StickerSort } from "./types";
-
-const filterOptions: Array<{
-  value: StickerFilter;
-  label: string;
-  icon: React.ReactElement;
-  color: string;
-}> = [
-  {
-    value: "all",
-    label: appTokens.copy.labels.stickerStatusAll,
-    icon: <FilterListIcon />,
-    color: appTokens.colors.text.secondary,
-  },
-  {
-    value: "draft",
-    label: appTokens.copy.labels.stickerStatusDraft,
-    icon: <CreateIcon />,
-    color: appTokens.colors.status.draft.main,
-  },
-  {
-    value: "ready",
-    label: appTokens.copy.labels.stickerStatusReady,
-    icon: <CheckCircleOutlineIcon />,
-    color: appTokens.colors.status.ready.main,
-  },
-  {
-    value: "modified",
-    label: appTokens.copy.labels.stickerStatusModified,
-    icon: <ChangeCircleIcon />,
-    color: appTokens.colors.status.modified.main,
-  },
-  {
-    value: "failed",
-    label: appTokens.copy.labels.stickerStatusFailed,
-    icon: <ErrorOutlineIcon />,
-    color: appTokens.colors.status.failed.main,
-  },
-  {
-    value: "telegram",
-    label: appTokens.copy.labels.stickerStatusTelegram,
-    icon: <TelegramIcon />,
-    color: appTokens.colors.status.synced.main,
-  },
-];
 
 export function StickerToolbarNotice({ message }: { message: string }) {
   return (
@@ -125,9 +68,6 @@ export function StickerToolbar({
   setSelectionAnchorId: Dispatch<SetStateAction<string | null>>;
 }) {
   const hasSelection = selectedStickerIds.length > 0;
-  const selectionToggleLabel = hasSelection
-    ? appTokens.copy.actions.clearSelection
-    : appTokens.copy.actions.selectAll;
   const resultLabel = hasSelection
     ? `${selectedStickerIds.length} selected sticker${selectedStickerIds.length === 1 ? "" : "s"} \u30FB ${totalCount} sticker${totalCount === 1 ? "" : "s"}`
     : formatResultCountLabel(visibleCount, totalCount, filter, query);
@@ -143,43 +83,12 @@ export function StickerToolbar({
     <Box
       sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}
     >
-      <Box
-        sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}
-      >
-        <Tooltip title={selectionToggleLabel}>
-          <span>
-            <IconButton
-              size="small"
-              aria-label={selectionToggleLabel}
-              aria-pressed={hasSelection}
-              disabled={selectableStickerIds.length === 0}
-              onClick={toggleSelection}
-              sx={{
-                width: 28,
-                height: 28,
-                p: 0.25,
-                borderRadius: appTokens.shape.radius.small,
-                bgcolor: "transparent",
-                color: hasSelection ? "primary.main" : "text.secondary",
-                "&:hover": {
-                  bgcolor: "transparent",
-                  color: hasSelection ? "primary.light" : "text.primary",
-                },
-                "& svg": { fontSize: 20 },
-              }}
-            >
-              {hasSelection ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
-            </IconButton>
-          </span>
-        </Tooltip>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ ...browserCountLabelSx, mx: 0.5 }}
-        >
-          {resultLabel}
-        </Typography>
-      </Box>
+      <StickerSelectionSummary
+        hasSelection={hasSelection}
+        resultLabel={resultLabel}
+        selectableCount={selectableStickerIds.length}
+        onToggleSelection={toggleSelection}
+      />
       <Box
         sx={{
           display: "flex",
@@ -189,105 +98,13 @@ export function StickerToolbar({
           ml: "auto",
         }}
       >
-        <TextField
-          size="small"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search stickers..."
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{
-            width: { xs: "100%", md: 250 },
-            "& .MuiInputBase-root": {
-              height: 34,
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
-            },
-          }}
+        <StickerSearchField query={query} setQuery={setQuery} />
+        <StickerFilterSelect
+          filter={filter}
+          setFilter={setFilter}
+          filterCounts={filterCounts}
         />
-        <TextField
-          select
-          size="small"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value as StickerFilter)}
-          sx={{
-            width: 120,
-            "& .MuiInputBase-root": {
-              height: 34,
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
-            },
-            "& .MuiSelect-select": {
-              display: "flex",
-              alignItems: "center",
-              gap: 0.75,
-            },
-          }}
-        >
-          {filterOptions.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              <Box
-                component="span"
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  width: "100%",
-                  minWidth: 0,
-                }}
-              >
-                <Box
-                  component="span"
-                  sx={{
-                    display: "flex",
-                    color: option.color,
-                    "& svg": { fontSize: appTokens.sizes.icon.action },
-                  }}
-                >
-                  {option.icon}
-                </Box>
-                <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
-                  {option.label}
-                </Box>
-                <Box component="span" sx={{ color: "text.secondary" }}>
-                  {filterCounts[option.value]}
-                </Box>
-              </Box>
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={sort}
-          onChange={(event) => setSort(event.target.value as StickerSort)}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SortIcon sx={{ fontSize: appTokens.sizes.icon.action }} />
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{
-            width: 120,
-            "& .MuiInputBase-root": {
-              height: 34,
-              fontSize: appTokens.typography.fontSizes.bodyCompact,
-            },
-            "& .MuiSelect-select": { display: "flex", alignItems: "center" },
-          }}
-        >
-          <MenuItem value="index">Index</MenuItem>
-          <MenuItem value="emoji">Emoji</MenuItem>
-          <MenuItem value="size">Size</MenuItem>
-        </TextField>
+        <StickerSortSelect sort={sort} setSort={setSort} />
       </Box>
     </Box>
   );
