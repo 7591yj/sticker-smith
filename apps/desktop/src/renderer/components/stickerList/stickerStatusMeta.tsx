@@ -6,7 +6,7 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import type { SvgIconComponent } from "@mui/icons-material";
 import { appTokens } from "../../../theme/appTokens";
-import type { StickerStatus } from "./stickerUtils";
+import type { StickerStatus } from "./stickerStatus";
 import type { StickerFilter } from "./types";
 
 export type StickerStatusMeta = {

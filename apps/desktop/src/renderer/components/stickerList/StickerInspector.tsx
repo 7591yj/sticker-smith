@@ -7,7 +7,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
-import { formatOrderLabel } from "../browserItemUtils";
+import { formatOrderLabel } from "../stickerOrder";
 import { InspectorRows } from "./StickerInspectorRows";
 import {
   MultiStickerPreview,

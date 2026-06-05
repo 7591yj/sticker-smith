@@ -7,11 +7,8 @@ import Typography from "@mui/material/Typography";
 import type { StickerItem } from "@sticker-smith/shared";
 import { appTokens } from "../../theme/appTokens";
 import { stickerStatusMeta } from "./stickerList/stickerStatusMeta";
-import { getStickerStatus } from "./stickerList/stickerUtils";
-
-export function formatOrderLabel(order: number) {
-  return `#${order + 1}`;
-}
+import { getStickerStatus } from "./stickerList/stickerStatus";
+import { formatOrderLabel } from "./stickerOrder";
 
 export function StickerStatusIcon({
   sticker,

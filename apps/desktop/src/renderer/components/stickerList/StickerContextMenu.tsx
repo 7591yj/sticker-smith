@@ -12,7 +12,7 @@ import {
   browserMenuTitleSx,
   formatCountLabel,
 } from "../browserStyles";
-import { formatOrderLabel } from "../browserItemUtils";
+import { formatOrderLabel } from "../stickerOrder";
 import type { StickerContextMenuState } from "./types";
 import { useStickerContextMenuActions } from "./useStickerContextMenuActions";
 
