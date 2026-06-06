@@ -114,6 +114,8 @@ export function BrowserItemFrame({
       title={title}
       sx={{
         ...frameSx,
+        contentVisibility: "auto",
+        containIntrinsicSize: "136px 176px",
         ...browserItemStateSx({ isPinned, selected, isDragOver, draggable }),
       }}
     >

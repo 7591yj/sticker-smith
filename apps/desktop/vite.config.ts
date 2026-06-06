@@ -9,6 +9,7 @@ import { defineConfig } from "vitest/config";
 const electronMainExternal = ["keytar", "prebuilt-tdlib", "tdl"];
 
 const manualChunkRules: Array<{ chunk: string; packagePaths: string[] }> = [
+  { chunk: "emoji-picker", packagePaths: ["emoji-picker-react"] },
   { chunk: "mui-icons", packagePaths: ["@mui/icons-material"] },
   { chunk: "mui", packagePaths: ["@mui", "@emotion"] },
   { chunk: "react", packagePaths: ["react", "react-dom", "scheduler"] },

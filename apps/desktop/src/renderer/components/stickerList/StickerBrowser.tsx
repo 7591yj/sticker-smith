@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import type { Dispatch, DragEvent, MouseEvent, SetStateAction } from "react";
 import type { StickerItem } from "@sticker-smith/shared";
 import Box from "@mui/material/Box";
@@ -20,6 +21,86 @@ const contentsGridContainerSx = {
     xl: "repeat(7, minmax(0, 1fr))",
   },
 } as const;
+
+type StickerBrowserCardProps = {
+  sticker: StickerItem;
+  iconStickerId: string | null;
+  selectedStickerIds: ReadonlySet<string>;
+  selectOnly: (stickerId: string) => void;
+  onStickerClick: (
+    event: MouseEvent<HTMLDivElement>,
+    sticker: StickerItem,
+  ) => void;
+  onContextMenu: (event: MouseEvent, sticker: StickerItem) => void;
+  draggingStickerId: string | null;
+  dragOverStickerId: string | null;
+  canReorder: boolean;
+  onDragStart: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
+  onDragEnd: () => void;
+  onDragOverSticker: (
+    event: DragEvent<HTMLDivElement>,
+    sticker: StickerItem,
+  ) => void;
+  onDropSticker: (
+    event: DragEvent<HTMLDivElement>,
+    sticker: StickerItem,
+  ) => void;
+  setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
+};
+
+const StickerBrowserCard = memo(function StickerBrowserCard({
+  sticker,
+  iconStickerId,
+  selectedStickerIds,
+  selectOnly,
+  onStickerClick,
+  onContextMenu,
+  draggingStickerId,
+  dragOverStickerId,
+  canReorder,
+  onDragStart,
+  onDragEnd,
+  onDragOverSticker,
+  onDropSticker,
+  setEmojiEditStickerIds,
+}: StickerBrowserCardProps) {
+  const selected = selectedStickerIds.has(sticker.id);
+
+  return (
+    <BrowserGalleryCard
+      title={buildStickerTitle(sticker)}
+      label={null}
+      overlay={buildStickerOverlay(sticker)}
+      isPinned={sticker.id === iconStickerId}
+      selected={selected}
+      draggable={canReorder}
+      isDragOver={
+        dragOverStickerId === sticker.id && draggingStickerId !== sticker.id
+      }
+      onDragStart={(event) => onDragStart(event, sticker)}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => onDragOverSticker(event, sticker)}
+      onDrop={(event) => onDropSticker(event, sticker)}
+      onClick={(event) => onStickerClick(event, sticker)}
+      onDoubleClick={() => {
+        selectOnly(sticker.id);
+        setEmojiEditStickerIds([sticker.id]);
+      }}
+      onContextMenu={(event) => onContextMenu(event, sticker)}
+      preview={
+        <FilePreview
+          absolutePath={sticker.absolutePath}
+          relativePath={sticker.relativePath}
+        />
+      }
+      metadata={buildStickerMetadata(sticker, (event) => {
+        event.stopPropagation();
+        selectOnly(sticker.id);
+        setEmojiEditStickerIds([sticker.id]);
+      })}
+    />
+  );
+});
 
 export function StickerBrowser({
   stickers,
@@ -51,10 +132,21 @@ export function StickerBrowser({
   canReorder: boolean;
   onDragStart: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
   onDragEnd: () => void;
-  onDragOverSticker: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
-  onDropSticker: (event: DragEvent<HTMLDivElement>, sticker: StickerItem) => void;
+  onDragOverSticker: (
+    event: DragEvent<HTMLDivElement>,
+    sticker: StickerItem,
+  ) => void;
+  onDropSticker: (
+    event: DragEvent<HTMLDivElement>,
+    sticker: StickerItem,
+  ) => void;
   setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
 }) {
+  const selectedStickerIdSet = useMemo(
+    () => new Set(selectedStickerIds),
+    [selectedStickerIds],
+  );
+
   return (
     <Box sx={{ minHeight: 0, overflowY: "auto", p: 0.75 }}>
       {stickers.length === 0 ? (
@@ -95,36 +187,22 @@ export function StickerBrowser({
       ) : (
         <Box sx={contentsGridContainerSx}>
           {stickers.map((sticker) => (
-            <BrowserGalleryCard
+            <StickerBrowserCard
               key={sticker.id}
-              title={buildStickerTitle(sticker)}
-              label={null}
-              overlay={buildStickerOverlay(sticker)}
-              isPinned={sticker.id === iconStickerId}
-              selected={selectedStickerIds.includes(sticker.id)}
-              draggable={canReorder}
-              isDragOver={dragOverStickerId === sticker.id && draggingStickerId !== sticker.id}
-              onDragStart={(event) => onDragStart(event, sticker)}
+              sticker={sticker}
+              iconStickerId={iconStickerId}
+              selectedStickerIds={selectedStickerIdSet}
+              selectOnly={selectOnly}
+              onStickerClick={onStickerClick}
+              onContextMenu={onContextMenu}
+              draggingStickerId={draggingStickerId}
+              dragOverStickerId={dragOverStickerId}
+              canReorder={canReorder}
+              onDragStart={onDragStart}
               onDragEnd={onDragEnd}
-              onDragOver={(event) => onDragOverSticker(event, sticker)}
-              onDrop={(event) => onDropSticker(event, sticker)}
-              onClick={(event) => onStickerClick(event, sticker)}
-              onDoubleClick={() => {
-                selectOnly(sticker.id);
-                setEmojiEditStickerIds([sticker.id]);
-              }}
-              onContextMenu={(event) => onContextMenu(event, sticker)}
-              preview={
-                <FilePreview
-                  absolutePath={sticker.absolutePath}
-                  relativePath={sticker.relativePath}
-                />
-              }
-              metadata={buildStickerMetadata(sticker, (event) => {
-                event.stopPropagation();
-                selectOnly(sticker.id);
-                setEmojiEditStickerIds([sticker.id]);
-              })}
+              onDragOverSticker={onDragOverSticker}
+              onDropSticker={onDropSticker}
+              setEmojiEditStickerIds={setEmojiEditStickerIds}
             />
           ))}
         </Box>
