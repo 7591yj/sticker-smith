@@ -58,17 +58,40 @@ export function StickerBrowser({
   return (
     <Box sx={{ minHeight: 0, overflowY: "auto", p: 0.75 }}>
       {stickers.length === 0 ? (
-        <Typography
-          variant="body2"
-          color="text.secondary"
+        <Box
           sx={{
-            px: 2.5,
-            py: 3,
-            fontSize: appTokens.typography.fontSizes.bodyDefault,
+            width: "100%",
+            minHeight: "100%",
+            px: { xs: 2.5, md: 6 },
+            py: 6,
+            color: "text.secondary",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
           }}
         >
-          {appTokens.copy.emptyStates.noStickers}
-        </Typography>
+          <Typography
+            variant="body2"
+            color="text.primary"
+            fontWeight={appTokens.typography.fontWeights.medium}
+            sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+          >
+            {appTokens.copy.emptyStates.noStickers}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              display: "block",
+              mt: 0.5,
+              maxWidth: 720,
+              fontSize: appTokens.typography.fontSizes.caption,
+            }}
+          >
+            Add files or a folder from the pack header.
+          </Typography>
+        </Box>
       ) : (
         <Box sx={contentsGridContainerSx}>
           {stickers.map((sticker) => (

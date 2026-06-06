@@ -166,13 +166,25 @@ export function PackList({
   return (
     <List sx={{ flex: 1, overflowY: "auto", py: 0.5, px: 0.5 }}>
       {packs.length === 0 ? (
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ px: 2, py: 1.5, fontSize: appTokens.typography.fontSizes.body }}
-        >
-          {emptyState}
-        </Typography>
+        <Box sx={{ px: 1.5, py: 1.5 }}>
+          <Typography
+            variant="body2"
+            color="text.primary"
+            fontWeight={appTokens.typography.fontWeights.medium}
+            sx={{ fontSize: appTokens.typography.fontSizes.body }}
+          >
+            {emptyState}
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 0.5, fontSize: appTokens.typography.fontSizes.caption }}
+          >
+            {emptyState === appTokens.copy.emptyStates.noLocalPacks
+              ? "Import a folder or create a new pack from the toolbar below."
+              : "Use the Telegram account button below to connect, then refresh your packs."}
+          </Typography>
+        </Box>
       ) : (
         packs.map((pack) => (
           <ListItemButton

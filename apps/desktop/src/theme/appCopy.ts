@@ -49,10 +49,10 @@ export const appCopy = {
     packName: "Pack name",
   },
   emptyStates: {
-    noStickers: "No stickers ・ add files or a folder to get started.",
+    noStickers: "This pack is ready for its first files.",
     noLocalPacks: "No local packs yet",
     noTelegramPacks: "Connect Telegram to load Telegram sticker packs.",
-    noSelection: "Select a pack or create a new one.",
+    noSelection: "Start with a folder of sticker art or create an empty pack.",
   },
   labels: {
     baseName: "Base name",

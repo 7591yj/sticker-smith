@@ -1,5 +1,9 @@
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import TelegramIcon from "@mui/icons-material/Telegram";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import type { ReactNode } from "react";
 import type { StickerPackDetails } from "@sticker-smith/shared";
 import { appTokens } from "../../../theme/appTokens";
 import { RenameDialog } from "../RenameDialog";
@@ -10,6 +14,54 @@ import { PackPublishDialogController } from "./PackPublishDialogController";
 import type { PackPanelProps } from "./types";
 import type { PackPanelActions } from "./usePackPanelActions";
 
+function OnboardingStep({
+  icon,
+  title,
+  body,
+}: {
+  icon: ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <Box sx={{ display: "flex", gap: 1.25, alignItems: "flex-start" }}>
+      <Box
+        sx={{
+          mt: 0.15,
+          width: 28,
+          height: 28,
+          borderRadius: appTokens.shape.radius.control,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "primary.main",
+          bgcolor: "rgba(96, 165, 250, 0.10)",
+          border: "1px solid",
+          borderColor: "rgba(96, 165, 250, 0.22)",
+        }}
+      >
+        {icon}
+      </Box>
+      <Box>
+        <Typography
+          variant="body2"
+          fontWeight={appTokens.typography.fontWeights.medium}
+          sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
+        >
+          {title}
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 0.25, fontSize: appTokens.typography.fontSizes.caption }}
+        >
+          {body}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
 export function EmptyPackPanel() {
   return (
     <Box
@@ -18,15 +70,42 @@ export function EmptyPackPanel() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        px: 4,
       }}
     >
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
-      >
-        {appTokens.copy.emptyStates.noSelection}
-      </Typography>
+      <Box sx={{ maxWidth: 420 }}>
+        <Typography
+          variant="subtitle2"
+          fontWeight={appTokens.typography.fontWeights.bold}
+          sx={{ fontSize: appTokens.typography.fontSizes.subtitle }}
+        >
+          Make your first Telegram sticker pack
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mt: 0.75, mb: 2.5, fontSize: appTokens.typography.fontSizes.bodyDefault }}
+        >
+          {appTokens.copy.emptyStates.noSelection}
+        </Typography>
+        <Box sx={{ display: "grid", gap: 1.75 }}>
+          <OnboardingStep
+            icon={<FolderOpenIcon sx={{ fontSize: 17 }} />}
+            title="Import a folder when you already have files"
+            body="Use the folder button in the lower-left toolbar to create a pack and add everything in one pass."
+          />
+          <OnboardingStep
+            icon={<AddCircleOutlineIcon sx={{ fontSize: 17 }} />}
+            title="Create an empty pack for a clean start"
+            body="Use New pack, then add files from the pack header. Converted WebM stickers appear in the grid."
+          />
+          <OnboardingStep
+            icon={<TelegramIcon sx={{ fontSize: 17 }} />}
+            title="Connect Telegram when you are ready to publish"
+            body="Publishing and sync stay available from the Telegram account button without blocking local work."
+          />
+        </Box>
+      </Box>
     </Box>
   );
 }
