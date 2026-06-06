@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import InsertEmoticonIcon from "@mui/icons-material/InsertEmoticon";
 import Divider from "@mui/material/Divider";
@@ -27,7 +26,7 @@ export function StickerContextMenu({
   contextStickers: StickerItem[];
   onClose: () => void;
   onDeleteStickers: (stickerIds: string[]) => void;
-  setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
+  setEmojiEditStickerIds: (stickerIds: string[]) => void;
 }) {
   const { stickerIds, editEmojis, deleteStickers } = useStickerContextMenuActions({
     contextStickers,

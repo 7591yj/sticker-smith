@@ -133,34 +133,40 @@ export function useEmojiConfirm({
   packId,
   refreshDetails,
   emojiEditStickerIds,
+  emojiEditMode,
   selection,
   setEmojiEditStickerIds,
+  stickerById,
 }: {
   packId: string;
   refreshDetails: () => Promise<StickerPackDetails>;
   emojiEditStickerIds: string[] | null;
+  emojiEditMode: "append" | "replace";
   selection: Pick<
     StickerSelectionState,
     "setSelectedStickerIds" | "setSelectionAnchorId"
   >;
+  stickerById: ReadonlyMap<string, StickerItem>;
   setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
 }) {
   return useCallback(
     async (emojis: string[]) => {
       if (!emojiEditStickerIds?.length) return;
-      if (emojiEditStickerIds.length === 1) {
-        await window.stickerSmith.stickers.setEmojis({
-          packId,
-          stickerId: emojiEditStickerIds[0]!,
-          emojis,
-        });
-      } else {
-        await window.stickerSmith.stickers.setEmojisMany({
-          packId,
-          stickerIds: emojiEditStickerIds,
-          emojis,
-        });
-      }
+      const nextEmojisByStickerId = buildNextEmojisByStickerId({
+        emojiEditMode,
+        emojis,
+        stickerById,
+        stickerIds: emojiEditStickerIds,
+      });
+      await Promise.all(
+        [...nextEmojisByStickerId].map(([stickerId, nextEmojis]) =>
+          window.stickerSmith.stickers.setEmojis({
+            packId,
+            stickerId,
+            emojis: nextEmojis,
+          }),
+        ),
+      );
       setEmojiEditStickerIds(null);
       selection.setSelectedStickerIds(emojiEditStickerIds);
       selection.setSelectionAnchorId(emojiEditStickerIds[0] ?? null);
@@ -168,10 +174,35 @@ export function useEmojiConfirm({
     },
     [
       emojiEditStickerIds,
+      emojiEditMode,
       packId,
       refreshDetails,
       selection,
       setEmojiEditStickerIds,
+      stickerById,
     ],
+  );
+}
+
+function buildNextEmojisByStickerId({
+  emojiEditMode,
+  emojis,
+  stickerById,
+  stickerIds,
+}: {
+  emojiEditMode: "append" | "replace";
+  emojis: string[];
+  stickerById: ReadonlyMap<string, StickerItem>;
+  stickerIds: string[];
+}) {
+  return new Map(
+    stickerIds.map((stickerId) => {
+      const currentEmojis = stickerById.get(stickerId)?.emojiList ?? [];
+      const nextEmojis =
+        emojiEditMode === "append"
+          ? [...new Set([...currentEmojis, ...emojis])]
+          : emojis;
+      return [stickerId, nextEmojis] as const;
+    }),
   );
 }

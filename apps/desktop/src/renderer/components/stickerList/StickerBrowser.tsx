@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import type { Dispatch, DragEvent, MouseEvent, SetStateAction } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import type { StickerItem } from "@sticker-smith/shared";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -25,7 +25,7 @@ const contentsGridContainerSx = {
 type StickerBrowserCardProps = {
   sticker: StickerItem;
   iconStickerId: string | null;
-  selectedStickerIds: ReadonlySet<string>;
+  selected: boolean;
   selectOnly: (stickerId: string) => void;
   onStickerClick: (
     event: MouseEvent<HTMLDivElement>,
@@ -45,13 +45,13 @@ type StickerBrowserCardProps = {
     event: DragEvent<HTMLDivElement>,
     sticker: StickerItem,
   ) => void;
-  setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
+  setEmojiEditStickerIds: (stickerIds: string[]) => void;
 };
 
 const StickerBrowserCard = memo(function StickerBrowserCard({
   sticker,
   iconStickerId,
-  selectedStickerIds,
+  selected,
   selectOnly,
   onStickerClick,
   onContextMenu,
@@ -64,8 +64,6 @@ const StickerBrowserCard = memo(function StickerBrowserCard({
   onDropSticker,
   setEmojiEditStickerIds,
 }: StickerBrowserCardProps) {
-  const selected = selectedStickerIds.has(sticker.id);
-
   return (
     <BrowserGalleryCard
       title={buildStickerTitle(sticker)}
@@ -140,7 +138,7 @@ export function StickerBrowser({
     event: DragEvent<HTMLDivElement>,
     sticker: StickerItem,
   ) => void;
-  setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
+  setEmojiEditStickerIds: (stickerIds: string[]) => void;
 }) {
   const selectedStickerIdSet = useMemo(
     () => new Set(selectedStickerIds),
@@ -185,25 +183,26 @@ export function StickerBrowser({
           </Typography>
         </Box>
       ) : (
-        <Box sx={contentsGridContainerSx}>
+        <Box data-sticker-gallery-grid="true" sx={contentsGridContainerSx}>
           {stickers.map((sticker) => (
-            <StickerBrowserCard
-              key={sticker.id}
-              sticker={sticker}
-              iconStickerId={iconStickerId}
-              selectedStickerIds={selectedStickerIdSet}
-              selectOnly={selectOnly}
-              onStickerClick={onStickerClick}
-              onContextMenu={onContextMenu}
-              draggingStickerId={draggingStickerId}
-              dragOverStickerId={dragOverStickerId}
-              canReorder={canReorder}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onDragOverSticker={onDragOverSticker}
-              onDropSticker={onDropSticker}
-              setEmojiEditStickerIds={setEmojiEditStickerIds}
-            />
+            <Box key={sticker.id} data-sticker-gallery-item-id={sticker.id}>
+              <StickerBrowserCard
+                sticker={sticker}
+                iconStickerId={iconStickerId}
+                selected={selectedStickerIdSet.has(sticker.id)}
+                selectOnly={selectOnly}
+                onStickerClick={onStickerClick}
+                onContextMenu={onContextMenu}
+                draggingStickerId={draggingStickerId}
+                dragOverStickerId={dragOverStickerId}
+                canReorder={canReorder}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragOverSticker={onDragOverSticker}
+                onDropSticker={onDropSticker}
+                setEmojiEditStickerIds={setEmojiEditStickerIds}
+              />
+            </Box>
           ))}
         </Box>
       )}

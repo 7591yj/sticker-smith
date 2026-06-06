@@ -1,12 +1,11 @@
 import { useCallback } from "react";
-import type { Dispatch, SetStateAction } from "react";
 import type { StickerItem } from "@sticker-smith/shared";
 
 export type StickerContextMenuActionsInput = {
   contextStickers: StickerItem[];
   onClose: () => void;
   onDeleteStickers: (stickerIds: string[]) => void;
-  setEmojiEditStickerIds: Dispatch<SetStateAction<string[] | null>>;
+  setEmojiEditStickerIds: (stickerIds: string[]) => void;
 };
 
 export function useStickerContextMenuActions({

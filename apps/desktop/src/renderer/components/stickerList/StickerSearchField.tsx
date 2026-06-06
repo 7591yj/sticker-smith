@@ -15,6 +15,7 @@ export function StickerSearchField({
 }) {
   return (
     <TextField
+      data-sticker-search-field="true"
       size="small"
       value={query}
       onChange={(event) => setQuery(event.target.value)}
