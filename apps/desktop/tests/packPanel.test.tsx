@@ -89,8 +89,8 @@ describe("PackPanel", () => {
     expect(markup).toContain('aria-label="Pack options"');
     expect(markup).not.toContain("Open Folder");
     expect(markup).not.toContain("Export");
-    expect(markup).toContain("Upload");
-    expect(markup).toContain('aria-label="Select All"');
+    expect(markup).toContain("Publish to Telegram");
+    expect(markup).toContain('aria-label="Select all"');
     expect(markup).toContain("disabled");
   });
 
@@ -108,7 +108,7 @@ describe("PackPanel", () => {
   it("renders a needs-update label for stale telegram mirrors", () => {
     const markup = renderPackPanelMarkup(createTelegramDetails({ stickerSetId: "100", shortName: "sample_pack", title: "Sample Pack", format: "video", syncState: "stale" }));
 
-    expect(markup).toContain("Needs update");
+    expect(markup).toContain("Local edits");
   });
 
   it("renders busy telegram actions while a mirror is syncing or downloading", () => {
@@ -139,12 +139,12 @@ describe("PackPanel", () => {
       format: "static",
       syncState: "unsupported",
       lastSyncError:
-        'Telegram pack "Static Pack" uses static stickers, and only video sticker packs are supported currently.',
+        '"Static Pack" uses static stickers. Sticker Smith currently supports video sticker packs only.',
     }));
 
     expect(markup).toContain("Unsupported");
     expect(markup).toContain(
-      'Telegram pack &quot;Sample Pack&quot; uses static stickers, and only video sticker packs are supported currently.',
+      '&quot;Sample Pack&quot; uses static stickers. Sticker Smith currently supports video sticker packs only.',
     );
     expect(markup).toContain("disabled");
   });
@@ -157,7 +157,7 @@ describe("PackPanel", () => {
       { telegramUpdating: true },
     );
 
-    expect(uploadingMarkup).toContain("Uploading…");
-    expect(updatingMarkup).toContain("Updating…");
+    expect(uploadingMarkup).toContain("Publishing…");
+    expect(updatingMarkup).toContain("Updating Telegram…");
   });
 });

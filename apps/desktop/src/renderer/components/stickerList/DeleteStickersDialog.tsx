@@ -43,7 +43,7 @@ export function DeleteStickersDialog({
       </DialogTitle>
       <DialogContent sx={{ pt: "8px !important" }}>
         <DialogContentText>
-          This removes the selected sticker file from the pack.
+          This removes the selected sticker from this pack.
         </DialogContentText>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -57,7 +57,7 @@ export function DeleteStickersDialog({
           onClick={handleConfirm}
           disabled={count === 0 || submitting}
         >
-          {appTokens.copy.actions.delete}
+          Delete {formatCountLabel(count, "sticker")}
         </Button>
       </DialogActions>
     </Dialog>

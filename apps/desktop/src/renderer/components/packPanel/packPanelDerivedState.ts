@@ -14,7 +14,7 @@ export type PackPanelDerivedState = {
 
 function getUnsupportedTelegramTooltip(pack: StickerPack) {
   if (pack.source !== "telegram" || !pack.telegram) return null;
-  return `This Telegram pack uses ${pack.telegram.format} stickers. Only video sticker packs are supported currently.`;
+  return `This Telegram pack uses ${pack.telegram.format} stickers. Sticker Smith currently supports video sticker packs only.`;
 }
 
 function getPrimaryActionLabel(

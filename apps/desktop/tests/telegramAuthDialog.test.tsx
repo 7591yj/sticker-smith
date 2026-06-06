@@ -79,9 +79,9 @@ describe("TelegramAuthDialog", () => {
   it("renders tdlib parameter inputs for user setup", async () => {
     const { root } = await renderDialog(createTelegramState());
 
-    expect(document.body.textContent).toContain("TDLib Parameters");
-    expect(document.body.textContent).toContain("API ID");
-    expect(document.body.textContent).toContain("API hash");
+    expect(document.body.textContent).toContain("Telegram API details");
+    expect(document.body.textContent).toContain("Telegram API ID");
+    expect(document.body.textContent).toContain("Telegram API hash");
 
     await act(async () => {
       root.unmount();
@@ -96,7 +96,7 @@ describe("TelegramAuthDialog", () => {
       }),
     );
 
-    expect(document.body.textContent).toContain("Telegram Code");
+    expect(document.body.textContent).toContain("Telegram login code");
     expect(document.body.textContent).toContain("Login code");
 
     await act(async () => {
@@ -125,8 +125,8 @@ describe("TelegramAuthDialog", () => {
       }),
     );
 
-    expect(document.body.textContent).toContain("Telegram Connected");
-    expect(document.body.textContent).toContain("API ID: 12345");
+    expect(document.body.textContent).toContain("Telegram connected");
+    expect(document.body.textContent).toContain("Telegram API ID: 12345");
     expect(document.body.textContent).toContain("Phone: +12025550123");
     expect(document.body.textContent).toContain(
       "Account: Sticker Smith (@stickersmith)",

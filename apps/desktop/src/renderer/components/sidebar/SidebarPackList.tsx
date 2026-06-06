@@ -185,8 +185,8 @@ export function PackList({
             sx={{ display: "block", mt: 0.5, fontSize: appTokens.typography.fontSizes.caption }}
           >
             {emptyState === appTokens.copy.emptyStates.noLocalPacks
-              ? "Import a folder or create a new pack from the toolbar below."
-              : "Use the Telegram account button below to connect, then refresh your packs."}
+              ? "Use the folder button below to import assets, or create a new pack."
+              : "Connect Telegram from the account button below, then refresh your packs."}
           </Typography>
         </Box>
       ) : (
@@ -247,7 +247,7 @@ export function UnsupportedTelegramToggle({
       >
         <ListItemText
           primary={
-            show ? "Hide unsupported stickers" : "Show unsupported stickers"
+            show ? "Hide unsupported packs" : "Show unsupported packs"
           }
           primaryTypographyProps={{
             variant: "caption",
@@ -256,7 +256,7 @@ export function UnsupportedTelegramToggle({
             sx: { fontSize: appTokens.typography.fontSizes.caption },
           }}
         />
-        <Tooltip title="Sticker Smith currently supports video stickers only.">
+        <Tooltip title="Sticker Smith currently supports video sticker packs only.">
           <HelpOutlineIcon
             sx={{ ml: 0.5, fontSize: 16, color: "text.secondary", flexShrink: 0 }}
           />

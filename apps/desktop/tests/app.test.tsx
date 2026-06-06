@@ -40,7 +40,7 @@ describe("desktop app", () => {
     expect(markup).toContain("Sticker Smith");
     expect(markup).toContain("Local");
     expect(markup).toContain("Telegram");
-    expect(markup).toContain("Connect Telegram to load Telegram sticker packs.");
-    expect(markup).toContain("Select a pack or create a new one.");
+    expect(markup).toContain("Connect Telegram, then refresh your sticker packs.");
+    expect(markup).toContain("Import a folder of sticker art, or create an empty pack and add files.");
   });
 });

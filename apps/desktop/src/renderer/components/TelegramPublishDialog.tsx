@@ -91,7 +91,7 @@ function TelegramPublishDialogContent({
           label={appTokens.copy.labels.telegramShortName}
           value={shortName}
           onChange={(event) => setShortName(event.target.value.replace(/-/g, "_"))}
-          helperText="Start with a letter and use only letters, numbers, or underscores."
+          helperText="Use 5 to 64 characters. Start with a letter. Letters, numbers, and underscores only."
           disabled={submitting}
         />
       </Stack>
@@ -106,7 +106,7 @@ function TelegramPublishDescription() {
       color="text.secondary"
       sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
     >
-      Telegram creates a separate mirror pack. The local pack stays in the Local section.
+      Telegram will create a linked pack. Your local pack stays in Local.
     </Typography>
   );
 }
@@ -119,7 +119,7 @@ function TelegramPublishProgress() {
         color="text.secondary"
         sx={{ fontSize: appTokens.typography.fontSizes.bodyDefault }}
       >
-        Uploading to Telegram. Sync manually after it finishes.
+        Publishing to Telegram. Refresh after it finishes to confirm the remote pack.
       </Typography>
       <LinearProgress />
     </Stack>

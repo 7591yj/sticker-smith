@@ -95,7 +95,7 @@ describe("Sidebar", () => {
       });
 
     expect(markup).toContain('aria-label="Telegram account"');
-    expect(markup).toContain('aria-label="Sync"');
+    expect(markup).toContain('aria-label="Refresh from Telegram"');
     expect(markup).not.toContain(">Reset Telegram<");
     expect(markup).not.toContain(">Logout<");
   });
@@ -132,7 +132,7 @@ describe("Sidebar", () => {
     expect(markup).toContain('aria-label="Refresh"');
     expect(markup).not.toContain("Short name not set");
     expect(markup).toContain("telegram_pack");
-    expect(markup).toContain("Needs update");
+    expect(markup).toContain("Local edits");
     expect(markup).not.toContain("Telegram is connected.");
     expect(markup).not.toContain(">Connected<");
   });
@@ -158,7 +158,7 @@ describe("Sidebar", () => {
               syncState: "unsupported",
               lastSyncedAt: "2026-03-12T00:00:00.000Z",
               lastSyncError:
-                'Telegram pack "Static Pack" uses static stickers, and only video sticker packs are supported currently.',
+                '"Static Pack" uses static stickers. Sticker Smith currently supports video sticker packs only.',
               publishedFromLocalPackId: null,
             },
           }),
@@ -177,10 +177,10 @@ describe("Sidebar", () => {
 
     expect(markup).toContain('aria-label="Telegram"');
     expect(markup).not.toContain('aria-label="Telegram (Unsupported)"');
-    expect(markup).toContain("Show unsupported stickers");
+    expect(markup).toContain("Show unsupported packs");
     expect(markup).toContain("Telegram Pack");
     expect(markup).not.toContain("Static Pack");
-    expect(markup).toContain("Needs update");
+    expect(markup).toContain("Local edits");
   });
 
   it("renders sync-in-progress while telegram mirrors are syncing", () => {

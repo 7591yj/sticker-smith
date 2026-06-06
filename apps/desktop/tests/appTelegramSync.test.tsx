@@ -185,14 +185,14 @@ describe("app telegram pack refresh", () => {
       createTelegramPack({ telegram: createTelegramMetadata({ syncState: "stale" }) }),
     ]);
 
-    expect(document.body.textContent).toContain("Upload");
+    expect(document.body.textContent).toContain("Publish to Telegram");
 
     await emit({
       type: "publish_started",
       localPackId: "local-pack",
     });
 
-    expect(document.body.textContent).toContain("Uploading…");
+    expect(document.body.textContent).toContain("Publishing…");
 
     await emit({
       type: "publish_finished",
@@ -209,7 +209,7 @@ describe("app telegram pack refresh", () => {
       stickerSetId: "100",
     });
 
-    expect(document.body.textContent).toContain("Updating…");
+    expect(document.body.textContent).toContain("Updating Telegram…");
 
     await act(async () => {
       root.unmount();

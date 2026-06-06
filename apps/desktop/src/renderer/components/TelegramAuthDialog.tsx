@@ -58,11 +58,11 @@ type SubmitReadyState = TelegramState & { authStep: SubmittableAuthStep };
 
 function titleForState(state: TelegramState | null) {
   switch (state?.authStep) {
-    case "wait_tdlib_parameters": return "TDLib Parameters";
-    case "wait_phone_number": return "Telegram Phone";
-    case "wait_code": return "Telegram Code";
-    case "wait_password": return "Telegram Password";
-    case "ready": return "Telegram Connected";
+    case "wait_tdlib_parameters": return "Telegram API details";
+    case "wait_phone_number": return "Telegram phone number";
+    case "wait_code": return "Telegram login code";
+    case "wait_password": return "Two-step password";
+    case "ready": return "Telegram connected";
     default: return appTokens.copy.dialogs.telegramSetup;
   }
 }
@@ -73,7 +73,9 @@ function actionLabelForState(state: TelegramState | null) {
     case "wait_phone_number":
     case "wait_code":
     case "wait_password":
-      return appTokens.copy.actions.confirm;
+      return state.authStep === "wait_tdlib_parameters"
+        ? "Save API details"
+        : appTokens.copy.actions.confirm;
     default:
       return appTokens.copy.actions.close;
   }
@@ -95,8 +97,8 @@ function canSubmit(state: TelegramState | null, form: AuthFormState) {
 
 function accountSummaryLines(state: TelegramState) {
   const lines = [
-    state.tdlib.apiId ? `API ID: ${state.tdlib.apiId}` : "API ID not saved",
-    state.user.phoneNumber ? `Phone: ${state.user.phoneNumber}` : "Phone number not saved",
+    state.tdlib.apiId ? `Telegram API ID: ${state.tdlib.apiId}` : "Telegram API ID not saved",
+    state.user.phoneNumber ? `Phone: ${state.user.phoneNumber}` : "Telegram phone number not saved",
   ];
 
   if (state.sessionUser) {

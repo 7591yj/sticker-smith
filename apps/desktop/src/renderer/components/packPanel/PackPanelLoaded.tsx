@@ -91,18 +91,18 @@ export function EmptyPackPanel() {
         <Box sx={{ display: "grid", gap: 1.75 }}>
           <OnboardingStep
             icon={<FolderOpenIcon sx={{ fontSize: 17 }} />}
-            title="Import a folder when you already have files"
-            body="Use the folder button in the lower-left toolbar to create a pack and add everything in one pass."
+            title="Import a folder of sticker art"
+            body="Use the folder button in the lower-left toolbar. Sticker Smith creates a pack and converts the files in one pass."
           />
           <OnboardingStep
             icon={<AddCircleOutlineIcon sx={{ fontSize: 17 }} />}
-            title="Create an empty pack for a clean start"
-            body="Use New pack, then add files from the pack header. Converted WebM stickers appear in the grid."
+            title="Start empty, then add files"
+            body="Use New pack when you want to name the pack first. Converted WebM stickers appear in the grid."
           />
           <OnboardingStep
             icon={<TelegramIcon sx={{ fontSize: 17 }} />}
-            title="Connect Telegram when you are ready to publish"
-            body="Publishing and sync stay available from the Telegram account button without blocking local work."
+            title="Connect Telegram when you are ready"
+            body="Publish and refresh from the Telegram account button. Local work stays available while you set it up."
           />
         </Box>
       </Box>
@@ -138,7 +138,7 @@ function getUnsupportedTelegramNotice(details: StickerPackDetails) {
     return null;
   }
   const format = pack.telegram.format;
-  return `Telegram pack "${pack.name}" uses ${format} stickers, and only video sticker packs are supported currently.`;
+  return `"${pack.name}" uses ${format} stickers. Sticker Smith currently supports video sticker packs only.`;
 }
 
 type PackPanelLoadedProps = Pick<
