@@ -68,14 +68,14 @@ export const appTokens = {
     text: {
       primary: "#e2e8f0",
       secondary: "#94a3b8",
-      contrast: "#000000",
-      inverseMuted: "rgba(255,255,255,0.8)",
+      contrast: "#151924",
+      inverseMuted: "rgba(226,232,240,0.8)",
     },
     border: {
-      subtle: "rgba(255, 255, 255, 0.08)",
+      subtle: "rgba(226, 232, 240, 0.08)",
     },
     overlay: {
-      mediaLabel: "rgba(0,0,0,0.55)",
+      mediaLabel: "rgba(9,9,11,0.62)",
     },
     error: "#f87171",
     status: {
@@ -93,15 +93,15 @@ export const appTokens = {
       },
       synced: {
         main: "primary.main",
-        background: "rgba(96, 165, 250, 0.14)",
-        border: "rgba(96, 165, 250, 0.32)",
-        contrast: "#bfdbfe",
+        background: "oklch(0.72 0.14 255 / 0.14)",
+        border: "oklch(0.72 0.14 255 / 0.32)",
+        contrast: "oklch(0.86 0.07 255)",
       },
       modified: {
         main: "warning.main",
-        background: "rgba(251, 191, 36, 0.14)",
-        border: "rgba(251, 191, 36, 0.34)",
-        contrast: "#fde68a",
+        background: "oklch(0.82 0.14 80 / 0.14)",
+        border: "oklch(0.82 0.14 80 / 0.34)",
+        contrast: "oklch(0.89 0.09 80)",
       },
       failed: {
         main: "oklch(0.72 0.16 25)",

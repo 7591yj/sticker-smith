@@ -83,7 +83,7 @@ export function StickerInspector({
     <Box
       sx={{
         minHeight: 0,
-        bgcolor: "rgba(255,255,255,0.012)",
+        bgcolor: "oklch(0.91 0.018 255 / 0.012)",
         p: 1.5,
         display: { xs: "none", lg: "flex" },
         flexDirection: "column",

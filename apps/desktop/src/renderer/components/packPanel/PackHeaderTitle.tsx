@@ -255,7 +255,7 @@ function HeaderStatChip({
         borderRadius: appTokens.shape.radius.control,
         bgcolor: value > 0
           ? appTokens.colors.background.surface
-          : "rgba(255,255,255,0.02)",
+          : "rgba(226,232,240,0.02)",
         backgroundImage: value > 0
           ? `linear-gradient(${statusColor.background}, ${statusColor.background})`
           : "none",

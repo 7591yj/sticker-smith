@@ -35,9 +35,9 @@ function OnboardingStep({
           alignItems: "center",
           justifyContent: "center",
           color: "primary.main",
-          bgcolor: "rgba(96, 165, 250, 0.10)",
+          bgcolor: "oklch(0.72 0.14 255 / 0.10)",
           border: "1px solid",
-          borderColor: "rgba(96, 165, 250, 0.22)",
+          borderColor: "oklch(0.72 0.14 255 / 0.22)",
         }}
       >
         {icon}

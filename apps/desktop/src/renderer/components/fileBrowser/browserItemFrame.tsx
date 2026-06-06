@@ -31,7 +31,7 @@ function browserItemHoverBorderColor(input: BrowserItemStateInput) {
 
 function browserItemShadow(input: BrowserItemStateInput) {
   return input.isDragOver || input.selected
-    ? "0 0 0 1px rgba(96,165,250,0.35)"
+    ? "0 0 0 1px oklch(0.72 0.14 255 / 0.35)"
     : "none";
 }
 
@@ -48,7 +48,8 @@ function browserItemStateSx(input: BrowserItemStateInput) {
     cursor: "default",
     userSelect: "none",
     WebkitUserSelect: "none",
-    transition: "border-color 0.15s, background-color 0.15s, box-shadow 0.15s",
+    transition:
+      "border-color 150ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1)",
     boxShadow: browserItemShadow(input),
     "&:hover": {
       bgcolor: "action.selected",

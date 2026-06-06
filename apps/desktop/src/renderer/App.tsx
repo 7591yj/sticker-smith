@@ -1,4 +1,9 @@
-import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
@@ -54,12 +59,39 @@ function useResizableSidebarWidth() {
     [sidebarWidth],
   );
 
-  return { handleSidebarResizeStart, sidebarWidth };
+  const handleSidebarResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? 24 : 8;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSidebarWidth((width) => clampSidebarWidth(width - step));
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSidebarWidth((width) => clampSidebarWidth(width + step));
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        setSidebarWidth(sidebarResize.minWidth);
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        setSidebarWidth(sidebarResize.maxWidth);
+      }
+    },
+    [],
+  );
+
+  return { handleSidebarResizeKeyDown, handleSidebarResizeStart, sidebarWidth };
 }
 
 function ResizeHandle({
+  width,
+  onResizeKeyDown,
   onResizeStart,
 }: {
+  width: number;
+  onResizeKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   onResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   return (
@@ -67,6 +99,11 @@ function ResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize sidebar"
+      aria-valuemin={sidebarResize.minWidth}
+      aria-valuemax={sidebarResize.maxWidth}
+      aria-valuenow={Math.round(width)}
+      tabIndex={0}
+      onKeyDown={onResizeKeyDown}
       onMouseDown={onResizeStart}
       sx={{
         width: 4,
@@ -77,8 +114,13 @@ function ResizeHandle({
         bgcolor: "transparent",
         zIndex: 2,
         WebkitAppRegion: "no-drag",
-        "&:hover": {
-          bgcolor: "action.hover",
+        "&:hover, &:focus-visible": {
+          bgcolor: "primary.main",
+        },
+        "&:focus-visible": {
+          outline: "2px solid",
+          outlineColor: "primary.main",
+          outlineOffset: -2,
         },
       }}
     />
@@ -225,7 +267,11 @@ function AppTelegramErrorDialog({ appState }: { appState: DesktopAppState }) {
 
 export function App() {
   const appState = useDesktopAppState();
-  const { handleSidebarResizeStart, sidebarWidth } = useResizableSidebarWidth();
+  const {
+    handleSidebarResizeKeyDown,
+    handleSidebarResizeStart,
+    sidebarWidth,
+  } = useResizableSidebarWidth();
   const [syncWarning, setSyncWarning] = useState<{
     packs: { packId: string; name: string }[];
   } | null>(null);
@@ -264,7 +310,11 @@ export function App() {
           width={sidebarWidth}
           onSyncTelegramPacks={handleSyncTelegramPacks}
         />
-        <ResizeHandle onResizeStart={handleSidebarResizeStart} />
+        <ResizeHandle
+          width={sidebarWidth}
+          onResizeKeyDown={handleSidebarResizeKeyDown}
+          onResizeStart={handleSidebarResizeStart}
+        />
         <MainPanel appState={appState} />
       </Box>
       <AppDialogs
