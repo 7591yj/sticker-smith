@@ -1,3 +1,4 @@
+import { useState } from "react";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -56,12 +57,19 @@ function PlaceholderPreview({ label }: PlaceholderPreviewProps) {
 }
 
 function ImagePreview({ fileUrl, filename }: MediaPreviewProps) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return <GenericFilePreview extension={getFileExtension(filename)} />;
+
   return (
     <Box
       component="img"
       src={fileUrl}
       alt={filename}
       draggable={false}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
       sx={{
         width: "100%",
         height: "100%",
@@ -72,17 +80,23 @@ function ImagePreview({ fileUrl, filename }: MediaPreviewProps) {
   );
 }
 
-function VideoPreview({ fileUrl }: Pick<MediaPreviewProps, "fileUrl">) {
+function VideoPreview({ fileUrl, filename }: MediaPreviewProps) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return <GenericFilePreview extension={getFileExtension(filename)} />;
+
   return (
     <Box
       component="video"
       src={fileUrl}
+      aria-label={`${filename} preview`}
       draggable={false}
       muted
       autoPlay
       loop
       playsInline
       preload="metadata"
+      onError={() => setFailed(true)}
       sx={{
         width: "100%",
         height: "100%",
@@ -143,7 +157,7 @@ export function FilePreview({
   }
 
   if (VIDEO_EXTENSIONS.has(extension))
-    return <VideoPreview fileUrl={fileUrl} />;
+    return <VideoPreview fileUrl={fileUrl} filename={getLeafName(relativePath)} />;
 
   return <GenericFilePreview extension={extension} />;
 }

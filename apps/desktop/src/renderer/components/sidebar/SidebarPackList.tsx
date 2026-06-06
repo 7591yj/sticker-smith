@@ -11,7 +11,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { StickerPack } from "@sticker-smith/shared";
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { appTokens } from "../../../theme/appTokens";
 import { toFileUrl } from "../../utils/fileUrl";
 import { isVideoPath } from "../../utils/pathDisplay";
@@ -40,6 +40,9 @@ function PackThumbnail({
   name: string;
   thumbnailPath: string | null;
 }) {
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const showMedia = thumbnailPath && !thumbnailFailed;
+
   return (
     <ListItemAvatar sx={{ minWidth: 32 }}>
       <Box
@@ -56,9 +59,10 @@ function PackThumbnail({
           justifyContent: "center",
         }}
       >
-        {thumbnailPath ? (
+        {showMedia ? (
           <Box
             {...packThumbnailMediaProps(name, thumbnailPath)}
+            onError={() => setThumbnailFailed(true)}
             sx={{
               width: "100%",
               height: "100%",
@@ -202,6 +206,7 @@ export function PackList({
             <ListItemText
               primary={pack.name}
               secondary={secondaryLabelForPack(pack)}
+              sx={{ minWidth: 0 }}
               primaryTypographyProps={{
                 variant: "body2",
                 noWrap: true,
@@ -237,6 +242,7 @@ export function UnsupportedTelegramToggle({
           borderRadius: appTokens.shape.radius.panel,
           justifyContent: "flex-start",
           px: 1.5,
+          minWidth: 0,
         }}
       >
         <ListItemText
@@ -252,7 +258,7 @@ export function UnsupportedTelegramToggle({
         />
         <Tooltip title="Sticker Smith currently supports video stickers only.">
           <HelpOutlineIcon
-            sx={{ ml: 0.5, fontSize: 16, color: "text.secondary" }}
+            sx={{ ml: 0.5, fontSize: 16, color: "text.secondary", flexShrink: 0 }}
           />
         </Tooltip>
       </ListItemButton>

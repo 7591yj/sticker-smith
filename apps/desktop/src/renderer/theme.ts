@@ -32,6 +32,14 @@ export const appTheme = createTheme({
         },
         body: { fontFamily: appTokens.typography.fontFamily },
         "*, *::before, *::after": { boxSizing: "border-box" },
+        "@media (prefers-reduced-motion: reduce)": {
+          "*, *::before, *::after": {
+            animationDuration: "0.01ms !important",
+            animationIterationCount: "1 !important",
+            scrollBehavior: "auto !important",
+            transitionDuration: "0.01ms !important",
+          },
+        },
       },
     },
     MuiButton: {
